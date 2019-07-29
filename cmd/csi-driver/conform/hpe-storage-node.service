@@ -1,0 +1,16 @@
+[Unit]
+Description=HPE Storage Node Conformance Service
+Documentation=https://hpe.com/storage/containers
+Wants=network-online.target
+Before=remote-fs-pre.target
+After=network.target network-online.target
+
+[Service]
+# fork the process so systemd waits until package installation is complete, before starting plugin
+Type=forking
+RemainAfterExit=true
+ExecStart=/usr/local/bin/hpe-storage-node.sh
+StandardOutput=journal
+
+[Install]
+WantedBy=iscsid.service

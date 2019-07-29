@@ -1,0 +1,24 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: sc-csi-1
+provisioner: csi.hpe.com
+parameters:
+  csi.storage.k8s.io/fstype: ext4
+  csi.storage.k8s.io/provisioner-secret-name: nimble-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: default
+  csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
+  csi.storage.k8s.io/controller-publish-secret-namespace: default
+  csi.storage.k8s.io/node-stage-secret-name: nimble-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: default
+  csi.storage.k8s.io/node-publish-secret-name: nimble-secret
+  csi.storage.k8s.io/node-publish-secret-namespace: default
+  # Uncomment for k8s 1.14 for resize support
+  #csi.storage.k8s.io/resizer-secret-name: nimble-secret
+  #csi.storage.k8s.io/resizer-secret-namespace: default
+  description: "Volume from csi"
+  dedupeEnabled: "false"
+  performancePolicy: "SQL Server"
+  limitIops: "76800"
+# Uncomment for k8s 1.14 for resize
+#allowVolumeExpansion: true

@@ -1,0 +1,9 @@
+apiVersion: snapshot.storage.k8s.io/v1alpha1
+kind: VolumeSnapshot
+metadata:
+  name: snap-csi-1
+spec:
+  source:
+    name: pvc-csi-1 
+    kind: PersistentVolumeClaim
+  snapshotClassName: snapclass-csi-1
