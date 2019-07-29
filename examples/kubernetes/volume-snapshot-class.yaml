@@ -5,5 +5,5 @@ metadata:
 snapshotter: csi.hpe.com
 parameters:
   description: "Snapshot from CSI"
-  csi.storage.k8s.io/snapshotter-secret-name: nimble-secret
-  csi.storage.k8s.io/snapshotter-secret-namespace: default
+  csiSnapshotterSecretName: nimble-secret
+  csiSnapshotterSecretNamespace: default 

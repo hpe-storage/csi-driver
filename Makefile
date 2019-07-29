@@ -1,22 +1,6 @@
 NAME = csi-driver
 REPO_NAME ?= hpe/csi-driver
-
-# Use the latest git tag
-TAG = $(shell git tag|tail -n1)
-ifeq ($(TAG),)
-	TAG = edge
-endif
-
-# unless a BUILD_NUMBER is specified
-ifeq ($(IGNORE_BUILD_NUMBER),true)
-	VERSION = $(TAG)
-else
-	ifneq ($(BUILD_NUMBER),)
-		VERSION = $(TAG)-$(BUILD_NUMBER)
-	else
-		VERSION = $(TAG)
-	endif
-endif
+VERSION = v0.3.0-beta
 
 # golangci-lint allows us to have a single target that runs multiple linters in
 # the same fashion.  This variable controls which linters are used.

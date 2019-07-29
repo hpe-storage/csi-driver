@@ -1,0 +1,19 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+ name: sc-csi-1
+provisioner: csi.hpe.com
+parameters:
+  fstype: ext4
+  csiProvisionerSecretName: nimble-secret
+  csiProvisionerSecretNamespace: default
+  csiControllerPublishSecretName: nimble-secret
+  csiControllerPublishSecretNamespace: default
+  csiNodeStageSecretName: nimble-secret
+  csiNodeStageSecretNamespace: default
+  csiNodePublishSecretName: nimble-secret
+  csiNodePublishSecretNamespace: default
+  description: "Volume from csi"
+  dedupeEnabled: "false"
+  performancePolicy: "SQL Server"
+  limitIops: "76800"

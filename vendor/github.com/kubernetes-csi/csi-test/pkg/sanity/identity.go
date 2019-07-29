@@ -24,7 +24,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -47,24 +47,13 @@ var _ = DescribeSanity("Identity Service", func(sc *SanityContext) {
 			Expect(res).NotTo(BeNil())
 
 			By("checking successful response")
+			Expect(res.GetCapabilities()).NotTo(BeNil())
 			for _, cap := range res.GetCapabilities() {
-				switch cap.GetType().(type) {
-				case *csi.PluginCapability_Service_:
-					switch cap.GetService().GetType() {
-					case csi.PluginCapability_Service_CONTROLLER_SERVICE:
-					case csi.PluginCapability_Service_VOLUME_ACCESSIBILITY_CONSTRAINTS:
-					default:
-						Fail(fmt.Sprintf("Unknown service: %v\n", cap.GetService().GetType()))
-					}
-				case *csi.PluginCapability_VolumeExpansion_:
-					switch cap.GetVolumeExpansion().GetType() {
-					case csi.PluginCapability_VolumeExpansion_ONLINE:
-					case csi.PluginCapability_VolumeExpansion_OFFLINE:
-					default:
-						Fail(fmt.Sprintf("Unknown volume expansion mode: %v\n", cap.GetVolumeExpansion().GetType()))
-					}
+				switch cap.GetService().GetType() {
+				case csi.PluginCapability_Service_CONTROLLER_SERVICE:
+				case csi.PluginCapability_Service_ACCESSIBILITY_CONSTRAINTS:
 				default:
-					Fail(fmt.Sprintf("Unknown capability: %v\n", cap.GetType()))
+					Fail(fmt.Sprintf("Unknown capability: %v\n", cap.GetService().GetType()))
 				}
 			}
 

@@ -1,58 +1,15 @@
-# csi-driver
-
-A Container Storage Interface ([CSI](https://github.com/container-storage-interface/spec)) Driver for HPE Storage. The CSI driver allows you to use HPE Storage with your preferred container orchestrator.
+A Container Storage Interface ([CSI](https://github.com/container-storage-interface/spec)) Driver for HPE Storage. The CSI driver allows you to use HPE Storage with K8S 1.12.
 
 ## Installing to Kubernetes
 
-### Kubernetes Compatibility
-
-<table>
-  <thead>
-    <tr>
-      <th></th>
-      <th colspan=4>Kubernetes Version</th>
-    </tr>
-    <tr>
-      <th>HPE CSI Driver</th>
-      <th><= 1.11</th>
-      <th>1.12+</th>
-      <th>1.13+</th>
-      <th>1.14+</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>v0.3.0-beta</td>
-      <td>no</td>
-      <td>yes</td>
-      <td>no</td>
-      <td>no</td>
-    </tr>
-    <tr>
-      <td>v1.0.0-beta</td>
-      <td>no</td>
-      <td>no</td>
-      <td>yes</td>
-      <td>yes</td>
-    </tr>
-  </tbody>
-</table>
-
 **Requirements:**
 
-* k8s 1.12
-  * `--allow-privileged` flag must be set to true for both the API server and the kubelet
-  * `--feature-gates=CSINodeInfo=true,CSIDriverRegistry=true,VolumeSnapshotDataSource=true` feature gate flags must be set to true for both the API server and the kubelet
-* k8s 1.13
-  * `--allow-privileged` flag must be set to true for the API server
-  * `--feature-gates=VolumeSnapshotDataSource=true` feature gate flags must be set to true for the API server
-* k8s 1.14
-  * `--allow-privileged` flag must be set to true for the API server
-  * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet.
+* `--allow-privileged` flag must be set to true for both the API server and the kubelet
+* `--feature-gates=VolumeSnapshotDataSource=true,CSINodeInfo=true,CSIDriverRegistry=true` feature gate flags must be set to true for both the API server and the kubelet
 
 #### 1. Create a secret with your array details:
 
-Replace the password string (`YWRtaW4=`) with a base64 encoded version of your password and replace the arrayIp with your array IP address and save it as `secret.yaml`:
+Replace the password string (`YWRtaW4=`) with a base64 encoded version of your password and replace the arrayIp with your array IP address and save it as `secret.yaml`: 
 
 ```
 apiVersion: v1
@@ -86,28 +43,16 @@ default-token-jxx2s   kubernetes.io/service-account-token   3         2d1h
 nimble-secret         Opaque                                5         149m
 ```
 
-#### 2. Deploy the CSI plugin and sidecars for the relevant k8s version:
+#### 2. Deploy the CSI plugin and sidecars:
 
-* k8s 1.12
 ```
 $ kubectl create -f csi-hpe-v0.3.0.yaml
-```
-
-* k8s 1.13
-```
-$ kubectl create -f csi-hpe-v1.0.0.yaml
-```
-
-* k8s 1.14
-```
-$ kubectl create -f csi-hpe-v1.1.0.yaml
 ```
 
 #### 3. Test and verify volume provisioning:
 
 Create a StorageClass referencing the secret and defining additional volume parameters:
 
-* k8s 1.12
 ```
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
@@ -124,29 +69,6 @@ parameters:
   csiNodeStageSecretNamespace: default
   csiNodePublishSecretName: nimble-secret
   csiNodePublishSecretNamespace: default
-  description: "Volume from csi"
-  dedupeEnabled: "false"
-  performancePolicy: "SQL Server"
-  limitIops: "76800"
-```
-
-* k8s 1.13+
-```
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: sc-csi-1
-provisioner: csi.hpe.com
-parameters:
-  csi.storage.k8s.io/fstype: ext4
-  csi.storage.k8s.io/provisioner-secret-name: nimble-secret
-  csi.storage.k8s.io/provisioner-secret-namespace: default
-  csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
-  csi.storage.k8s.io/controller-publish-secret-namespace: default
-  csi.storage.k8s.io/node-stage-secret-name: nimble-secret
-  csi.storage.k8s.io/node-stage-secret-namespace: default
-  csi.storage.k8s.io/node-publish-secret-name: nimble-secret
-  csi.storage.k8s.io/node-publish-secret-namespace: default
   description: "Volume from csi"
   dedupeEnabled: "false"
   performancePolicy: "SQL Server"
@@ -218,7 +140,6 @@ pod-csi-1   2/2     Running   0          2m29s
 
 Create a VolumeStorageClass referencing the secret and defining additional snapshot parameters:
 
-* k8s 1.12
 ```
 apiVersion: snapshot.storage.k8s.io/v1alpha1
 kind: VolumeSnapshotClass
@@ -229,19 +150,6 @@ parameters:
   description: "Snapshot from CSI"
   csiSnapshotterSecretName: nimble-secret
   csiSnapshotterSecretNamespace: default
-```
-
-* k8s 1.13+
-```
-apiVersion: snapshot.storage.k8s.io/v1alpha1
-kind: VolumeSnapshotClass
-metadata:
-  name: snapclass-csi-1
-snapshotter: csi.hpe.com
-parameters:
-  description: "Snapshot from CSI"
-  csi.storage.k8s.io/snapshotter-secret-name: nimble-secret
-  csi.storage.k8s.io/snapshotter-secret-namespace: default
 ```
 
 Create a VolumeSnapshot. This will create a new snapshot of the volume
@@ -272,87 +180,186 @@ Status:
   Restore Size:   10Gi
 ```
 
-#### 5. Test and verify resize:
+**Storage Class Properties**
 
-To perform resize operations on k8s 1.14, you must enhance your storage class with some additional attributes:
+A storage class is used to create or clone an HPE Nimble Storage-backed persistent volume.  It can also be used to import an existing HPE Nimble Storage volume or clone of a snapshot into the Kubernetes cluster.  The parameters are grouped below by workflow.
 
-```
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: sc-csi-1
-provisioner: csi.hpe.com
-parameters:
-  csi.storage.k8s.io/fstype: ext4
-  csi.storage.k8s.io/provisioner-secret-name: nimble-secret
-  csi.storage.k8s.io/provisioner-secret-namespace: default
-  csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
-  csi.storage.k8s.io/controller-publish-secret-namespace: default
-  csi.storage.k8s.io/node-stage-secret-name: nimble-secret
-  csi.storage.k8s.io/node-stage-secret-namespace: default
-  csi.storage.k8s.io/node-publish-secret-name: nimble-secret
-  csi.storage.k8s.io/node-publish-secret-namespace: default
-  csi.storage.k8s.io/resizer-secret-name: nimble-secret
-  csi.storage.k8s.io/resizer-secret-namespace: default
-  description: "Volume from csi"
-  dedupeEnabled: "false"
-  performancePolicy: "SQL Server"
-  limitIops: "76800"
-  allowVolumeExpansion: true
-```
+#### Creation parameters
 
-#### 6. Test and verify Persistent Volume Claim overrides:
+* fstype: ext4
+  * The filesystem to create on the volume.
+* csiProvisionerSecretName: nimble-secret
+  * The name of the secret to use when provisioning a volume.
+* csiProvisionerSecretNamespace: default
+  * The namespace of the secret to use when provisioning a volume.
+* csiControllerPublishSecretName: nimble-secret
+  * The name of the secret to use when publishing a volume to a node.
+* csiControllerPublishSecretNamespace: default
+  * The namespace of the secret to use when publishing a volume to a node.
+* csiNodeStageSecretName: nimble-secret
+  * The name of the secret to use when staging a volume to a node.
+* csiNodeStageSecretNamespace: default
+  * The namespace of the secret to use when staging a volume to a node.
+* csiNodePublishSecretName: nimble-secret
+  * The name of the secret to use when publishing a volume to a node.
+* csiNodePublishSecretName: default
+  * The namespace of the secret to use when publishing a volume to a node.
+* fsOwner
+  * The user id and group id that should own the root directory of the filesystem in the form of [userId:groupId].
+* fsMode
+  * 1 to 4 octal digits that represent the file mode to be applied to the root directory of the filesystem.
+* limitIops
+  * The IOPS limit of the volume.  The IOPS limit should be in the range [256, 4294967294], or -1 for unlimited.
+* limitMbps
+  * The MB/s throughput limit for the volume.
+* ephemeral
+  * "true" or "false". Indicates the backing Nimble volume (including snapshots) should be destroyed when the PVC is deleted.
+* description
+  * Text to be added to the volume's description.
+* performancePolicy
+  * The name of the performance policy to assign to the volume.
+  * Example performance policies include "Backup Repository", "Exchange 2003 data store", "Exchange 2007 data store", "Exchange 2010 data store", "Exchange log", "Oracle OLTP", "Other Workloads", "SharePoint", "SQL Server", "SQL Server 2012", "SQL Server Logs".
+* protectionTemplate
+  * The name of the protection template to assign to the volume.
+  * Examples of protection templates include "Retain-30Daily", "Retain-48Hourly-30aily-52Weekly", and "Retain-90Daily".
+* pool
+  * The name of the pool in which to place the volume.
+* folder
+  * The name of the folder in which to place the volume.
+* encrypted
+  * "true" or "false". Indicates that the volume should be encrypted (dedupeEnabled and encrypted are mutually exclusive).
+* thick
+  * "true" or "false". Indicates that the volume should be thick provisioned (dedupeEnabled and thick are mutually exclusive).
+* dedupeEnabled
+  * "true" or "false". Indicates that the volume should enable deduplication (dedupeEnabled and thick are mutually exclusive).
+* syncOnDetach
+  * "true" or "false". Indicates that a snapshot of the volume should be synced to the replication partner each time it is detached from a node.
+* volumeNameSuffix
+  * A suffix to add to the end of each volume name.
 
-To allow Persistent Volume Claim (PVC) to override the storage class parameters.
-Define the parameters allowed to be overridden in the storage class
-Now, override these parameters as annotation in the PVC annotations field as defined below.
+#### Clone parameters
 
+* csiProvisionerSecretName: nimble-secret
+  * The name of the secret to use when provisioning a volume.
+* csiProvisionerSecretNamespace: default
+  * The namespace of the secret to use when provisioning a volume.
+* csiControllerPublishSecretName: nimble-secret
+  * The name of the secret to use when publishing a volume to a node.
+* csiControllerPublishSecretNamespace: default
+  * The namespace of the secret to use when publishing a volume to a node.
+* csiNodeStageSecretName: nimble-secret
+  * The name of the secret to use when staging a volume to a node.
+* csiNodeStageSecretNamespace: default
+  * The namespace of the secret to use when staging a volume to a node.
+* csiNodePublishSecretName: nimble-secret
+  * The name of the secret to use when publishing a volume to a node.
+* csiNodePublishSecretName: default
+  * The namespace of the secret to use when publishing a volume to a node.
+* cloneOf
+  * The name of the PVC to be cloned.
+* snapshot
+  * The name of the snapshot to base the clone on.  This is optional.  If not specified, a new snapshot is created.
+* createSnapshot
+  * "true" or "false". Indicates that a new snapshot of the volume should be taken matching the name provided in the snapshot parameter.  If the snapshot parameter is not specified, a default name will be created.
+* limitIops
+  * The IOPS limit of the volume.  The IOPS limit should be in the range [256, 4294967294], or -1 for unlimited.
+* limitMbps
+  * The MB/s throughput limit for the volume.
+* ephemeral
+  * "true" or "false". Indicates the backing Nimble volume (including snapshots) should be destroyed when the PVC is deleted.
+* description
+  * Text to be added to the volume's description.
+* performancePolicy
+  * The name of the performance policy to assign to the volume.
+  * Note that changing the performance policy of a clone cannot occur if the block size or application category changes.
+* protectionTemplate
+  * The name of the protection template to assign to the volume.
+  * Examples of protection templates include "Retain-30Daily", "Retain-48Hourly-30aily-52Weekly", and "Retain-90Daily".
+* thick
+  * "true" or "false". Indicates that the volume should be thick provisioned (dedupeEnabled and thick are mutually exclusive).
+* dedupeEnabled
+  * "true" or "false". Indicates that the volume should enable deduplication (dedupeEnabled and thick are mutually exclusive).
+* syncOnDetach
+  * "true" or "false". Indicates that a snapshot of the volume should be synced to the replication partner each time it is detached from a node.
+* volumeNameSuffix
+  * A suffix to add to the end of each volume name.
+* snapshotNamePrefx
+  * A prefix to add to the beginning of the snapshot name.
 
-```
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: sc-csi-1
-provisioner: csi.hpe.com
-parameters:
-  csi.storage.k8s.io/fstype: xfs
-  csi.storage.k8s.io/provisioner-secret-name: nimble-secret
-  csi.storage.k8s.io/provisioner-secret-namespace: default
-  csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
-  csi.storage.k8s.io/controller-publish-secret-namespace: default
-  csi.storage.k8s.io/node-stage-secret-name: nimble-secret
-  csi.storage.k8s.io/node-stage-secret-namespace: default
-  csi.storage.k8s.io/node-publish-secret-name: nimble-secret
-  csi.storage.k8s.io/node-publish-secret-namespace: default
-  description: "Volume from csi"
-  dedupeEnabled: "false"
-  performancePolicy: "SQL Server"
-  limitIops: "76800"
-  allowOverrides: description,limitIOPS,performancePolicy
-```
+#### Import clone of snapshot parameters
 
+* csiProvisionerSecretName: nimble-secret
+  * The name of the secret to use when provisioning a volume.
+* csiProvisionerSecretNamespace: default
+  * The namespace of the secret to use when provisioning a volume.
+* csiControllerPublishSecretName: nimble-secret
+  * The name of the secret to use when publishing a volume to a node.
+* csiControllerPublishSecretNamespace: default
+  * The namespace of the secret to use when publishing a volume to a node.
+* csiNodeStageSecretName: nimble-secret
+  * The name of the secret to use when staging a volume to a node.
+* csiNodeStageSecretNamespace: default
+  * The namespace of the secret to use when staging a volume to a node.
+* csiNodePublishSecretName: nimble-secret
+  * The name of the secret to use when publishing a volume to a node.
+* csiNodePublishSecretName: default
+  * The namespace of the secret to use when publishing a volume to a node.
+* importVolAsClone
+  * The name of the Nimble volume to clone and import.
+* snapshot
+  * The name of the Nimble snapshot to clone and import.  This is optional.  If not specified, a new snapshot is created.
+* createSnapshot
+  * "true" or "false". Indicates that a new snapshot of the volume should be taken matching the name provided in the snapshot parameter.  If the snapshot parameter is not specified, a default name will be created.
+* limitIops
+  * The IOPS limit of the volume.  The IOPS limit should be in the range [256, 4294967294], or -1 for unlimited.
+* limitMbps
+  * The MB/s throughput limit for the volume.
+* ephemeral
+  * "true" or "false". Indicates the backing Nimble volume (including snapshots) should be destroyed when the PVC is deleted.
+* description
+  * Text to be added to the volume's description.
+* performancePolicy
+  * The name of the performance policy to assign to the volume.
+  * Note that changing the performance policy of a clone cannot occur if the block size or application category changes.
+* protectionTemplate
+  * The name of the protection template to assign to the volume.
+  * Examples of protection templates include "Retain-30Daily", "Retain-48Hourly-30aily-52Weekly", and "Retain-90Daily".
+* thick
+  * "true" or "false". Indicates that the volume should be thick provisioned (dedupeEnabled and thick are mutually exclusive).
+* dedupeEnabled
+  * "true" or "false". Indicates that the volume should enable deduplication (dedupeEnabled and thick are mutually exclusive).
+* syncOnDetach
+  * "true" or "false". Indicates that a snapshot of the volume should be synced to the replication partner each time it is detached from a node.
+* volumeNameSuffix
+  * A suffix to add to the end of each volume name.
+* snapshotNamePrefx
+  * A prefix to add to the beginning of the snapshot name.
 
-```
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
- name: pv-csi-1
- annotations:
-    csi.hpe.com/description: "This is my custom description"
-    csi.hpe.com/limitIOPS: "8000"
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 10Gi
-  storageClassName: sc-csi-1
-```
+#### Import volume parameters
 
-## Sample storage classes
-
-Sample storage classes can be found for [Nimble Storage](examples/kubernetes/nimble-storage/README.md), Simplivity, and 3Par.
-
-## Contributing
-
-We value all feedback and contributions.  If you find any issues or want to contribute, please feel free to open an issue or file a PR.
+* csiProvisionerSecretName: nimble-secret
+  * The name of the secret to use when provisioning a volume.
+* csiProvisionerSecretNamespace: default
+  * The namespace of the secret to use when provisioning a volume.
+* csiControllerPublishSecretName: nimble-secret
+  * The name of the secret to use when publishing a volume to a node.
+* csiControllerPublishSecretNamespace: default
+  * The namespace of the secret to use when publishing a volume to a node.
+* csiNodeStageSecretName: nimble-secret
+  * The name of the secret to use when staging a volume to a node.
+* csiNodeStageSecretNamespace: default
+  * The namespace of the secret to use when staging a volume to a node.
+* csiNodePublishSecretName: nimble-secret
+  * The name of the secret to use when publishing a volume to a node.
+* csiNodePublishSecretName: default
+  * The namespace of the secret to use when publishing a volume to a node.
+* importVolumeName
+  * The name of the Nimble volume to import.
+* snapshot
+  * The name of the Nimble snapshot to restore the imported volume to after takeover.  If not specified, the volume will not be restored.
+* takeover
+  * "true" or "false". Indicates the current group will takeover ownership of the Nimble volume and volume collection.  This should be performed against a downstream replica.
+* reverseReplication
+  * "true" or "false". Reverses the replication direction so that writes to the Nimble volume are replicated back to the group where it was replicated from.
+* forceImport
+  * "true" or "false". Forces the import of a volume that is not owned by the group and is not part of a volume collection.  If the volume is part of a volume collection, use takeover instead.

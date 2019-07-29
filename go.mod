@@ -1,13 +1,11 @@
 module github.com/hpe-storage/csi-driver
 
-go 1.12
-
 require (
 	cloud.google.com/go v0.43.0 // indirect
 	github.com/OpenPeeDeeP/depguard v1.0.0 // indirect
 	github.com/Scalingo/go-etcd-lock v3.0.1+incompatible
 	github.com/StackExchange/wmi v0.0.0-20190523213315-cbe66965904d // indirect
-	github.com/container-storage-interface/spec v1.1.0
+	github.com/container-storage-interface/spec v0.3.0
 	github.com/coreos/bbolt v1.3.3 // indirect
 	github.com/coreos/etcd v3.3.13+incompatible // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
@@ -17,7 +15,6 @@ require (
 	github.com/go-kit/kit v0.9.0 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/golang/groupcache v0.0.0-20190702054246-869f871628b6 // indirect
-	github.com/golang/protobuf v1.3.2
 	github.com/golangci/errcheck v0.0.0-20181223084120-ef45e06d44b6 // indirect
 	github.com/golangci/go-tools v0.0.0-20190124090046-35a9f45a5db0 // indirect
 	github.com/golangci/gocyclo v0.0.0-20180528144436-0a533e8fa43d // indirect
@@ -27,18 +24,19 @@ require (
 	github.com/golangci/lint-1 v0.0.0-20181222135242-d2cdd8c08219 // indirect
 	github.com/golangci/revgrep v0.0.0-20180812185044-276a5c0a1039 // indirect
 	github.com/google/pprof v0.0.0-20190723021845-34ac40c74b70 // indirect
-	github.com/gorilla/mux v1.7.3 // indirect
+	github.com/gorilla/mux v1.7.2 // indirect
 	github.com/gostaticanalysis/analysisutil v0.0.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.9.5 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/hpe-storage/common-host-libs v0.0.0-20190729203640-0899a722f2f4
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20190725185337-965fa924678a
 	github.com/json-iterator/go v1.1.7 // indirect
+	github.com/kisielk/errcheck v1.2.0 // indirect
 	github.com/klauspost/compress v1.7.4 // indirect
 	github.com/klauspost/cpuid v1.2.1 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
 	github.com/kr/pty v1.1.8 // indirect
-	github.com/kubernetes-csi/csi-test v2.1.0+incompatible
+	github.com/kubernetes-csi/csi-test v0.3.0-2
 	github.com/logrusorgru/aurora v0.0.0-20190428105938-cea283e61946 // indirect
 	github.com/magiconair/properties v1.8.1 // indirect
 	github.com/mattn/go-colorable v0.1.2 // indirect
@@ -55,6 +53,7 @@ require (
 	github.com/shirou/gopsutil v2.18.12+incompatible // indirect
 	github.com/shurcooL/go v0.0.0-20190704215121-7189cc372560 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
+	github.com/smartystreets/goconvey v0.0.0-20190330032615-68dc04aab96a // indirect
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/viper v1.4.0 // indirect
@@ -74,9 +73,9 @@ require (
 	gopkg.in/errgo.v1 v1.0.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	honnef.co/go/tools v0.0.1-2019.2.2 // indirect
-	k8s.io/api v0.0.0-20190726022912-69e1bce1dad5
-	k8s.io/apimachinery v0.0.0-20190727130956-f97a4e5b4abc
-	k8s.io/client-go v0.0.0-20190722143104-cea58bd85b8c
+	k8s.io/api v0.0.0-20190722141453-b90922c02518
+	k8s.io/apimachinery v0.0.0-20190719140911-bfcf53abc9f8
+	k8s.io/client-go v0.0.0-20190723023103-f16ff99a1d2d
 	k8s.io/utils v0.0.0-20190712204705-3dccf664f023 // indirect
 	mvdan.cc/unparam v0.0.0-20190720180237-d51796306d8f // indirect
 	sourcegraph.com/sqs/pbtypes v1.0.0 // indirect

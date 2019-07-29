@@ -7,8 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/golang/protobuf/ptypes/timestamp"
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
@@ -48,11 +47,6 @@ func NewNodeServiceCapability(cap csi.NodeServiceCapability_RPC_Type) *csi.NodeS
 	}
 }
 
-// NewPluginCapabilityVolumeExpansion wraps the given volume expansion into a plugin capability volume expansion required by the spec
-func NewPluginCapabilityVolumeExpansion(cap csi.PluginCapability_VolumeExpansion_Type) *csi.PluginCapability_VolumeExpansion {
-	return &csi.PluginCapability_VolumeExpansion{Type: cap}
-}
-
 // NewVolumeCapabilityAccessMode wraps the given access mode into a volume capability access mode required by the spec
 func NewVolumeCapabilityAccessMode(mode csi.VolumeCapability_AccessMode_Mode) *csi.VolumeCapability_AccessMode {
 	return &csi.VolumeCapability_AccessMode{Mode: mode}
@@ -68,11 +62,4 @@ func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, h
 		log.Infof("GRPC response: %+v", resp)
 	}
 	return resp, err
-}
-
-// Helper function to convert the epoch seconds to timestamp object
-func convertSecsToTimestamp(seconds int64) *timestamp.Timestamp {
-	return &timestamp.Timestamp{
-		Seconds: seconds,
-	}
 }

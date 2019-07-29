@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -227,7 +227,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 	}
 
 	// Secrets
-	storageProvider, err := driver.GetStorageProvider(request.Secrets)
+	storageProvider, err := driver.GetStorageProvider(request.ControllerCreateSecrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
@@ -349,7 +349,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 		log.Tracef("Returning the existing volume '%s' with size %d", existingVolume.Name, existingVolume.Size)
 		return &csi.CreateVolumeResponse{
 			Volume: &csi.Volume{
-				VolumeId:      existingVolume.ID,
+				Id:            existingVolume.ID,
 				CapacityBytes: existingVolume.Size,
 			},
 		}, nil
@@ -368,7 +368,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 				return nil, status.Error(codes.InvalidArgument, "Unable to create volume from snapshot. Driver does not support snapshot create/delete")
 			}
 
-			snapID := request.VolumeContentSource.GetSnapshot().SnapshotId
+			snapID := request.VolumeContentSource.GetSnapshot().Id
 			// Check if the specified snapshot exists on the CSP
 			log.Trace("Lookup snapshot with ID ", snapID)
 			existingSnap, err := storageProvider.GetSnapshot(snapID)
@@ -418,58 +418,13 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 			// Return newly cloned volume (clone from snapshot)
 			return &csi.CreateVolumeResponse{
 				Volume: &csi.Volume{
-					VolumeId:      volume.ID,
+					Id:            volume.ID,
 					CapacityBytes: volume.Size,
-					VolumeContext: respVolContext,
+					Attributes:    respVolContext,
 				},
 			}, nil
 		}
 
-		// Verify source volume if specified
-		if request.VolumeContentSource.GetVolume() != nil {
-			volID := request.VolumeContentSource.GetVolume().VolumeId
-			// Check if the specified volume exists on the CSP
-			log.Trace("Lookup volume with ID", volID)
-			existingParentVolume, err := storageProvider.GetVolume(volID)
-			if err != nil {
-				log.Error("Failed to process volume source, err: ", err.Error())
-				return nil, status.Error(codes.Internal, "Error while looking for parent volume with ID "+volID)
-			}
-			if existingParentVolume == nil {
-				return nil, status.Error(codes.NotFound, "Could not find parent volume with ID "+volID)
-			}
-			log.Trace("Parent Volume found :", existingParentVolume.Name)
-
-			// The requested size is must be at least equal to the snapshot's parent volume size
-			if reqVolumeSize < existingParentVolume.Size {
-				return nil,
-					status.Error(codes.InvalidArgument,
-						fmt.Sprintf("Requested volume size %d cannot be lesser than parent volume size %d", reqVolumeSize, existingParentVolume.Size))
-			}
-			// TODO: Add 'size' param in the CloneCreate() API so that CSP can resize it accordingly
-
-			// Create a clone from another volume
-			log.Infof("About to create a new clone '%s' from volume %s with options %+v", request.Name, existingParentVolume.ID, createOptions)
-			volume, err := storageProvider.CloneVolume(request.Name, existingParentVolume.ID, "", createOptions)
-			if err != nil {
-				log.Trace("err: " + err.Error())
-				return nil, status.Error(codes.Internal, "Failed to create volume due to error: "+err.Error())
-			}
-
-			// Update DB entry
-			if err := driver.UpdateDB(dbKey, volume); err != nil {
-				return nil, err
-			}
-
-			// Return newly cloned volume (clone from volume)
-			return &csi.CreateVolumeResponse{
-				Volume: &csi.Volume{
-					VolumeId:      volume.ID,
-					CapacityBytes: volume.Size,
-					VolumeContext: respVolContext,
-				},
-			}, nil
-		}
 		return nil, status.Error(codes.InvalidArgument, "One of snapshot or parent volume source must be specified")
 	}
 
@@ -489,9 +444,9 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 	// Return newly created volume
 	return &csi.CreateVolumeResponse{
 		Volume: &csi.Volume{
-			VolumeId:      volume.ID,
+			Id:            volume.ID,
 			CapacityBytes: volume.Size,
-			VolumeContext: respVolContext,
+			Attributes:    respVolContext,
 		},
 	}, nil
 }
@@ -521,7 +476,7 @@ func (driver *Driver) DeleteVolume(ctx context.Context, request *csi.DeleteVolum
 	log.Infof("DeleteVolume requested volume %s for deletion", request.VolumeId)
 
 	// Get Volume using secrets
-	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.ControllerDeleteSecrets)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
 			log.Trace("Could not find volume with ID " + request.VolumeId)
@@ -539,7 +494,7 @@ func (driver *Driver) DeleteVolume(ctx context.Context, request *csi.DeleteVolum
 	}
 
 	// Get Storage Provider
-	storageProvider, err := driver.GetStorageProvider(request.Secrets)
+	storageProvider, err := driver.GetStorageProvider(request.ControllerDeleteSecrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
@@ -601,18 +556,13 @@ func (driver *Driver) ControllerPublishVolume(ctx context.Context, request *csi.
 	// Indicates SP MUST publish the volume in readonly mode.
 	// CO MUST set this field to false if SP does not have the PUBLISH_READONLY controller capability.
 	// This is a REQUIRED field
-	if !driver.IsSupportedControllerCapability(csi.ControllerServiceCapability_RPC_PUBLISH_READONLY) {
-		if request.Readonly != false {
-			return nil, status.Error(codes.InvalidArgument, "Invalid readonly parameter. It must be set to false")
-		}
-	}
 	if request.Readonly {
 		// Publish the volume in read-only mode if set to true
 		log.Tracef("Volume %s must be published in READONLY mode", request.VolumeId)
 	}
 
 	log.Infof("ControllerPublishVolume requested volume %s and node %s with capability %v and context %v",
-		request.VolumeId, request.NodeId, request.VolumeCapability, request.VolumeContext)
+		request.VolumeId, request.NodeId, request.VolumeCapability, request.VolumeAttributes)
 
 	// Validate Capability
 	log.Tracef("Validating volume capability: %+v", request.VolumeCapability)
@@ -631,14 +581,14 @@ func (driver *Driver) ControllerPublishVolume(ctx context.Context, request *csi.
 	}
 
 	// Get Storage Provider
-	storageProvider, err := driver.GetStorageProvider(request.Secrets)
+	storageProvider, err := driver.GetStorageProvider(request.ControllerPublishSecrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
 	}
 
 	// Get Volume
-	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.ControllerPublishSecrets)
 	if err != nil {
 		log.Error("Failed to get volume ", request.VolumeId)
 		return nil, err
@@ -696,16 +646,16 @@ func (driver *Driver) ControllerPublishVolume(ctx context.Context, request *csi.
 	if volAccessType == model.MountType {
 		// Filesystem Details
 		log.Trace("Adding filesystem details to the publish context")
-		publishContext[filesystemType] = request.VolumeContext[filesystemType]
-		publishContext[filesystemOwner] = request.VolumeContext[filesystemOwner]
-		publishContext[filesystemMode] = request.VolumeContext[filesystemMode]
+		publishContext[filesystemType] = request.VolumeAttributes[filesystemType]
+		publishContext[filesystemOwner] = request.VolumeAttributes[filesystemOwner]
+		publishContext[filesystemMode] = request.VolumeAttributes[filesystemMode]
 	}
 
 	log.Tracef("Volume %s with ID %s published with the following details: %v",
 		existingVolume.Name, existingVolume.ID, publishContext)
 
 	return &csi.ControllerPublishVolumeResponse{
-		PublishContext: publishContext,
+		PublishInfo: publishContext,
 	}, nil
 }
 
@@ -750,14 +700,14 @@ func (driver *Driver) ControllerUnpublishVolume(ctx context.Context, request *cs
 	}
 
 	// Get Storage Provider
-	storageProvider, err := driver.GetStorageProvider(request.Secrets)
+	storageProvider, err := driver.GetStorageProvider(request.ControllerUnpublishSecrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Error(codes.Aborted, "Failed to get storage provider from secrets")
 	}
 
 	// Get Volume
-	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.ControllerUnpublishSecrets)
 	if err != nil {
 		log.Error("Failed to get volume ", request.VolumeId)
 		return nil, err
@@ -804,7 +754,7 @@ func (driver *Driver) ValidateVolumeCapabilities(ctx context.Context, request *c
 	defer driver.ClearRequest(key)
 
 	// Check if the volume exists using Secrets
-	_, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+	_, err := driver.GetVolumeByID(request.VolumeId, nil)
 	if err != nil {
 		log.Error("Failed to get volume ", request.VolumeId)
 		return nil, err
@@ -865,7 +815,7 @@ func (driver *Driver) ListVolumes(ctx context.Context, request *csi.ListVolumesR
 	for _, vol := range allVolumes {
 		entries = append(entries, &csi.ListVolumesResponse_Entry{
 			Volume: &csi.Volume{
-				VolumeId: vol.ID,
+				Id: vol.ID,
 			},
 		})
 	}
@@ -951,14 +901,14 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 	defer driver.RemoveFromDBIfPending(key)
 
 	// Secrets
-	storageProvider, err := driver.GetStorageProvider(request.Secrets)
+	storageProvider, err := driver.GetStorageProvider(request.CreateSnapshotSecrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
 	}
 
 	// Check if the source volume exists using Secrets
-	_, err = driver.GetVolumeByID(request.SourceVolumeId, request.Secrets)
+	_, err = driver.GetVolumeByID(request.SourceVolumeId, request.CreateSnapshotSecrets)
 	if err != nil {
 		log.Error("Failed to get source volume ", request.SourceVolumeId)
 		return nil, err
@@ -997,11 +947,13 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 
 		return &csi.CreateSnapshotResponse{
 			Snapshot: &csi.Snapshot{
-				SnapshotId:     existingSnapshot.ID,
+				Id:             existingSnapshot.ID,
 				SourceVolumeId: existingSnapshot.VolumeID,
 				SizeBytes:      existingSnapshot.Size,
-				CreationTime:   convertSecsToTimestamp(existingSnapshot.CreationTime),
-				ReadyToUse:     existingSnapshot.ReadyToUse,
+				CreatedAt:      existingSnapshot.CreationTime * nanos,
+				Status: &csi.SnapshotStatus{
+					Type: csi.SnapshotStatus_READY,
+				},
 			},
 		}, nil
 	}
@@ -1027,11 +979,13 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 
 	return &csi.CreateSnapshotResponse{
 		Snapshot: &csi.Snapshot{
-			SnapshotId:     snapshot.ID,
+			Id:             snapshot.ID,
 			SourceVolumeId: snapshot.VolumeID,
 			SizeBytes:      snapshot.Size,
-			CreationTime:   convertSecsToTimestamp(snapshot.CreationTime),
-			ReadyToUse:     snapshot.ReadyToUse,
+			CreatedAt:      snapshot.CreationTime * nanos,
+			Status: &csi.SnapshotStatus{
+				Type: csi.SnapshotStatus_READY,
+			},
 		},
 	}, nil
 }
@@ -1062,7 +1016,7 @@ func (driver *Driver) DeleteSnapshot(ctx context.Context, request *csi.DeleteSna
 	log.Infof("DeleteSnapshot requested snapshot %s for deletion", request.SnapshotId)
 
 	// Secrets
-	storageProvider, err := driver.GetStorageProvider(request.Secrets)
+	storageProvider, err := driver.GetStorageProvider(request.DeleteSnapshotSecrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
@@ -1146,11 +1100,13 @@ func (driver *Driver) ListSnapshots(ctx context.Context, request *csi.ListSnapsh
 	for _, snapshot := range allSnapshots {
 		entries = append(entries, &csi.ListSnapshotsResponse_Entry{
 			Snapshot: &csi.Snapshot{
-				SnapshotId:     snapshot.ID,
+				Id:             snapshot.ID,
 				SourceVolumeId: snapshot.VolumeID,
 				SizeBytes:      snapshot.Size,
-				CreationTime:   convertSecsToTimestamp(snapshot.CreationTime),
-				ReadyToUse:     snapshot.ReadyToUse,
+				CreatedAt:      snapshot.CreationTime * nanos,
+				Status: &csi.SnapshotStatus{
+					Type: csi.SnapshotStatus_READY,
+				},
 			},
 		})
 	}
@@ -1158,98 +1114,4 @@ func (driver *Driver) ListSnapshots(ctx context.Context, request *csi.ListSnapsh
 	return &csi.ListSnapshotsResponse{
 		Entries: entries,
 	}, nil
-}
-
-// ControllerExpandVolume ...
-//
-// A Controller plugin MUST implement this RPC call if plugin has EXPAND_VOLUME controller capability. This RPC allows the CO to expand the size
-// of a volume.
-//
-// This call MAY be made by the CO during any time in the lifecycle of the volume after creation if plugin has VolumeExpansion.ONLINE capability.
-// If plugin has EXPAND_VOLUME node capability, then NodeExpandVolume MUST be called after successful ControllerExpandVolume and
-// node_expansion_required in ControllerExpandVolumeResponse is true.
-//
-// If the plugin has only VolumeExpansion.OFFLINE expansion capability and volume is currently published or available on a node then
-// ControllerExpandVolume MUST be called ONLY after either:
-//     The plugin has controller PUBLISH_UNPUBLISH_VOLUME capability and ControllerUnpublishVolume has been invoked successfully.
-// OR ELSE
-//     The plugin does NOT have controller PUBLISH_UNPUBLISH_VOLUME capability, the plugin has node STAGE_UNSTAGE_VOLUME capability, and
-//     NodeUnstageVolume has been completed successfully.
-// OR ELSE
-//     The plugin does NOT have controller PUBLISH_UNPUBLISH_VOLUME capability, nor node STAGE_UNSTAGE_VOLUME capability, and
-//     NodeUnpublishVolume has completed successfully.
-// nolint: dupl
-func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	log.Trace(">>>>> ControllerExpandVolume")
-	defer log.Trace("<<<<< ControllerExpandVolume")
-
-	if request.GetVolumeId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "Volume ID must be provided for ControllerExpandVolume")
-	}
-
-	if request.GetCapacityRange() == nil {
-		return nil, status.Error(codes.InvalidArgument, "Capacity range must be provided for ControllerExpandVolume")
-	}
-
-	if request.CapacityRange.GetRequiredBytes() == 0 && request.CapacityRange.GetLimitBytes() == 0 {
-		return nil, status.Error(codes.InvalidArgument, "Either required_bytes or limit_bytes must be provided for ControllerExpandVolume")
-	}
-
-	if request.CapacityRange.GetRequiredBytes() < 0 || request.CapacityRange.GetLimitBytes() < 0 {
-		return nil, status.Error(codes.InvalidArgument, "Either required_bytes or limit_bytes are provided with negative values for ControllerExpandVolume")
-	}
-
-	if request.CapacityRange.GetLimitBytes() != 0 && request.CapacityRange.GetRequiredBytes() > request.CapacityRange.GetLimitBytes() {
-		return nil, status.Error(codes.InvalidArgument, "required_bytes is greater than limit_bytes for ControllerExpandVolume")
-	}
-
-	// Check for duplicate request. If yes, then return ABORTED
-	key := fmt.Sprintf("%s:%s", "ControllerExpandVolume", request.VolumeId)
-	if err := driver.HandleDuplicateRequest(key); err != nil {
-		return nil, err // ABORTED
-	}
-	defer driver.ClearRequest(key)
-
-	// TODO: Add info to DB
-
-	// Get Volume
-	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
-	if err != nil {
-		log.Error("Failed to get volume with ID ", request.VolumeId)
-		return nil, err
-	}
-	log.Tracef("Found Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
-
-	if existingVolume.Size == request.CapacityRange.GetLimitBytes() {
-		// volume is already at max limit size per request, so no action required.
-		return &csi.ControllerExpandVolumeResponse{CapacityBytes: existingVolume.Size, NodeExpansionRequired: false}, nil
-	}
-
-	onlineExpansionSupported := driver.IsSupportedPluginVolumeExpansionCapability(csi.PluginCapability_VolumeExpansion_ONLINE)
-	// TODO: populate inUse attribute for volume in CSP
-	// check if ONLINE capability is not supported and volume is in use
-	if existingVolume.InUse && !onlineExpansionSupported {
-		return nil, status.Error(codes.FailedPrecondition, "Volume is currently in use and online expansion is not supported by driver")
-	}
-
-	// Get storage provider
-	storageProvider, err := driver.GetStorageProvider(request.Secrets)
-	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
-	}
-
-	var updatedVolume *model.Volume
-	// attempt resize as requested
-	if request.CapacityRange.GetRequiredBytes() != 0 {
-		log.Tracef("attempt to expand volume to size %d bytes", request.CapacityRange.GetRequiredBytes())
-		updatedVolume, err = storageProvider.ExpandVolume(request.VolumeId, request.CapacityRange.GetRequiredBytes())
-	} else {
-		log.Tracef("attempt to expand volume to size %d bytes", request.CapacityRange.GetLimitBytes())
-		updatedVolume, err = storageProvider.ExpandVolume(request.VolumeId, request.CapacityRange.GetLimitBytes())
-	}
-	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to expand volume to requested size, %s", err.Error()))
-	}
-	return &csi.ControllerExpandVolumeResponse{CapacityBytes: updatedVolume.Size, NodeExpansionRequired: existingVolume.InUse}, nil
 }

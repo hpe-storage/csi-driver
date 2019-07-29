@@ -41,6 +41,8 @@ const (
 	// deviceInfoFileName is used to store the device details in a JSON file
 	deviceInfoFileName = "deviceInfo.json"
 
+	nanos = 1000000000
+
 	// Pending :
 	Pending = "PENDING"
 )

@@ -19,9 +19,8 @@ package sanity
 import (
 	"context"
 	"log"
-	"sync"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/container-storage-interface/spec/lib/go/csi/v0"
 
 	. "github.com/onsi/ginkgo"
 )
@@ -37,7 +36,7 @@ type VolumeInfo struct {
 }
 
 // Cleanup keeps track of resources, in particular volumes, which need
-// to be freed when testing is done. All methods can be called concurrently.
+// to be freed when testing is done.
 type Cleanup struct {
 	Context                    *SanityContext
 	ControllerClient           csi.ControllerClient
@@ -48,14 +47,11 @@ type Cleanup struct {
 	// Maps from volume name to the node ID for which the volume
 	// is published and the volume ID.
 	volumes map[string]VolumeInfo
-	mutex   sync.Mutex
 }
 
 // RegisterVolume adds or updates an entry for the volume with the
 // given name.
 func (cl *Cleanup) RegisterVolume(name string, info VolumeInfo) {
-	cl.mutex.Lock()
-	defer cl.mutex.Unlock()
 	if cl.volumes == nil {
 		cl.volumes = make(map[string]VolumeInfo)
 	}
@@ -65,19 +61,14 @@ func (cl *Cleanup) RegisterVolume(name string, info VolumeInfo) {
 // MaybeRegisterVolume adds or updates an entry for the volume with
 // the given name if CreateVolume was successful.
 func (cl *Cleanup) MaybeRegisterVolume(name string, vol *csi.CreateVolumeResponse, err error) {
-	if err == nil && vol.GetVolume().GetVolumeId() != "" {
-		cl.RegisterVolume(name, VolumeInfo{VolumeID: vol.GetVolume().GetVolumeId()})
+	if err == nil && vol.GetVolume().GetId() != "" {
+		cl.RegisterVolume(name, VolumeInfo{VolumeID: vol.GetVolume().GetId()})
 	}
 }
 
 // UnregisterVolume removes the entry for the volume with the
 // given name, thus preventing all cleanup operations for it.
 func (cl *Cleanup) UnregisterVolume(name string) {
-	cl.mutex.Lock()
-	defer cl.mutex.Unlock()
-	cl.unregisterVolume(name)
-}
-func (cl *Cleanup) unregisterVolume(name string) {
 	if cl.volumes != nil {
 		delete(cl.volumes, name)
 	}
@@ -85,8 +76,6 @@ func (cl *Cleanup) unregisterVolume(name string) {
 
 // DeleteVolumes stops using the registered volumes and tries to delete all of them.
 func (cl *Cleanup) DeleteVolumes() {
-	cl.mutex.Lock()
-	defer cl.mutex.Unlock()
 	if cl.volumes == nil {
 		return
 	}
@@ -99,7 +88,7 @@ func (cl *Cleanup) DeleteVolumes() {
 			ctx,
 			&csi.NodeUnpublishVolumeRequest{
 				VolumeId:   info.VolumeID,
-				TargetPath: cl.Context.TargetPath + "/target",
+				TargetPath: cl.Context.Config.TargetPath,
 			},
 		); err != nil {
 			logger.Printf("warning: NodeUnpublishVolume: %s", err)
@@ -110,7 +99,7 @@ func (cl *Cleanup) DeleteVolumes() {
 				ctx,
 				&csi.NodeUnstageVolumeRequest{
 					VolumeId:          info.VolumeID,
-					StagingTargetPath: cl.Context.StagingPath,
+					StagingTargetPath: cl.Context.Config.StagingPath,
 				},
 			); err != nil {
 				logger.Printf("warning: NodeUnstageVolume: %s", err)
@@ -123,7 +112,7 @@ func (cl *Cleanup) DeleteVolumes() {
 				&csi.ControllerUnpublishVolumeRequest{
 					VolumeId: info.VolumeID,
 					NodeId:   info.NodeID,
-					Secrets:  cl.Context.Secrets.ControllerUnpublishVolumeSecret,
+					ControllerUnpublishSecrets: cl.Context.Secrets.ControllerUnpublishVolumeSecret,
 				},
 			); err != nil {
 				logger.Printf("warning: ControllerUnpublishVolume: %s", err)
@@ -133,13 +122,13 @@ func (cl *Cleanup) DeleteVolumes() {
 		if _, err := cl.ControllerClient.DeleteVolume(
 			ctx,
 			&csi.DeleteVolumeRequest{
-				VolumeId: info.VolumeID,
-				Secrets:  cl.Context.Secrets.DeleteVolumeSecret,
+				VolumeId:                info.VolumeID,
+				ControllerDeleteSecrets: cl.Context.Secrets.DeleteVolumeSecret,
 			},
 		); err != nil {
 			logger.Printf("error: DeleteVolume: %s", err)
 		}
 
-		cl.unregisterVolume(name)
+		cl.UnregisterVolume(name)
 	}
 }

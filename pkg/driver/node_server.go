@@ -12,7 +12,7 @@ import (
 	"os"
 	"path"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -140,19 +140,19 @@ func (driver *Driver) NodeStageVolume(ctx context.Context, request *csi.NodeStag
 	}
 
 	// Controller published volume access type must match with the requested volcap
-	if volAccessType.String() != request.PublishContext[volumeAccessMode] {
+	if volAccessType.String() != request.PublishInfo[volumeAccessMode] {
 		log.Errorf("Controller published volume access type %v mismatched with the requested access type %v",
-			request.PublishContext[volumeAccessMode], volAccessType.String())
+			request.PublishInfo[volumeAccessMode], volAccessType.String())
 		return nil, status.Error(codes.InvalidArgument,
 			fmt.Sprintf("Controller already published the volume with access type %v, but node staging requested with access type %v",
-				request.PublishContext[volumeAccessMode], volAccessType.String()))
+				request.PublishInfo[volumeAccessMode], volAccessType.String()))
 	}
 
 	log.Infof("NodeStageVolume requested volume %s with access type %s, targetPath %s, capability %v, publishContext %v and volumeContext %v",
-		request.VolumeId, volAccessType.String(), request.StagingTargetPath, request.VolumeCapability, request.PublishContext, request.VolumeContext)
+		request.VolumeId, volAccessType.String(), request.StagingTargetPath, request.VolumeCapability, request.PublishInfo, request.VolumeAttributes)
 
 	// Get Volume
-	if _, err := driver.GetVolumeByID(request.VolumeId, request.Secrets); err != nil {
+	if _, err := driver.GetVolumeByID(request.VolumeId, request.NodeStageSecrets); err != nil {
 		log.Error("Failed to get volume ", request.VolumeId)
 		return nil, err // NOT_FOUND
 	}
@@ -223,7 +223,7 @@ func (driver *Driver) isVolumeStaged(request *csi.NodeStageVolumeRequest, volAcc
 
 	// Validate the requested mount details with the staged device details
 	if volAccessType == model.MountType && stagingDev.MountInfo != nil {
-		mountInfo := getMountInfo(request.VolumeId, request.VolumeCapability, request.PublishContext)
+		mountInfo := getMountInfo(request.VolumeId, request.VolumeCapability, request.PublishInfo)
 
 		log.Tracef("Checking for mount options compatibility: staged options: %v, reqMountOptions: %v",
 			stagingDev.MountInfo.MountOptions, mountInfo.MountOptions)
@@ -249,7 +249,7 @@ func (driver *Driver) stageVolume(request *csi.NodeStageVolumeRequest, volAccess
 	defer log.Trace("<<<<< stageVolume")
 
 	// Create device for volume on the node
-	device, err := driver.setupDevice(request.PublishContext)
+	device, err := driver.setupDevice(request.PublishInfo)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Error creating device for volume %s, err: %v", request.VolumeId, err.Error()))
@@ -272,7 +272,7 @@ func (driver *Driver) stageVolume(request *csi.NodeStageVolumeRequest, volAccess
 	// If Mount, then stage the volume for filesystem access
 
 	// Get mount info from the request
-	mountInfo := getMountInfo(request.VolumeId, request.VolumeCapability, request.PublishContext)
+	mountInfo := getMountInfo(request.VolumeId, request.VolumeCapability, request.PublishInfo)
 
 	// Create Filesystem, Mount Device, Apply FS options and Apply Mount options
 	mount, err := driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
@@ -487,19 +487,19 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	}
 
 	// Controller published volume access type must match with the requested volcap
-	if volAccessType.String() != request.PublishContext[volumeAccessMode] {
+	if volAccessType.String() != request.PublishInfo[volumeAccessMode] {
 		log.Errorf("Controller published volume access type '%v' mismatched with the requested access type '%v'",
-			request.PublishContext[volumeAccessMode], volAccessType.String())
+			request.PublishInfo[volumeAccessMode], volAccessType.String())
 		return nil, status.Error(codes.InvalidArgument,
 			fmt.Sprintf("Controller already published the volume with access type %v, but node publish requested with access type %v",
-				request.PublishContext[volumeAccessMode], volAccessType.String()))
+				request.PublishInfo[volumeAccessMode], volAccessType.String()))
 	}
 
 	log.Infof("NodePublishVolume requested volume %s with access type %s, targetPath %s, capability %v, publishContext %v and volumeContext %v",
-		request.VolumeId, volAccessType, request.StagingTargetPath, request.VolumeCapability, request.PublishContext, request.VolumeContext)
+		request.VolumeId, volAccessType, request.StagingTargetPath, request.VolumeCapability, request.PublishInfo, request.VolumeAttributes)
 
 	// Get Volume
-	if _, err = driver.GetVolumeByID(request.VolumeId, request.Secrets); err != nil {
+	if _, err = driver.GetVolumeByID(request.VolumeId, request.NodePublishSecrets); err != nil {
 		log.Error("Failed to get volume ", request.VolumeId)
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
@@ -600,7 +600,7 @@ func (driver *Driver) isVolumePublished(request *csi.NodePublishVolumeRequest, s
 	// If mount access type, then validate the requested mount details with the staged device details
 	if stagingDev.MountInfo != nil {
 		// Get mount info from the request
-		mountInfo := getMountInfo(request.VolumeId, request.VolumeCapability, request.PublishContext)
+		mountInfo := getMountInfo(request.VolumeId, request.VolumeCapability, request.PublishInfo)
 
 		// Check if reqMountOptions are compatible with staged device's mount options
 		log.Tracef("Checking for mount options compatibility: staged options: %v, reqMountOptions: %v",
@@ -675,89 +675,21 @@ func (driver *Driver) NodeUnpublishVolume(ctx context.Context, request *csi.Node
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
-// NodeGetVolumeStats ...
-//
-// A Node plugin MUST implement this RPC call if it has GET_VOLUME_STATS node capability. NodeGetVolumeStats RPC call returns the volume
-// capacity statistics available for the volume.
-//
-// If the volume is being used in BlockVolume mode then used and available MAY be omitted from usage field of NodeGetVolumeStatsResponse.
-// Similarly, inode information MAY be omitted from NodeGetVolumeStatsResponse when unavailable.
-// nolint: dupl
-func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
-	log.Trace(">>>>> NodeGetVolumeStats")
-	defer log.Trace("<<<<< NodeGetVolumeStats")
+// NodeGetId ...
+// deprecated
+// nolint: golint
+func (driver *Driver) NodeGetId(ctx context.Context, req *csi.NodeGetIdRequest) (*csi.NodeGetIdResponse, error) {
+	log.Info(">>>>> NodeGetId")
+	defer log.Info("<<<<< NodeGetId")
 
-	return nil, status.Error(codes.Unimplemented, "")
-}
-
-// NodeExpandVolume ...
-//
-// A Node Plugin MUST implement this RPC call if it has EXPAND_VOLUME node capability. This RPC call allows CO to expand volume on a node.
-//
-// NodeExpandVolume ONLY supports expansion of already node-published or node-staged volumes on the given volume_path.
-//
-// If plugin has STAGE_UNSTAGE_VOLUME node capability then:
-//  - NodeExpandVolume MUST be called after successful NodeStageVolume.
-//  - NodeExpandVolume MAY be called before or after NodePublishVolume.
-// Otherwise NodeExpandVolume MUST be called after successful NodePublishVolume.
-// TODO assuming filesystem type device, need to handle raw block devices as well
-// TODO assuming expand to underlying device size irrespective of provided capacity range. Need to add support of FS resize to fixed capacity eventhough underlying device is much bigger.
-// nolint: dupl
-func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
-	log.Trace(">>>>> NodeExpandVolume for volume path", request.GetVolumePath())
-	defer log.Trace("<<<<< NodeExpandVolume")
-
-	if request.GetVolumeId() == "" {
-		return nil, status.Error(codes.InvalidArgument, "Volume ID must be provided for NodeExpandVolume")
-	}
-
-	if request.GetVolumePath() == "" {
-		return nil, status.Error(codes.InvalidArgument, "Volume path must be provided for NodeExpandVolume")
-	}
-
-	// Check for duplicate request. If yes, then return ABORTED
-	key := fmt.Sprintf("%s:%s:%s", "NodeExpandVolume", request.VolumeId, request.VolumePath)
-	if err := driver.HandleDuplicateRequest(key); err != nil {
-		return nil, err // ABORTED
-	}
-	defer driver.ClearRequest(key)
-
-	// figure out if volumePath is actually a staging path
-	stagedDevice, err := readStagedDeviceInfo(request.GetVolumePath())
+	nodeID, err := driver.nodeGetInfo()
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Cannot get staging device info from volume path. %s", err.Error()))
-	}
-	if stagedDevice == nil || stagedDevice.Device == nil {
-		return nil, status.Error(codes.Internal,
-			fmt.Sprintf("Invalid staging device info found in the path %s. Staging device cannot be nil",
-				request.GetVolumePath()))
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	// Get the device target path
-	targetPath := ""
-	if stagedDevice.VolumeAccessMode == model.BlockType {
-		// Device path
-		targetPath = stagedDevice.Device.AltFullPathName
-	} else { // Mount
-		if stagedDevice.MountInfo == nil {
-			return nil, status.Error(codes.Internal,
-				fmt.Sprintf("Missing mount info in the staging device %v. Mount info cannot be nil",
-					stagedDevice))
-		}
-		// Mount point
-		targetPath = stagedDevice.MountInfo.MountPoint
-	}
-
-	// Expand device to underlying volume size
-	log.Infof("About to expand device %s with access type %s to underlying volume size",
-		request.VolumePath, stagedDevice.VolumeAccessMode.String())
-	err = driver.chapiDriver.ExpandDevice(targetPath, stagedDevice.VolumeAccessMode)
-	if err != nil {
-		return nil, status.Error(codes.Internal,
-			fmt.Sprintf("Unable to expand device, %s", err.Error()))
-	}
-	// no need to report device capacity here
-	return &csi.NodeExpandVolumeResponse{}, nil
+	return &csi.NodeGetIdResponse{
+		NodeId: nodeID,
+	}, nil
 }
 
 // NodeGetInfo ...

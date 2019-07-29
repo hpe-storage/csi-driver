@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"github.com/kubernetes-csi/csi-test/pkg/sanity"
 
 	"github.com/hpe-storage/common-host-libs/chapi"

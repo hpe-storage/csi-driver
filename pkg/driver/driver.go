@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/Scalingo/go-etcd-lock/lock"
-	"github.com/container-storage-interface/spec/lib/go/csi"
+	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -42,10 +42,9 @@ type Driver struct {
 	flavor           flavor.Flavor
 	grpc             NonBlockingGRPCServer
 
-	controllerServiceCapabilities     []*csi.ControllerServiceCapability
-	nodeServiceCapabilities           []*csi.NodeServiceCapability
-	volumeCapabilityAccessModes       []*csi.VolumeCapability_AccessMode
-	pluginVolumeExpansionCapabilities []*csi.PluginCapability_VolumeExpansion
+	controllerServiceCapabilities []*csi.ControllerServiceCapability
+	nodeServiceCapabilities       []*csi.NodeServiceCapability
+	volumeCapabilityAccessModes   []*csi.VolumeCapability_AccessMode
 
 	requestCache      map[string]interface{}
 	requestCacheMutex *concurrent.MapMutex
@@ -78,19 +77,11 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService, supports
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
 		csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 		//ControllerServiceCapability_RPC_CLONE_VOLUME,
-		csi.ControllerServiceCapability_RPC_PUBLISH_READONLY,
-		csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
 	})
 
 	// Init Node Service Capabilities supported by the driver
 	driver.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
-		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
-	})
-
-	// Init Volume Expansion Capabilities supported by the driver
-	driver.AddPluginCapabilityVolumeExpansion([]csi.PluginCapability_VolumeExpansion_Type{
-		csi.PluginCapability_VolumeExpansion_ONLINE,
 	})
 
 	// Init Volume Capabilities supported by the driver
@@ -189,18 +180,6 @@ func (driver *Driver) AddNodeServiceCapabilities(capabilities []csi.NodeServiceC
 	driver.nodeServiceCapabilities = nodeServiceCapabilities
 }
 
-// AddPluginCapabilityVolumeExpansion returns the plugin volume expansion capabilities
-// nolint: dupl
-func (driver *Driver) AddPluginCapabilityVolumeExpansion(expansionTypes []csi.PluginCapability_VolumeExpansion_Type) {
-	var pluginVolumeExpansionCapabilities []*csi.PluginCapability_VolumeExpansion
-
-	for _, t := range expansionTypes {
-		log.Infof("Enabling volume expansion type: %v", t.String())
-		pluginVolumeExpansionCapabilities = append(pluginVolumeExpansionCapabilities, NewPluginCapabilityVolumeExpansion(t))
-	}
-	driver.pluginVolumeExpansionCapabilities = pluginVolumeExpansionCapabilities
-}
-
 // AddVolumeCapabilityAccessModes returns the volume capability access modes
 // nolint: dupl
 func (driver *Driver) AddVolumeCapabilityAccessModes(accessModes []csi.VolumeCapability_AccessMode_Mode) {
@@ -265,17 +244,6 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 	}
 
 	return driver.storageProviders[credentials.ArrayIP], nil
-}
-
-// IsSupportedPluginVolumeExpansionCapability returns true if the given volume expansion capability is supported else returns false
-// nolint dupl
-func (driver *Driver) IsSupportedPluginVolumeExpansionCapability(capType csi.PluginCapability_VolumeExpansion_Type) bool {
-	for _, cap := range driver.pluginVolumeExpansionCapabilities {
-		if cap.GetType() == capType {
-			return true
-		}
-	}
-	return false
 }
 
 // IsSupportedControllerCapability returns true if the given capability is supported else returns false
