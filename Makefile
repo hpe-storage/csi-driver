@@ -44,7 +44,7 @@ help:
 	@echo "    compile  - Compiles the source code."
 	@echo "    test     - Run unit tests."
 	@echo "    image    - Build csi driver image and create a local docker image.  Errors are ignored."
-	@echo "    push     - Push csi driver image to artifactory."
+	@echo "    push     - Push csi driver image to registry."
 	@echo "    all      - Clean, lint, build, test, and push image."
 
 .PHONY: check-env

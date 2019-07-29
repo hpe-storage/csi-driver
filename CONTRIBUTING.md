@@ -4,7 +4,7 @@ We welcome and encourage community contributions to k8s-custom-resources.
 
 ## Contributing
 
-The best way to directly collaborate with the project contributors is through GitHub: <https://github.com/hpe-storage/common-host-libs>
+The best way to directly collaborate with the project contributors is through GitHub: <https://github.com/hpe-storage/csi-driver>
 
 * If you want to contribute to our code by either fixing a problem or creating a new feature, please open a GitHub pull request.
 * If you want to raise an issue such as a defect, an enhancement request or a general issue, please open a GitHub issue.
