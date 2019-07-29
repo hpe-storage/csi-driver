@@ -1,6 +1,6 @@
 package tunelinux
 
-// Copyright 2017 Nimble Storage, Inc.
+// Copyright 2019 Hewlett Packard Enterprise Development LP
 import (
 	"github.com/hpe-storage/common-host-libs/linux"
 	log "github.com/hpe-storage/common-host-libs/logger"
