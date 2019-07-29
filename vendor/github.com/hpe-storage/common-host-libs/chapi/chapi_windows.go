@@ -7,7 +7,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/util"
 )
 
-// Copyright 2017 Nimble Storage, Inc.
+// Copyright 2019 Hewlett Packard Enterprise Development LP.
 
 // This file is to implement NewChapiClient for windows as well as windows service control functionality
 
