@@ -1,5 +1,5 @@
 NAME = csi-driver
-REPO_NAME ?= hpe/csi-driver
+REPO_NAME ?= hpestorage/csi-driver
 
 # Use the latest git tag
 TAG = $(shell git tag|tail -n1)
