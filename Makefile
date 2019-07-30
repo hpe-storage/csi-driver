@@ -1,5 +1,5 @@
 NAME = csi-driver
-REPO_NAME ?= hpe/csi-driver
+REPO_NAME ?= hpestorage/csi-driver
 VERSION = v0.3.0-beta
 
 # golangci-lint allows us to have a single target that runs multiple linters in
