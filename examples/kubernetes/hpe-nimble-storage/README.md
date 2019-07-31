@@ -1,7 +1,7 @@
 ## HPE Nimble Storage StorageClass parameters for the HPE CSI Driver
 A `StorageClass` is used to provision or clone an HPE Nimble Storage-backed persistent volume.  It can also be used to import an existing HPE Nimble Storage volume or clone of a snapshot into the Kubernetes cluster. The parameters are grouped below by those same workflows.
 
-## Provisioning parameters
+### Provisioning parameters
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
 |fsOwner | userId:groupId | The user id and group id that should own the root directory of the filesystem |
