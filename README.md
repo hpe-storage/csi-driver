@@ -69,7 +69,7 @@ metadata:
 stringData:
   serviceName: csp-service
   servicePort: "8080"
-  systemIp: 10.10.10.1
+  backend: 10.10.10.1
   username: admin
 data:
   # echo -n "admin" | base64
@@ -93,16 +93,19 @@ nimble-secret         Opaque                                5         149m
 Deployment declarations are stored in [hpe-storage/co-deployments](https://github.com/hpe-storage/co-deployments).
 
 Kubernetes 1.12
-
-`kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v0.3.0.yaml`
+```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v0.3.0.yaml
+```
 
 Kubernetes 1.13
-
-`kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v1.0.0.yaml`
+```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v1.0.0.yaml
+```
 
 Kubernetes 1.14
-
-`kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v1.1.0.yaml`
+```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v1.1.0.yaml
+```
 
 Depending on which version being deployd, different API objects gets created.
 
