@@ -34,7 +34,8 @@ if [ "$CONFORM_TO" = "ubuntu" ]; then
     if [ ! -f /sbin/iscsid ]; then
         apt-get -qq update
         apt-get -qq install -y open-iscsi
-        exit_on_error $?
+        # exit with error to trigger restart of pod to mount newly installed iscisadm
+        exit 1
     fi
 elif [ "$CONFORM_TO" = "redhat" ]; then
     # Install device-mapper-multipath
@@ -46,7 +47,8 @@ elif [ "$CONFORM_TO" = "redhat" ]; then
     # Install iscsi packages
     if [ ! -f /sbin/iscsid ]; then
         yum -y install iscsi-initiator-utils
-        exit_on_error $?
+        # exit with error to trigger restart of pod to mount newly installed iscisadm
+        exit 1
     fi
 else
     echo "unsupported configuration for node package checks. os $os_name"
