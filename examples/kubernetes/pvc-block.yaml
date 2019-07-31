@@ -1,15 +1,12 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: pvc-restore-1
+  name: mv-raw-pvc-1
 spec:
-  dataSource:
-    name: my-snap-1
-    kind: VolumeSnapshot
-    apiGroup: snapshot.storage.k8s.io
   accessModes:
-    - ReadWriteOnce
+  - ReadWriteOnce
   resources:
     requests:
       storage: 10Gi
   storageClassName: my-sc-1
+  volumeMode: Block

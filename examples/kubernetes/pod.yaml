@@ -1,17 +1,17 @@
 kind: Pod
 apiVersion: v1
 metadata:
-  name: pod-csi-1
+  name: my-pod-1
 spec:
   containers:
-    - name: pod-csi-cont-1
+    - name: pod-datelog-1
       image: nginx
       command: ["bin/sh"]
       args: ["-c", "while true; do date >> /data/mydata.txt; sleep 1; done"]
       volumeMounts:
         - name: export1
           mountPath: /data
-    - name: pod-csi-cont-2
+    - name: pod-datelog-2
       image: debian
       command: ["bin/sh"]
       args: ["-c", "while true; do date >> /data/mydata.txt; sleep 1; done"]
@@ -21,4 +21,4 @@ spec:
   volumes:
     - name: export1
       persistentVolumeClaim:
-        claimName: pvc-csi-1
+        claimName: my-pvc-1
