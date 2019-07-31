@@ -115,7 +115,7 @@ metadata:
   name: sc-csi-1
 provisioner: csi.hpe.com
 parameters:
-  fstype: ext4
+  fstype: xfs
   csiProvisionerSecretName: nimble-secret
   csiProvisionerSecretNamespace: default
   csiControllerPublishSecretName: nimble-secret
@@ -138,7 +138,7 @@ metadata:
   name: sc-csi-1
 provisioner: csi.hpe.com
 parameters:
-  csi.storage.k8s.io/fstype: ext4
+  csi.storage.k8s.io/fstype: xfs
   csi.storage.k8s.io/provisioner-secret-name: nimble-secret
   csi.storage.k8s.io/provisioner-secret-namespace: default
   csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
@@ -283,7 +283,7 @@ metadata:
   name: sc-csi-1
 provisioner: csi.hpe.com
 parameters:
-  csi.storage.k8s.io/fstype: ext4
+  csi.storage.k8s.io/fstype: xfs
   csi.storage.k8s.io/provisioner-secret-name: nimble-secret
   csi.storage.k8s.io/provisioner-secret-namespace: default
   csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
@@ -352,6 +352,36 @@ spec:
 ## Sample storage classes
 
 Sample storage classes can be found for [Nimble Storage](examples/kubernetes/nimble-storage/README.md), Simplivity, and 3Par.
+
+Common properties required by all storage classes:
+
+* k8s 1.12:
+
+```
+  fstype: xfs
+  csiProvisionerSecretName: nimble-secret
+  csiProvisionerSecretNamespace: default
+  csiControllerPublishSecretName: nimble-secret
+  csiControllerPublishSecretNamespace: default
+  csiNodeStageSecretName: nimble-secret
+  csiNodeStageSecretNamespace: default
+  csiNodePublishSecretName: nimble-secret
+  csiNodePublishSecretNamespace: default
+```
+
+* k8s 1.13+:
+
+```
+  csi.storage.k8s.io/fstype: xfs
+  csi.storage.k8s.io/provisioner-secret-name: nimble-secret
+  csi.storage.k8s.io/provisioner-secret-namespace: default
+  csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
+  csi.storage.k8s.io/controller-publish-secret-namespace: default
+  csi.storage.k8s.io/node-stage-secret-name: nimble-secret
+  csi.storage.k8s.io/node-stage-secret-namespace: default
+  csi.storage.k8s.io/node-publish-secret-name: nimble-secret
+  csi.storage.k8s.io/node-publish-secret-namespace: default
+```
 
 ## Contributing
 
