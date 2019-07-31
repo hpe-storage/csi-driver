@@ -1,15 +1,13 @@
-**Storage Class Properties**
+# HPE Nimble Storage StorageClass parameters for the HPE CSI Driver
+A `StorageClass` is used to provision or clone an HPE Nimble Storage-backed persistent volume.  It can also be used to import an existing HPE Nimble Storage volume or clone of a snapshot into the Kubernetes cluster. The parameters are grouped below by those same workflows.
 
-A storage class is used to create or clone an HPE Nimble Storage-backed persistent volume.  It can also be used to import an existing HPE Nimble Storage volume or clone of a snapshot into the Kubernetes cluster.  The parameters are grouped below by workflow.
+# Provisioning parameters
+| Parameter | String | Description |
+| --------- | ------ | ----------- |
+|fsOwner | userId:groupId | The user id and group id that should own the root directory of the filesystem |
+|fsMode | Octal digits | 1 to 4 octal digits that represent the file mode to be applied to the root directory of the filesystem |
+| limitIops | Integer | The IOPS limit of the volume. The IOPS limit should be in the range 256 to 4294967294, or -1 for unlimited (default) |.
 
-#### Creation parameters
-
-* fsOwner
-  * The user id and group id that should own the root directory of the filesystem in the form of [userId:groupId].
-* fsMode
-  * 1 to 4 octal digits that represent the file mode to be applied to the root directory of the filesystem.
-* limitIops
-  * The IOPS limit of the volume.  The IOPS limit should be in the range [256, 4294967294], or -1 for unlimited.
 * limitMbps
   * The MB/s throughput limit for the volume.
 * destroyOnDelete
