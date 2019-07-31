@@ -392,7 +392,7 @@ csi.storage.k8s.io/resizer-secret-namespace: kube-system
 ```
 
 ## Support
-The HPE CSI Driver is considered beta software. Do not use for production and do not contact HPE for support. Please file [issues here](issues).
+The HPE CSI Driver is considered beta software. Do not use for production and do not contact HPE for support. Please file [issues here](https://github.com/hpe-storage/csi-driver/issues).
 
 ## Contributing
 We value all feedback and contributions. If you find any issues or want to contribute, please feel free to open an issue or file a PR. More details in [CONTRIBUTING.md](CONTRIBUTING.md)
