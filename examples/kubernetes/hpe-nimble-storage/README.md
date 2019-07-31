@@ -30,6 +30,7 @@ A sample [storage-class.yaml](storage-class.yaml) is provided.
 
 ### Cloning parameters
 Cloning supports two modes of cloning. Either use `cloneOf` and reference a PVC in the current namespace or use `importVolAsClone` and reference a Nimble volume name to clone and import to Kubernetes.
+
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
 | cloneOf | Text | The name of the PVC to be cloned. `cloneOf` and `importVolAsClone` are mutually exclusive |
