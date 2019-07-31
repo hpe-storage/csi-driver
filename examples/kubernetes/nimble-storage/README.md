@@ -4,12 +4,6 @@ A storage class is used to create or clone an HPE Nimble Storage-backed persiste
 
 #### Creation parameters
 
-* csi.storage.k8s.io<i></i>/fstype: xfs
-  * The filesystem to create on the volume.
-* csi.storage.k8s.io<i></i>/secret-name: nimble-secret
-  * The name of the secret to use when performing provisioning, publish, resize, and snapshot operations.
-* csi.storage.k8s.io<i></i>/secret-namespace: default
-  * The namespace of the secret to use when performing provisioning, publish, resize, and snapshot operations.
 * fsOwner
   * The user id and group id that should own the root directory of the filesystem in the form of [userId:groupId].
 * fsMode
@@ -18,7 +12,7 @@ A storage class is used to create or clone an HPE Nimble Storage-backed persiste
   * The IOPS limit of the volume.  The IOPS limit should be in the range [256, 4294967294], or -1 for unlimited.
 * limitMbps
   * The MB/s throughput limit for the volume.
-* ephemeral
+* destroyOnDelete
   * "true" or "false". Indicates the backing Nimble volume (including snapshots) should be destroyed when the PVC is deleted.
 * description
   * Text to be added to the volume's description.
@@ -45,10 +39,6 @@ A storage class is used to create or clone an HPE Nimble Storage-backed persiste
 
 #### Clone parameters
 
-* csi.storage.k8s.io<i></i>/secret-name: nimble-secret
-  * The name of the secret to use when performing provisioning, publish, resize, and snapshot operations.
-* csi.storage.k8s.io<i></i>/secret-namespace: default
-  * The namespace of the secret to use when performing provisioning, publish, resize, and snapshot operations.
 * cloneOf
   * The name of the PVC to be cloned.
 * snapshot
@@ -60,6 +50,8 @@ A storage class is used to create or clone an HPE Nimble Storage-backed persiste
 * limitMbps
   * The MB/s throughput limit for the volume.
 * ephemeral
+  * "true" or "false". Indicates the backing Nimble volume (including snapshots) should be destroyed when the PVC is deleted.
+* destroyOnDelete
   * "true" or "false". Indicates the backing Nimble volume (including snapshots) should be destroyed when the PVC is deleted.
 * description
   * Text to be added to the volume's description.
@@ -82,10 +74,6 @@ A storage class is used to create or clone an HPE Nimble Storage-backed persiste
 
 #### Import clone of snapshot parameters
 
-* csi.storage.k8s.io<i></i>/secret-name: nimble-secret
-  * The name of the secret to use when performing provisioning, publish, resize, and snapshot operations.
-* csi.storage.k8s.io<i></i>/secret-namespace: default
-  * The namespace of the secret to use when performing provisioning, publish, resize, and snapshot operations.
 * importVolAsClone
   * The name of the Nimble volume to clone and import.
 * snapshot
@@ -97,6 +85,8 @@ A storage class is used to create or clone an HPE Nimble Storage-backed persiste
 * limitMbps
   * The MB/s throughput limit for the volume.
 * ephemeral
+  * "true" or "false". Indicates the backing volume is tied to the lifecycle of the pod.  The volume will be created when the pod is created and the volume will be deleted when the pod is deleted.
+* destroyOnDelete
   * "true" or "false". Indicates the backing Nimble volume (including snapshots) should be destroyed when the PVC is deleted.
 * description
   * Text to be added to the volume's description.
@@ -119,10 +109,6 @@ A storage class is used to create or clone an HPE Nimble Storage-backed persiste
 
 #### Import volume parameters
 
-* csi.storage.k8s.io<i></i>/secret-name: nimble-secret
-  * The name of the secret to use when performing provisioning, publish, resize, and snapshot operations.
-* csi.storage.k8s.io<i></i>/secret-namespace: default
-  * The namespace of the secret to use when performing provisioning, publish, resize, and snapshot operations.
 * importVolumeName
   * The name of the Nimble volume to import.
 * snapshot
