@@ -173,7 +173,7 @@ spec:
   resources:
     requests:
       storage: 10Gi
-  storageClassName: my-pvc-1
+  storageClassName: my-sc-1
 ```
 
 Check that a new `PersistentVolume` is created based on your claim:
@@ -259,7 +259,7 @@ metadata:
   name: my-snapshot-1
 spec:
   source:
-    name: pvc-snapshot-1
+    name: my-pvc-1
     kind: PersistentVolumeClaim
   snapshotClassName: my-snapclass-1
 ```
@@ -277,7 +277,6 @@ Status:
 ```
 
 #### 5. Test and verify resize:
-
 To perform resize operations on Kubernetes 1.14, you must enhance your `StorageClass` with some additional attributes (`allowVolumeExpansion` and a secret for the resizer sidecar):
 
 ```
