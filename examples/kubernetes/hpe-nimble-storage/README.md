@@ -9,6 +9,7 @@ Backward compatibility with the HPE Nimble Storage FlexVolume Driver is being ho
 
 ### Common parameters for Provisioning and Cloning
 These parameters are mutable betweeen a parent volume and creating a clone from a snapshot.
+
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
 | volumeNameSuffix | Text | A suffix to add to the end of each volume name. |
@@ -24,6 +25,7 @@ These parameters are mutable betweeen a parent volume and creating a clone from 
 
 ### Provisioning parameters
 These parameters are immutable for clones once a volume has been created.
+
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
 | fsOwner | userId:groupId | The user id and group id that should own the root directory of the filesystem. |
