@@ -65,7 +65,7 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: nimble-secret
-  namespace: default
+  namespace: kube-system
 stringData:
   serviceName: csp-service
   servicePort: "8080"
@@ -117,6 +117,8 @@ kubectl create -f-
 < paste the YAML >
 ^D (CTRL + D)
 ```
+
+Some of these example declarations are also available in the [examples/kubernetes](examples/kubernetes) directory.
 
 Create a `StorageClass` API object referencing the `nimble-secret` and defining additional (optional) volume parameters:
 
