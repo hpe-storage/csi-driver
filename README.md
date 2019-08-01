@@ -56,7 +56,7 @@ Kubernetes 1.14
 The following example walks through deployment of the driver with a HPE Nimble Storage backend. Replace any Nimble references with your particular CSP nomenclature.
 
 #### Create a secret with your platform details
-Replace the password string (`YWRtaW4=`) with a base64 encoded version of your password and replace the systemIp with the IP address of the backend and save it as `secret.yaml`:
+Replace the password string (`YWRtaW4=`) with a base64 encoded version of your password and replace the `backend` with the IP address of the CSP backend and save it as `secret.yaml`:
 
 ```
 apiVersion: v1
@@ -65,7 +65,7 @@ metadata:
   name: nimble-secret
   namespace: kube-system
 stringData:
-  serviceName: csp-service
+  serviceName: nimble-csp-svc
   servicePort: "8080"
   backend: 192.168.1.1
   username: admin
@@ -92,20 +92,23 @@ Deployment declarations are stored in [hpe-storage/co-deployments](https://githu
 
 Kubernetes 1.12
 ```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v0.3.0.yaml
 ```
 
 Kubernetes 1.13
 ```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v1.0.0.yaml
 ```
 
 Kubernetes 1.14
 ```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v1.1.0.yaml
 ```
 
-Depending on which version being deployd, different API objects gets created.
+Depending on which version being deployed, different API objects gets created.
 
 ## Using the HPE CSI Driver for Kubernetes
 Getting started with the HPE CSI Driver, setting up `StorageClass` and `VolumeSnapshotClass` API objects differs between CSP implementations. See [USING.md](USING.md) for examples to use the HPE Nimble Storage CSP.
