@@ -69,7 +69,7 @@ metadata:
 stringData:
   serviceName: csp-service
   servicePort: "8080"
-  backend: 10.10.10.1
+  backend: 192.168.1.1
   username: admin
 data:
   # echo -n "admin" | base64
@@ -392,6 +392,8 @@ csi.storage.k8s.io/node-publish-secret-namespace: kube-system
 csi.storage.k8s.io/resizer-secret-name: nimble-secret
 csi.storage.k8s.io/resizer-secret-namespace: kube-system
 ```
+## Building the HPE CSI Driver
+Instructions on how to build the HPE CSI Driver can be found in [BUILDING.md](BUILDING.md)
 
 ## Support
 The HPE CSI Driver is considered beta software. Do not use for production and do not contact HPE for support. Please file [issues here](https://github.com/hpe-storage/csi-driver/issues).
@@ -400,4 +402,4 @@ The HPE CSI Driver is considered beta software. Do not use for production and do
 We value all feedback and contributions. If you find any issues or want to contribute, please feel free to open an issue or file a PR. More details in [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License
-This is open source software licensed using the Apache License 2.0. Please see [LICENSE.md](LICENSE.md) for details.
+This is open source software licensed using the Apache License 2.0. Please see [LICENSE](LICENSE) for details.
