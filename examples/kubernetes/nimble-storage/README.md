@@ -49,8 +49,6 @@ A storage class is used to create or clone an HPE Nimble Storage-backed persiste
   * The IOPS limit of the volume.  The IOPS limit should be in the range [256, 4294967294], or -1 for unlimited.
 * limitMbps
   * The MB/s throughput limit for the volume.
-* ephemeral
-  * "true" or "false". Indicates the backing volume is tied to the lifecycle of the pod.  The volume will be created when the pod is created and the volume will be deleted when the pod is deleted.
 * destroyOnDelete
   * "true" or "false". Indicates the backing Nimble volume (including snapshots) should be destroyed when the PVC is deleted.
 * description
@@ -84,8 +82,6 @@ A storage class is used to create or clone an HPE Nimble Storage-backed persiste
   * The IOPS limit of the volume.  The IOPS limit should be in the range [256, 4294967294], or -1 for unlimited.
 * limitMbps
   * The MB/s throughput limit for the volume.
-* ephemeral
-  * "true" or "false". Indicates the backing volume is tied to the lifecycle of the pod.  The volume will be created when the pod is created and the volume will be deleted when the pod is deleted.
 * destroyOnDelete
   * "true" or "false". Indicates the backing Nimble volume (including snapshots) should be destroyed when the PVC is deleted.
 * description
