@@ -10,7 +10,7 @@ kubectl create -f-
 ^D (CTRL + D)
 ```
 
-Some of these example declarations are also available in the [examples/kubernetes](examples/kubernetes) directory.
+**Tip:** Some of these example declarations are also available in the [examples/kubernetes](examples/kubernetes) directory and all the HPE Nimble Storage `StorageClass` parameters can we found in [examples/kubernetes/hpe-nimble-storage](examples/kubernetes/hpe-nimble-storage).
 
 Create a `StorageClass` API object referencing the `nimble-secret` and defining additional (optional) volume parameters:
 
