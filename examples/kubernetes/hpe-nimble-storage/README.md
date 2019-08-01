@@ -23,6 +23,8 @@ These parameters are mutable betweeen a parent volume and creating a clone from 
 | dedupeEnabled | Boolean | Indicates that the volume should enable deduplication (`dedupeEnabled` and `thick` are mutually exclusive). |
 | syncOnDetach | Boolean | Indicates that a snapshot of the volume should be synced to the replication partner each time it is detached from a node. |
 
+**Note**: Performance policies and protection templates are Nimble specific constructs that can be created on the Nimble array itself to address particular requirements or workloads. Please consult with the storage admin or read the admin guide found on [HPE InfoSight](https://infosight.hpe.com).
+
 ### Provisioning parameters
 These parameters are immutable for clones once a volume has been created.
 
