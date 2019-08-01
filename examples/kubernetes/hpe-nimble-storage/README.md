@@ -2,10 +2,13 @@
 A `StorageClass` is used to provision or clone an HPE Nimble Storage-backed persistent volume. It can also be used to import an existing HPE Nimble Storage volume or clone of a snapshot into the Kubernetes cluster. The parameters are grouped below by those same workflows.
 
 A sample [storage-class.yaml](storage-class.yaml) is provided.
+
+Backward compatibility with the HPE Nimble Storage FlexVolume Driver is being honored to a certain degree. `StorageClass` API objects needs be rewritten and parameters need to be updated regardless.
  
 **Note:** These are optional parameters.
 
 ### Common parameters for Provisioning and Cloning
+These parameters are mutable betweeen a parent volume and creating a clone from a snapshot.
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
 | volumeNameSuffix | Text | A suffix to add to the end of each volume name. |
@@ -20,6 +23,7 @@ A sample [storage-class.yaml](storage-class.yaml) is provided.
 | syncOnDetach | Boolean | Indicates that a snapshot of the volume should be synced to the replication partner each time it is detached from a node. |
 
 ### Provisioning parameters
+These parameters are immutable for clones once a volume has been created.
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
 | fsOwner | userId:groupId | The user id and group id that should own the root directory of the filesystem. |
@@ -28,19 +32,21 @@ A sample [storage-class.yaml](storage-class.yaml) is provided.
 | pool | Text | The name of the pool in which to place the volume. |
 | folder | Text | The name of the folder in which to place the volume. |
 
+**Note:** `fsOwner` and `fsMode` is not applicable when using `volumeMode: Block` in the `PersistentVolumeClaim`.
+
 ### Cloning parameters
 Cloning supports two modes of cloning. Either use `cloneOf` and reference a PVC in the current namespace or use `importVolAsClone` and reference a Nimble volume name to clone and import to Kubernetes.
 
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
-| cloneOf | Text | The name of the PVC to be cloned. `cloneOf` and `importVolAsClone` are mutually exclusive |
-| importVolAsClone | Text | The name of the Nimble volume to clone and import. `importVolAsClone` and `cloneOf` are mutually exclusive |
+| cloneOf | Text | The name of the PVC to be cloned. `cloneOf` and `importVolAsClone` are mutually exclusive. |
+| importVolAsClone | Text | The name of the Nimble volume to clone and import. `importVolAsClone` and `cloneOf` are mutually exclusive. |
 | snapshot | Text | The name of the snapshot to base the clone on. This is optional. If not specified, a new snapshot is created. |
 | createSnapshot | Boolean | Indicates that a new snapshot of the volume should be taken matching the name provided in the `snapshot` parameter. If the `snapshot` parameter is not specified, a default name will be created. |
 | snapshotNamePrefix | Text | A prefix to add to the beginning of the snapshot name. |
 | ephemeral | Boolean | Indicates the backing volume is tied to the lifecycle of the `Pod`. The volume will be created when the `Pod` is created and the Nimble volume (clone) will be destroyed when the `Pod` is deleted. If a snapshot was created with `createSnapshot`, that snapshot will be destroyed too. | 
 
-#### Import parameters
+### Import parameters
 Importing volumes to Kubernetes requires the source Nimble volume to be offline. All previous Access Control Records and Initiator Groups will be stripped from the volume when put under control of the HPE CSI Driver.
 
 | Parameter | String | Description |

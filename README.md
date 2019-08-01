@@ -1,10 +1,8 @@
 # HPE CSI Driver for Kubernetes
 A Container Storage Interface ([CSI](https://github.com/container-storage-interface/spec)) Driver for Kubernetes. The HPE CSI Driver for Kubernetes allows you to use a [Container Storage Provider](https://github.com/hpe-storage/container-storage-provider) to perform data management operations on storage resources.
 
-
-
-## Installing to Kubernetes
-This guide is primarily written to accommodate installation on upstream Kubernetes. Variances in the installation steps may vary for different distributions of Kubernetes. 
+## Deploying to Kubernetes
+This guide is primarily written to accommodate installation on upstream Kubernetes. Installation steps may vary for different distributions of Kubernetes. Please see the [hpe-storage/co-deployments](https://github.com/hpe-storage/co-deployments) for additional methods, tweaks and platforms.
 
 ### Kubernetes Compatibility
 
@@ -89,7 +87,7 @@ NAME                  TYPE                                  DATA      AGE
 nimble-secret         Opaque                                5         149m
 ```
 
-#### 2. Deploy the CSI driver and sidecars for the relevant k8s version
+#### 2. Deploy the CSI driver and sidecars for the relevant Kubernetes version
 Deployment declarations are stored in [hpe-storage/co-deployments](https://github.com/hpe-storage/co-deployments).
 
 Kubernetes 1.12
@@ -194,6 +192,7 @@ pvc-13336da3-7... 10Gi     RWO          Delete         Bound  default/my-pvc-1 m
 
 The above output means that the HPE CSI Driver successfully provisioned a new volume.  The volume is not attached to any node yet. It will only be attached to a node if a workload is scheduled to a specific node. Now let us create a `Pod` that refers to the above volume. When the `Pod` is created, the volume will be attached, formatted and mounted to the specified container:
 
+
 ```
 kind: Pod
 apiVersion: v1
@@ -229,6 +228,45 @@ my-pod-1    2/2     Running   0          2m29s
 ```
 
 **Note:** A simple `Pod` does not provide any automatic recovery if the node the `Pod` is scheduled on crashes. Please see [the official Kubernetes documentation](https://kubernetes.io/docs/concepts/workloads/) for different workload types that provide automatic recovery. A shortlist of recommended workload types that are suitable for persistent storage is available in [this blog post](https://datamattsson.tumblr.com/post/182297931146/highly-available-stateful-workloads-on-kubernetes) and best practices are outlined in [this blog post](https://datamattsson.tumblr.com/post/185031432701/best-practices-for-stateful-workloads-on).
+
+The default `volumeMode` for the `PersistentVolumeClaim` is set to `Filesystem`. If a Raw Block Device is desired, `volumeMode` needs to be set to `Block`. Example:
+
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mv-raw-pvc-1
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: my-sc-1
+  volumeMode: Block
+```
+
+Creating the PVC is identical to `volumeMode: Filesystem`, mapping the device in a `Pod` specification is slightly different as a `volumeDevices` section is added instead of a `volumeMounts` stanza:
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-raw-pvc-1
+spec:
+  containers:
+    - name: my-null-pod
+      image: fedora:31
+      command: ["/bin/sh", "-c"]
+      args: [ "tail -f /dev/null" ]
+      volumeDevices:
+        - name: data
+          devicePath: /dev/xvda
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: my-raw-pvc-1
+```
 
 #### 4. Test and verify snapshots:
 Create a `VolumeStorageClass` referencing the `nimble-secret` and defining additional snapshot parameters:
@@ -360,7 +398,7 @@ spec:
 ```
 
 ## StorageClass parameters
-The supported `StorageClass` parameters are dictated by the CSP the CSI Driver interacts with.
+The supported `StorageClass` parameters are dictated by the CSP from which the CSI Driver interacts with.
 * [HPE Nimble Storage](examples/kubernetes/hpe-nimble-storage/README.md)
 
 Common CSI Driver parameters regardless of CSP:
