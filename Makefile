@@ -2,6 +2,10 @@ NAME = csi-driver
 REPO_NAME ?= hpestorage/csi-driver
 VERSION = v0.3.0-beta
 
+ifeq ($(IGNORE_BUILD_NUMBER),false)
+	VERSION := $(VERSION)-$(BUILD_NUMBER)
+endif
+
 # golangci-lint allows us to have a single target that runs multiple linters in
 # the same fashion.  This variable controls which linters are used.
 LINTER_FLAGS = --disable-all --enable=vet --enable=vetshadow --enable=golint --enable=ineffassign --enable=goconst --enable=deadcode --enable=dupl --enable=varcheck --enable=gocyclo --enable=misspell
