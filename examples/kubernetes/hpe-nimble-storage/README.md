@@ -4,7 +4,7 @@ A `StorageClass` is used to provision or clone an HPE Nimble Storage-backed pers
 A sample [storage-class.yaml](storage-class.yaml) is provided.
 
 Backward compatibility with the HPE Nimble Storage FlexVolume Driver is being honored to a certain degree. `StorageClass` API objects needs be rewritten and parameters need to be updated regardless.
- 
+
 **Note:** These are optional parameters.
 
 ### Common parameters for Provisioning and Cloning
