@@ -48,7 +48,6 @@ Cloning supports two modes of cloning. Either use `cloneOf` and reference a PVC 
 | snapshot | Text | The name of the snapshot to base the clone on. This is optional. If not specified, a new snapshot is created. |
 | createSnapshot | Boolean | Indicates that a new snapshot of the volume should be taken matching the name provided in the `snapshot` parameter. If the `snapshot` parameter is not specified, a default name will be created. |
 | snapshotNamePrefix | Text | A prefix to add to the beginning of the snapshot name. |
-| ephemeral | Boolean | Indicates the backing volume is tied to the lifecycle of the `Pod`. The volume will be created when the `Pod` is created and the Nimble volume (clone) will be destroyed when the `Pod` is deleted. If a snapshot was created with `createSnapshot`, that snapshot will be destroyed too. | 
 
 ### Import parameters
 Importing volumes to Kubernetes requires the source Nimble volume to be offline. All previous Access Control Records and Initiator Groups will be stripped from the volume when put under control of the HPE CSI Driver.
