@@ -2,7 +2,7 @@
 These instructions are provided as an example on how to use the HPE CSI Driver with the HPE Nimble Storage CSP.
 
 ### Test and verify volume provisioning
-The below YAML declarations are meant to be created with `kubectl create`. Either copy the content to a file on the host `kubectl` is being executed, or copy & paste into the terminal, like this:
+The below YAML declarations are meant to be created with `kubectl create`. Either copy the content to a file on the host where `kubectl` is being executed, or copy & paste into the terminal, like this:
 
 ```
 kubectl create -f-
@@ -10,9 +10,9 @@ kubectl create -f-
 ^D (CTRL + D)
 ```
 
-**Tip:** Some of these example declarations are also available in the [examples/kubernetes](examples/kubernetes) directory and all the HPE Nimble Storage `StorageClass` parameters can we found in [examples/kubernetes/hpe-nimble-storage](examples/kubernetes/hpe-nimble-storage).
+**Tip:** Some of these example declarations are also available in the [examples/kubernetes](examples/kubernetes) directory and all the HPE Nimble Storage CSP `StorageClass` parameters can we found in [examples/kubernetes/hpe-nimble-storage](examples/kubernetes/hpe-nimble-storage).
 
-Create a `StorageClass` API object referencing the `nimble-secret` and defining additional (optional) volume parameters:
+To get started, create a `StorageClass` API object referencing the `nimble-secret` and defining additional (optional) `StorageClass` parameters:
 
 Kubernetes 1.12
 ```
@@ -60,7 +60,7 @@ parameters:
   limitIops: "76800"
 ```
 
-Create a `PersistentVolumeClaim`. This makes sure a volume is created and provisioned on your behalf, make sure to reference the correct `StorageClassName`:
+Create a `PersistentVolumeClaim`. This makes sure a volume is created and provisioned on your behalf, make sure to reference the correct `.spec.storageClassName`:
 
 ```
 apiVersion: v1
@@ -76,7 +76,9 @@ spec:
   storageClassName: my-sc-1
 ```
 
-Check that a new `PersistentVolume` is created based on your claim:
+**Note:** In most enviornments, there is a default `StorageClass` declared on the cluster. In such a scenario, the `.spec.storageClassName` can be omitted. In addition, the default `StorageClass` need to be annotated with this key: `.metadata.annotations.storageclass.kubernetes.io/is-default-class` set to `"true"`. 
+
+After the PVC has been declared, check that a new `PersistentVolume` is created based on your claim:
 
 ```
 $ kubectl get pv
@@ -84,8 +86,7 @@ NAME              CAPACITY ACCESS MODES RECLAIM POLICY STATUS CLAIM            S
 pvc-13336da3-7... 10Gi     RWO          Delete         Bound  default/my-pvc-1 my-sc-1      3s
 ```
 
-The above output means that the HPE CSI Driver successfully provisioned a new volume.  The volume is not attached to any node yet. It will only be attached to a node if a workload is scheduled to a specific node. Now let us create a `Pod` that refers to the above volume. When the `Pod` is created, the volume will be attached, formatted and mounted to the specified container:
-
+The above output means that the HPE CSI Driver successfully provisioned a new volume. The volume is not attached to any node yet. It will only be attached to a node if a workload is scheduled requesting the PVC. Now let us create a `Pod` that refers to the above volume. When the `Pod` is created, the volume will be attached, formatted and mounted to the specified container:
 
 ```
 kind: Pod
@@ -290,3 +291,6 @@ spec:
       storage: 10Gi
   storageClassName: my-sc-1
 ```
+
+## Further reading
+The [official Kubernetes documentation](https://kubernetes.io/docs/concepts/storage/volumes/) contains comprehensive documentation on how to markup `PersistentVolumeClaim` and `StorageClass` API objects to tweak certain behaviors.

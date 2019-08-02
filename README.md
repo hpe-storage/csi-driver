@@ -53,7 +53,7 @@ Kubernetes 1.14
  * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet
 
 ### Deploying the HPE CSI Driver for Kubernetes
-The following example walks through deployment of the driver with a HPE Nimble Storage backend. Replace any Nimble references with your particular CSP nomenclature.
+The following example walks through deployment of the driver with a HPE Nimble Storage CSP backend. Replace any Nimble references with your particular CSP nomenclature.
 
 #### Create a secret with your platform details
 Replace the password string (`YWRtaW4=`) with a base64 encoded version of your password and replace the `backend` with the IP address of the CSP backend and save it as `secret.yaml`:
@@ -115,7 +115,7 @@ Getting started with the HPE CSI Driver, setting up `StorageClass` and `VolumeSn
 
 ## StorageClass parameters
 The supported `StorageClass` parameters are dictated by the CSP from which the CSI Driver interacts with.
-* [HPE Nimble Storage](examples/kubernetes/hpe-nimble-storage/README.md)
+* [HPE Nimble Storage CSP](examples/kubernetes/hpe-nimble-storage/README.md)
 
 Common CSI Driver parameters regardless of CSP:
 
@@ -150,7 +150,7 @@ csi.storage.k8s.io/resizer-secret-namespace: kube-system
 Instructions on how to build the HPE CSI Driver can be found in [BUILDING.md](BUILDING.md)
 
 ## Support
-The HPE CSI Driver is considered beta software. Do not use for production and do not contact HPE for support. Please file [issues here](https://github.com/hpe-storage/csi-driver/issues).
+The HPE CSI Driver is considered beta software. Do not use for production and do not contact HPE for support. Please file any issues, questions or feature requests [here](https://github.com/hpe-storage/csi-driver/issues). You may also join our Slack community to chat with HPE folks close to this project. We hang out in `#NimbleStorage` and `#Kubernetes` at [slack.hpedev.io](https://slack.hpedev.io/).
 
 ## Contributing
 We value all feedback and contributions. If you find any issues or want to contribute, please feel free to open an issue or file a PR. More details in [CONTRIBUTING.md](CONTRIBUTING.md)
