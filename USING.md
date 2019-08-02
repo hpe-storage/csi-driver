@@ -76,7 +76,7 @@ spec:
   storageClassName: my-sc-1
 ```
 
-**Note:** In most enviornments, there is a default `StorageClass` declared on the cluster. In such a scenario, the `.spec.storageClassName` can be omitted. In addition, the default `StorageClass` need to be annotated with this key: `.metadata.annotations.storageclass.kubernetes.io/is-default-class` set to `"true"`. 
+**Note:** In most enviornments, there is a default `StorageClass` declared on the cluster. In such a scenario, the `.spec.storageClassName` can be omitted. In addition, the default `StorageClass` needs to be annotated with this key: `.metadata.annotations.storageclass.kubernetes.io/is-default-class` set to `"true"`. 
 
 After the PVC has been declared, check that a new `PersistentVolume` is created based on your claim:
 
