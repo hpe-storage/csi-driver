@@ -1,6 +1,6 @@
 package tunelinux
 
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019 Hewlett Packard Enterprise Development LP.
 import (
 	"errors"
 	"github.com/hpe-storage/common-host-libs/linux"

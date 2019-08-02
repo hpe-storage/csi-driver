@@ -1,6 +1,6 @@
 package util
 
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019 Hewlett Packard Enterprise Development LP.
 
 const (
 	installDirPattern    = "^install_dir\\s*=\\s*(?P<install_dir>.*)"
