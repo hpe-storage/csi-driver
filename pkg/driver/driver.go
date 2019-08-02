@@ -220,7 +220,7 @@ func (driver *Driver) AddStorageProvider(credentials *storageprovider.Credential
 	defer log.Trace("<<<<< AddStorageProvider")
 
 	log.Infof("Adding connection to CSP at IP %s, port %d, context path %s, with username %s and serviceName %s",
-		credentials.ArrayIP, credentials.Port, credentials.ContextPath, credentials.Username, credentials.ServiceName)
+		credentials.Backend, credentials.ServicePort, credentials.ContextPath, credentials.Username, credentials.ServiceName)
 
 	// Get CSP instance
 	csp, err := csp.NewContainerStorageProvider(credentials)
@@ -229,7 +229,7 @@ func (driver *Driver) AddStorageProvider(credentials *storageprovider.Credential
 		return err
 	}
 
-	driver.storageProviders[credentials.ArrayIP] = csp
+	driver.storageProviders[credentials.Backend] = csp
 	return nil
 }
 
@@ -253,7 +253,7 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 		return nil, errors.New("No secrets have been provided")
 	}
 
-	if csp, ok := driver.storageProviders[credentials.ArrayIP]; ok {
+	if csp, ok := driver.storageProviders[credentials.Backend]; ok {
 		// TODO: verify other properties (username, password) of the CSP have not changed that would result in an update
 		log.Tracef("Storage provider already exists. Returning it.")
 		return csp, nil
@@ -264,7 +264,7 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 		return nil, err
 	}
 
-	return driver.storageProviders[credentials.ArrayIP], nil
+	return driver.storageProviders[credentials.Backend], nil
 }
 
 // IsSupportedPluginVolumeExpansionCapability returns true if the given volume expansion capability is supported else returns false

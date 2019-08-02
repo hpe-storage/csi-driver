@@ -1,6 +1,6 @@
 package mpathconfig
 
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019 Hewlett Packard Enterprise Development LP.
 import (
 	"bufio"
 	"container/list"
