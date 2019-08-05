@@ -103,7 +103,7 @@ func (provider *ContainerStorageProvider) login() (int, error) {
 
 	// If serviceName is not specified (i.e, Off-Array), then pass the array IP address as well.
 	if provider.Credentials.ServiceName != "" {
-		token.ArrayIP = provider.Credentials.ArrayIP
+		token.ArrayIP = provider.Credentials.Backend
 	}
 
 	status, err := provider.Client.DoJSON(
@@ -129,7 +129,7 @@ func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) 
 	request.Header = make(map[string]string)
 	request.Header["x-auth-token"] = provider.AuthToken
 	if provider.Credentials.ServiceName != "" {
-		request.Header["x-array-ip"] = provider.Credentials.ArrayIP
+		request.Header["x-array-ip"] = provider.Credentials.Backend
 	}
 
 	// Temporary copy of the Path as it gets modified/changed in the DoJSON() method.
@@ -709,7 +709,13 @@ func getCspClient(credentials *storageprovider.Credentials) (*connectivity.Clien
 
 	// On-Array CSP
 	if credentials.ServiceName == "" {
-		cspURI := fmt.Sprintf("https://%s:%d%s", credentials.ArrayIP, credentials.Port, credentials.ContextPath)
+		if credentials.ContextPath == "" {
+			credentials.ContextPath = storageprovider.DefaultContextPath
+		}
+		if credentials.ServicePort == 0 {
+			credentials.ServicePort = storageprovider.DefaultServicePort
+		}
+		cspURI := fmt.Sprintf("https://%s:%d%s", credentials.Backend, credentials.ServicePort, credentials.ContextPath)
 
 		log.Tracef(">>>>> getCspClient (direct-connect) using URI %s and username %s", cspURI, credentials.Username)
 		defer log.Trace("<<<<< getCspClient")
@@ -729,7 +735,7 @@ func getCspClient(credentials *storageprovider.Credentials) (*connectivity.Clien
 	}
 
 	// Off-Array CSP
-	cspURI := fmt.Sprintf("http://%s:%d", credentials.ServiceName, credentials.Port)
+	cspURI := fmt.Sprintf("http://%s:%d", credentials.ServiceName, credentials.ServicePort)
 
 	log.Tracef(">>>>> getCspClient (service) using URI %s and username %s", cspURI, credentials.Username)
 	defer log.Trace("<<<<< getCspClient")
