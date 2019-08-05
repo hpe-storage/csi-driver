@@ -1,6 +1,6 @@
 # Contribution Guide
 
-We welcome and encourage community contributions to k8s-custom-resources.
+We welcome and encourage community contributions to csi-driver.
 
 ## Contributing
 
