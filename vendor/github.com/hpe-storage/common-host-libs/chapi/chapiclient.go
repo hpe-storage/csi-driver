@@ -392,6 +392,32 @@ func (chapiClient *Client) Mount(reqMount *model.Mount, respMount *model.Mount) 
 	return nil
 }
 
+// GetDevices will return all the OS devices on the host
+func (chapiClient *Client) GetDevices() (devices []*model.Device, err error) {
+	util.LogDebug.Print("Called GetDevices")
+	// fetch host ID
+	err = chapiClient.cacheHostID()
+	if err != nil {
+		return nil, err
+	}
+
+	var errResp *ErrorResponse
+	var chapiResp Response
+	devicesURI := fmt.Sprintf(DevicesURIfmt, fmt.Sprintf(HostURIfmt, chapiClient.hostID))
+	chapiResp.Data = &devices
+	chapiResp.Err = &errResp
+	_, err = chapiClient.client.DoJSON(&connectivity.Request{Action: "GET", Path: devicesURI, Header: chapiClient.header, Payload: nil, Response: &chapiResp, ResponseError: &chapiResp})
+	if err != nil {
+		if errResp != nil {
+			util.LogError.Print(errResp.Info)
+			return nil, errors.New(errResp.Info)
+		}
+		util.LogDebug.Print("Err :", err.Error())
+		return nil, err
+	}
+	return devices, nil
+}
+
 // GetDeviceFromVolume will return os device for given storage volume
 func (chapiClient *Client) GetDeviceFromVolume(volume *model.Volume) (device *model.Device, err error) {
 	log.Tracef(">>>>>GetDeviceFromVolume called for %s", volume.Name)
