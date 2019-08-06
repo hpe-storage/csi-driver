@@ -96,7 +96,7 @@ func CreateCredentials(secrets map[string]string) (*Credentials, error) {
 		return nil, fmt.Errorf("Missing password in the secrets")
 	}
 	if credentials.Backend == "" {
-		return nil, fmt.Errorf("Missing array IP in the secrets")
+		return nil, fmt.Errorf("Missing backend IP in the secrets")
 	}
 	if credentials.ServiceName != "" && credentials.ServicePort == 0 {
 		return nil, fmt.Errorf("Missing port in the secrets")

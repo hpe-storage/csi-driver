@@ -25,6 +25,8 @@ import (
 
 const (
 	snapshotPrefix = "snap-for-clone-"
+	tokenHeader    = "x-auth-token"
+	backendHeader  = "x-backend"
 )
 
 // DataWrapper is used to represent a generic JSON API payload
@@ -101,9 +103,9 @@ func (provider *ContainerStorageProvider) login() (int, error) {
 		Password: provider.Credentials.Password,
 	}
 
-	// If serviceName is not specified (i.e, Off-Array), then pass the array IP address as well.
+	// If serviceName is not specified (i.e, Off-Array), then pass the backend IP address as well.
 	if provider.Credentials.ServiceName != "" {
-		token.ArrayIP = provider.Credentials.Backend
+		token.Backend = provider.Credentials.Backend
 	}
 
 	status, err := provider.Client.DoJSON(
@@ -127,9 +129,9 @@ func (provider *ContainerStorageProvider) login() (int, error) {
 // Currently, it will login again if the server responds with a status code of unauthorized.
 func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) (int, error) {
 	request.Header = make(map[string]string)
-	request.Header["x-auth-token"] = provider.AuthToken
+	request.Header[tokenHeader] = provider.AuthToken
 	if provider.Credentials.ServiceName != "" {
-		request.Header["x-array-ip"] = provider.Credentials.Backend
+		request.Header[backendHeader] = provider.Credentials.Backend
 	}
 
 	// Temporary copy of the Path as it gets modified/changed in the DoJSON() method.
