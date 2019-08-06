@@ -293,7 +293,7 @@ type Token struct {
 	ID           string `json:"id,omitempty"`
 	Username     string `json:"username,omitempty"`
 	Password     string `json:"password,omitempty"`
-	ArrayIP      string `json:"array_ip,omityempty"`
+	Backend      string `json:"backend,omityempty"`
 	SessionToken string `json:"session_token,omitempty"`
 }
 
