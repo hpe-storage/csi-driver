@@ -10,12 +10,16 @@ import (
 )
 
 const (
-	arrayIPKey     = "arrayIp"
+	backendKey     = "backend"
 	usernameKey    = "username"
 	passwordKey    = "password"
-	portKey        = "port"
+	servicePortKey = "servicePort"
 	contextPathKey = "path"
 	serviceNameKey = "serviceName"
+	// DefaultContextPath if not set for on-array csp
+	DefaultContextPath = "/csp"
+	// DefaultServicePort if not set for on-array csp
+	DefaultServicePort = 443
 )
 
 // StorageProvider defines the interface to any storage related operations required by CSI and hopefully docker
@@ -42,8 +46,8 @@ type StorageProvider interface {
 type Credentials struct {
 	Username    string
 	Password    string
-	ArrayIP     string
-	Port        int
+	Backend     string
+	ServicePort int
 	ContextPath string
 	ServiceName string
 }
@@ -55,8 +59,8 @@ func CreateCredentials(secrets map[string]string) (*Credentials, error) {
 
 	// Read the secrets map and populate the Credential object accordingly
 	for key, value := range secrets {
-		if key == arrayIPKey {
-			credentials.ArrayIP = value
+		if key == backendKey {
+			credentials.Backend = value
 		}
 
 		if key == usernameKey {
@@ -67,12 +71,12 @@ func CreateCredentials(secrets map[string]string) (*Credentials, error) {
 			credentials.Password = value
 		}
 
-		if key == portKey {
+		if key == servicePortKey {
 			port, err := strconv.Atoi(value)
 			if err != nil {
 				return nil, err
 			}
-			credentials.Port = port
+			credentials.ServicePort = port
 		}
 
 		if key == serviceNameKey {
@@ -91,13 +95,10 @@ func CreateCredentials(secrets map[string]string) (*Credentials, error) {
 	if credentials.Password == "" {
 		return nil, fmt.Errorf("Missing password in the secrets")
 	}
-	if credentials.ArrayIP == "" {
+	if credentials.Backend == "" {
 		return nil, fmt.Errorf("Missing array IP in the secrets")
 	}
-	if credentials.ServiceName == "" && credentials.ContextPath == "" {
-		return nil, fmt.Errorf("Both service name and context path are missing in the secrets")
-	}
-	if credentials.Port == 0 {
+	if credentials.ServiceName != "" && credentials.ServicePort == 0 {
 		return nil, fmt.Errorf("Missing port in the secrets")
 	}
 
