@@ -13,7 +13,7 @@ const (
 	nfsFileSystem = "nfs"
 
 	// Default mount directory
-	defaultMountDir = "/opt/hpe-storage-mounts"
+	defaultMountDir = "/var/lib/kubelet/plugins/hpe.com/mounts"
 
 	// defaultVolumeSize is the implementation-specific default value in bytes
 	defaultVolumeSize = 10 * 1024 * 1024 * 1024 // 10 GiB
