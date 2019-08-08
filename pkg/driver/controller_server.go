@@ -255,6 +255,13 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 	}
 	log.Trace("Volume create options: ", createOptions)
 
+	// extract the description if present
+	var description string
+	if val, ok := createOptions[descriptionKey]; ok {
+		description = fmt.Sprintf("%v", val)
+		delete(createOptions, descriptionKey)
+	}
+
 	// The volume access type in the request will be either 'Block' or 'Mount'
 	// If none, then we default to 'Mount' access type and use default filesystem.
 	var filesystem string
@@ -404,7 +411,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 
 			// Create a clone from another volume
 			log.Infof("About to create a new clone '%s' from snapshot %s with options %+v", request.Name, existingSnap.ID, createOptions)
-			volume, err := storageProvider.CloneVolume(request.Name, "", existingSnap.ID, createOptions)
+			volume, err := storageProvider.CloneVolume(request.Name, description, "", existingSnap.ID, createOptions)
 			if err != nil {
 				log.Trace("err: " + err.Error())
 				return nil, status.Error(codes.Internal, "Failed to create volume due to error: "+err.Error())
@@ -450,7 +457,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 
 			// Create a clone from another volume
 			log.Infof("About to create a new clone '%s' from volume %s with options %+v", request.Name, existingParentVolume.ID, createOptions)
-			volume, err := storageProvider.CloneVolume(request.Name, existingParentVolume.ID, "", createOptions)
+			volume, err := storageProvider.CloneVolume(request.Name, description, existingParentVolume.ID, "", createOptions)
 			if err != nil {
 				log.Trace("err: " + err.Error())
 				return nil, status.Error(codes.Internal, "Failed to create volume due to error: "+err.Error())
@@ -475,7 +482,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 
 	// Create new volume
 	log.Infof("About to create a new volume '%s' with size %d and options %+v", request.Name, reqVolumeSize, createOptions)
-	volume, err := storageProvider.CreateVolume(request.Name, reqVolumeSize, createOptions)
+	volume, err := storageProvider.CreateVolume(request.Name, description, reqVolumeSize, createOptions)
 	if err != nil {
 		log.Trace("err: " + err.Error())
 		return nil, status.Error(codes.Internal, "Failed to create volume due to error: "+err.Error())
@@ -669,20 +676,36 @@ func (driver *Driver) ControllerPublishVolume(ctx context.Context, request *csi.
 		}
 	}
 
+	// Configure access protocol defaulting to iSCSI when unspecified
+	var requestedAccessProtocol = request.VolumeContext[accessProtocol]
+	if requestedAccessProtocol == "" {
+		if len(node.Iqns) != 0 {
+			requestedAccessProtocol = iscsi
+		} else {
+			requestedAccessProtocol = fc
+		}
+	}
+
 	// Add ACL to the volume based on the requested Node ID
-	publishInfo, err := storageProvider.PublishVolume(request.VolumeId, node.UUID)
+	publishInfo, err := storageProvider.PublishVolume(request.VolumeId, node.UUID, requestedAccessProtocol)
 	if err != nil {
 		log.Trace("err: ", err.Error())
 		return nil, status.Error(codes.Internal, "Failed to add ACL via container provider")
 	}
 	log.Tracef("PublishInfo response from CSP: %v", publishInfo)
 
+	// target scope is nimble specific therefore extract it from the volume config
+	var requestedTargetScope = targetScopeGroup
+	if val, ok := existingVolume.Config[targetScope]; ok {
+		requestedTargetScope = fmt.Sprintf("%v", val)
+	}
+
 	// TODO: add any additional info necessary to mount the device
 	publishContext := map[string]string{}
 	publishContext[serialNumber] = publishInfo.SerialNumber
 	publishContext[accessProtocol] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
 	publishContext[targetName] = publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetName
-	publishContext[targetScope] = publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetScope
+	publishContext[targetScope] = requestedTargetScope
 	publishContext[lunID] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
 		publishContext[discoveryIP] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIP
@@ -972,6 +995,13 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 	}
 	log.Trace("Snapshot create options: ", createOptions)
 
+	// extract the description if present
+	var description string
+	if val, ok := createOptions[descriptionKey]; ok {
+		description = fmt.Sprintf("%v", val)
+		delete(createOptions, descriptionKey)
+	}
+
 	// Check if snapshot with the name for the given source ID already exists
 	existingSnapshot, err := storageProvider.GetSnapshotByName(request.Name, request.SourceVolumeId)
 	if err != nil {
@@ -1013,7 +1043,7 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 	*/
 
 	// Create a new snapshot
-	snapshot, err := storageProvider.CreateSnapshot(request.Name, request.SourceVolumeId)
+	snapshot, err := storageProvider.CreateSnapshot(request.Name, description, request.SourceVolumeId, createOptions)
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create snapshot %s for volume %s, err: %s", request.Name, request.SourceVolumeId, err.Error()))
 	}
