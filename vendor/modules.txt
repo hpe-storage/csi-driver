@@ -28,7 +28,7 @@ github.com/golang/protobuf/descriptor
 github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
-# github.com/google/go-cmp v0.3.0
+# github.com/google/go-cmp v0.3.1
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
@@ -51,7 +51,7 @@ github.com/hpcloud/tail/ratelimiter
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 github.com/hpcloud/tail/winfile
-# github.com/hpe-storage/common-host-libs v0.0.0-20190806205840-23b2b1a814fc
+# github.com/hpe-storage/common-host-libs v0.0.0-20190808153833-057108a1789f
 github.com/hpe-storage/common-host-libs/dbservice/etcd
 github.com/hpe-storage/common-host-libs/logger
 github.com/hpe-storage/common-host-libs/tunelinux
@@ -148,7 +148,7 @@ golang.org/x/net/html/atom
 # golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
-# golang.org/x/sys v0.0.0-20190801041406-cbf593c0f2f3
+# golang.org/x/sys v0.0.0-20190804053845-51ab0e2deafa
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # golang.org/x/text v0.3.2

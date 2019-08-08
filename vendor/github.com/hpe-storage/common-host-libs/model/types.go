@@ -168,7 +168,9 @@ type Volume struct {
 	ID             string                 `json:"id,omitempty"`
 	Name           string                 `json:"name,omitempty"`
 	Size           int64                  `json:"size,omitempty"` // size in bytes
-	InUse          bool                   `json:"in_use,omitempty"`
+	Description    string                 `json:"description,omitempty"`
+	InUse          bool                   `json:"in_use,omitempty"` // deprecated for published in the CSP implementation
+	Published      bool                   `json:"published,omitempty"`
 	BaseSnapID     string                 `json:"base_snapshot_id,omitempty"`
 	ParentVolID    string                 `json:"parent_volume_id,omitempty"`
 	Clone          bool                   `json:"clone,omitempty"`
@@ -199,19 +201,22 @@ type iscsiSession struct {
 
 // Snapshot is a snapshot of a volume
 type Snapshot struct {
-	ID           string `json:"id,omitempty"`
-	Name         string `json:"name,omitempty"`
-	VolumeID     string `json:"volume_id,omitempty"`
-	VolumeName   string `json:"volume_name,omitempty"`
-	Size         int64  `json:"size,omitempty"`
-	CreationTime int64  `json:"creation_time,omitempty"`
-	ReadyToUse   bool   `json:"ready_to_use,omitempty"`
-	InUse        bool   `json:"in_use,omitempty"`
+	ID           string                 `json:"id,omitempty"`
+	Name         string                 `json:"name,omitempty"`
+	Description  string                 `json:"description,omitempty"`
+	VolumeID     string                 `json:"volume_id,omitempty"`
+	VolumeName   string                 `json:"volume_name,omitempty"`
+	Size         int64                  `json:"size,omitempty"`
+	CreationTime int64                  `json:"creation_time,omitempty"`
+	ReadyToUse   bool                   `json:"ready_to_use,omitempty"`
+	InUse        bool                   `json:"in_use,omitempty"`
+	Config       map[string]interface{} `json:"config,omitempty"`
 }
 
 // PublishOptions are the options needed to publish a volume
 type PublishOptions struct {
-	NodeID string `json:"node_id,omitempty"`
+	HostID         string `json:"host_id,omitempty"`
+	AccessProtocol string `json:"access_protocol,omitempty"`
 }
 
 // PublishInfo is the node side data required to access a volume
@@ -230,7 +235,6 @@ type AccessInfo struct {
 type BlockDeviceAccessInfo struct {
 	AccessProtocol string `json:"access_protocol,omitempty"`
 	TargetName     string `json:"target_name,omitempty"`
-	TargetScope    string `json:"target_scope,omitempty"`
 	LunID          int32  `json:"lun_id,omitempty"`
 	IscsiAccessInfo
 }
@@ -293,18 +297,20 @@ type Token struct {
 	ID           string `json:"id,omitempty"`
 	Username     string `json:"username,omitempty"`
 	Password     string `json:"password,omitempty"`
-	Backend      string `json:"backend,omityempty"`
+	ArrayIP      string `json:"array_ip,omityempty"`
 	SessionToken string `json:"session_token,omitempty"`
 }
 
 // Node represents a host that would access volumes through the CSP
 type Node struct {
-	ID       string    `json:"id,omitempty"`
-	Name     string    `json:"name,omitempty"`
-	UUID     string    `json:"uuid,omitempty"`
-	Iqns     []*string `json:"iqns,omitempty"`
-	Networks []*string `json:"networks,omitempty"`
-	Wwpns    []*string `json:"wwpns,omitempty"`
+	ID           string    `json:"id,omitempty"`
+	Name         string    `json:"name,omitempty"`
+	UUID         string    `json:"uuid,omitempty"`
+	Iqns         []*string `json:"iqns,omitempty"`
+	Networks     []*string `json:"networks,omitempty"`
+	Wwpns        []*string `json:"wwpns,omitempty"`
+	ChapUser     string    `json:"chap_user,omitempty"`
+	ChapPassword string    `json:"chap_password,omitempty"`
 }
 
 // KeyValue is a store of key-value pairs

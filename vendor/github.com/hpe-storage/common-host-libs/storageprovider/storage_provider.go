@@ -29,16 +29,16 @@ type StorageProvider interface {
 	GetVolume(id string) (*model.Volume, error)
 	GetVolumeByName(name string) (*model.Volume, error)
 	GetVolumes() ([]*model.Volume, error)
-	CreateVolume(name string, size int64, opts map[string]interface{}) (*model.Volume, error)
-	CloneVolume(name, sourceID, snapshotID string, opts map[string]interface{}) (*model.Volume, error)
+	CreateVolume(name, description string, size int64, opts map[string]interface{}) (*model.Volume, error)
+	CloneVolume(name, description, sourceID, snapshotID string, opts map[string]interface{}) (*model.Volume, error)
 	DeleteVolume(id string) error
-	PublishVolume(id, nodeID string) (*model.PublishInfo, error) // Idempotent
-	UnpublishVolume(id, nodeID string) error                     // Idempotent
+	PublishVolume(id, hostID, accessProtocol string) (*model.PublishInfo, error) // Idempotent
+	UnpublishVolume(id, hostID string) error                                     // Idempotent
 	ExpandVolume(id string, requestBytes int64) (*model.Volume, error)
 	GetSnapshot(id string) (*model.Snapshot, error)
 	GetSnapshotByName(name string, sourceVolID string) (*model.Snapshot, error)
 	GetSnapshots(sourceVolID string) ([]*model.Snapshot, error)
-	CreateSnapshot(name, sourceVolID string) (*model.Snapshot, error)
+	CreateSnapshot(name, description, sourceVolID string, opts map[string]interface{}) (*model.Snapshot, error)
 	DeleteSnapshot(id string) error
 }
 

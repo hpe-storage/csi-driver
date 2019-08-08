@@ -26,12 +26,13 @@ require (
 	github.com/golangci/gosec v0.0.0-20180901114220-8afd9cbb6cfb // indirect
 	github.com/golangci/lint-1 v0.0.0-20181222135242-d2cdd8c08219 // indirect
 	github.com/golangci/revgrep v0.0.0-20180812185044-276a5c0a1039 // indirect
+	github.com/google/go-cmp v0.3.1 // indirect
 	github.com/google/pprof v0.0.0-20190723021845-34ac40c74b70 // indirect
 	github.com/gorilla/mux v1.7.3 // indirect
 	github.com/gostaticanalysis/analysisutil v0.0.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.9.5 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
-	github.com/hpe-storage/common-host-libs v0.0.0-20190806205840-23b2b1a814fc
+	github.com/hpe-storage/common-host-libs v0.0.0-20190808153833-057108a1789f
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20190725185337-965fa924678a
 	github.com/klauspost/compress v1.7.5 // indirect
 	github.com/klauspost/cpuid v1.2.1 // indirect
@@ -66,7 +67,7 @@ require (
 	golang.org/x/mobile v0.0.0-20190806162312-597adff16ade // indirect
 	golang.org/x/net v0.0.0-20190724013045-ca1201d0de80
 	golang.org/x/sys v0.0.0-20190804053845-51ab0e2deafa // indirect
-	golang.org/x/tools v0.0.0-20190806205909-9fb8e5c87901 // indirect
+	golang.org/x/tools v0.0.0-20190808172924-128824a23e7c // indirect
 	google.golang.org/genproto v0.0.0-20190801165951-fa694d86fc64 // indirect
 	google.golang.org/grpc v1.22.1
 	gopkg.in/errgo.v1 v1.0.1 // indirect
