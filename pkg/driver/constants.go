@@ -3,8 +3,9 @@
 package driver
 
 const (
-	// iSCSI protocol type
+	// Protocol types
 	iscsi = "iscsi"
+	fc    = "fc"
 
 	// defaultFileSystem is the implemenation-specific default value
 	defaultFileSystem = "xfs"
@@ -26,6 +27,9 @@ const (
 	filesystemOwner = "fsOwner"
 	filesystemMode  = "fsMode"
 
+	// Group Target Scope
+	targetScopeGroup = "group"
+
 	// Volume Publish params
 	serialNumber     = "serialNumber"
 	accessProtocol   = "accessProtocol"
@@ -45,4 +49,7 @@ const (
 
 	// Pending :
 	Pending = "PENDING"
+
+	// common properties
+	descriptionKey = "description"
 )

@@ -26,7 +26,9 @@ import (
 const (
 	snapshotPrefix = "snap-for-clone-"
 	tokenHeader    = "x-auth-token"
-	backendHeader  = "x-backend"
+	arrayIPHeader  = "x-array-ip"
+
+	descriptionKey = "description"
 )
 
 // DataWrapper is used to represent a generic JSON API payload
@@ -103,9 +105,9 @@ func (provider *ContainerStorageProvider) login() (int, error) {
 		Password: provider.Credentials.Password,
 	}
 
-	// If serviceName is not specified (i.e, Off-Array), then pass the backend IP address as well.
+	// If serviceName is not specified (i.e, Off-Array), then pass the array IP address as well.
 	if provider.Credentials.ServiceName != "" {
-		token.Backend = provider.Credentials.Backend
+		token.ArrayIP = provider.Credentials.Backend
 	}
 
 	status, err := provider.Client.DoJSON(
@@ -131,7 +133,7 @@ func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) 
 	request.Header = make(map[string]string)
 	request.Header[tokenHeader] = provider.AuthToken
 	if provider.Credentials.ServiceName != "" {
-		request.Header[backendHeader] = provider.Credentials.Backend
+		request.Header[arrayIPHeader] = provider.Credentials.Backend
 	}
 
 	// Temporary copy of the Path as it gets modified/changed in the DoJSON() method.
@@ -162,7 +164,7 @@ func (provider *ContainerStorageProvider) SetNodeContext(node *model.Node) error
 	status, err := provider.invoke(
 		&connectivity.Request{
 			Action:        "POST",
-			Path:          "/containers/v1/nodes",
+			Path:          "/containers/v1/hosts",
 			Payload:       &DataWrapper{Data: node},
 			Response:      nil,
 			ResponseError: errorResponse,
@@ -188,7 +190,7 @@ func (provider *ContainerStorageProvider) GetNodeContext(nodeUUID string) (*mode
 		status, err := provider.invoke(
 			&connectivity.Request{
 				Action:        "GET",
-				Path:          fmt.Sprintf("/containers/v1/nodes/%s", nodeUUID),
+				Path:          fmt.Sprintf("/containers/v1/hosts/%s", nodeUUID),
 				Payload:       nil,
 				Response:      &dataWrapper,
 				ResponseError: errorResponse,
@@ -206,7 +208,7 @@ func (provider *ContainerStorageProvider) GetNodeContext(nodeUUID string) (*mode
 }
 
 // CreateVolume creates a volume on the CSP
-func (provider *ContainerStorageProvider) CreateVolume(name string, size int64, opts map[string]interface{}) (*model.Volume, error) {
+func (provider *ContainerStorageProvider) CreateVolume(name, description string, size int64, opts map[string]interface{}) (*model.Volume, error) {
 	log.Tracef(">>>>> CreateVolume, name: %v, size: %v, opts: %v", name, size, opts)
 	defer log.Trace("<<<<< CreateVolume")
 
@@ -216,9 +218,10 @@ func (provider *ContainerStorageProvider) CreateVolume(name string, size int64, 
 	var errorResponse *ErrorsPayload
 
 	volume := &model.Volume{
-		Name:   name,
-		Size:   size,
-		Config: opts,
+		Name:        name,
+		Size:        size,
+		Description: description,
+		Config:      opts,
 	}
 
 	// Create the volume on the array
@@ -240,8 +243,8 @@ func (provider *ContainerStorageProvider) CreateVolume(name string, size int64, 
 
 // CloneVolume clones a volume on the CSP
 // nolint : gocyclo
-func (provider *ContainerStorageProvider) CloneVolume(name, sourceID, snapshotID string, opts map[string]interface{}) (*model.Volume, error) {
-	log.Tracef(">>>>> CloneVolume with name: %v, sourceID: %v, snapshotID %v", name, sourceID, snapshotID)
+func (provider *ContainerStorageProvider) CloneVolume(name, description, sourceID, snapshotID string, opts map[string]interface{}) (*model.Volume, error) {
+	log.Tracef(">>>>> CloneVolume with name: %v, description: %v, sourceID: %v, snapshotID %v", name, description, sourceID, snapshotID)
 	defer log.Trace("<<<<< CloneVolume")
 
 	// Check for empty name
@@ -271,7 +274,7 @@ func (provider *ContainerStorageProvider) CloneVolume(name, sourceID, snapshotID
 		log.Trace("Creating snapshot for new clone")
 
 		snapshotName := snapshotPrefix + time.Now().Format(time.RFC3339)
-		snapshot, err = provider.CreateSnapshot(snapshotName, sourceID)
+		snapshot, err = provider.CreateSnapshot(snapshotName, snapshotName, sourceID, nil)
 		if err != nil {
 			log.Errorf("Failed to create snapshot for clone.  Error: %s", err.Error())
 			return nil, err
@@ -288,10 +291,11 @@ func (provider *ContainerStorageProvider) CloneVolume(name, sourceID, snapshotID
 	var errorResponse *ErrorsPayload
 
 	volume := &model.Volume{
-		Name:       name,
-		BaseSnapID: snapshot.ID,
-		Clone:      true,
-		Config:     opts,
+		Name:        name,
+		Description: description,
+		BaseSnapID:  snapshot.ID,
+		Clone:       true,
+		Config:      opts,
 	}
 
 	// Clone the volume on the array
@@ -342,19 +346,24 @@ func (provider *ContainerStorageProvider) DeleteVolume(id string) error {
 	return err
 }
 
-// PublishVolume will make a volume visible (add an ACL) to the given node
-func (provider *ContainerStorageProvider) PublishVolume(id, nodeID string) (*model.PublishInfo, error) {
+// PublishVolume will make a volume visible (add an ACL) to the given host
+func (provider *ContainerStorageProvider) PublishVolume(id, hostID, accessProtocol string) (*model.PublishInfo, error) {
 	dataResponse := &DataWrapper{
 		Data: &model.PublishInfo{},
 	}
 
 	var errorResponse *ErrorsPayload
 
+	publishOptions := &model.PublishOptions{
+		HostID:         hostID,
+		AccessProtocol: accessProtocol,
+	}
+
 	status, err := provider.invoke(
 		&connectivity.Request{
-			Action:        "POST",
+			Action:        "PUT",
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s/actions/publish", id),
-			Payload:       &DataWrapper{Data: &model.PublishOptions{NodeID: nodeID}},
+			Payload:       &DataWrapper{Data: publishOptions},
 			Response:      &dataResponse,
 			ResponseError: errorResponse,
 		},
@@ -366,15 +375,15 @@ func (provider *ContainerStorageProvider) PublishVolume(id, nodeID string) (*mod
 	return dataResponse.Data.(*model.PublishInfo), err
 }
 
-// UnpublishVolume will make a volume invisible (remove an ACL) from the given node
-func (provider *ContainerStorageProvider) UnpublishVolume(id, nodeID string) error {
+// UnpublishVolume will make a volume invisible (remove an ACL) from the given host
+func (provider *ContainerStorageProvider) UnpublishVolume(id, hostID string) error {
 	var errorResponse *ErrorsPayload
 
 	status, err := provider.invoke(
 		&connectivity.Request{
-			Action:        "POST",
+			Action:        "PUT",
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s/actions/unpublish", id),
-			Payload:       &DataWrapper{Data: &model.PublishOptions{NodeID: nodeID}},
+			Payload:       &DataWrapper{Data: &model.PublishOptions{HostID: hostID}},
 			Response:      nil,
 			ResponseError: errorResponse,
 		},
@@ -455,7 +464,7 @@ func (provider *ContainerStorageProvider) GetVolumeByName(name string) (*model.V
 	status, err := provider.invoke(
 		&connectivity.Request{
 			Action:        "GET",
-			Path:          fmt.Sprintf("/containers/v1/volumes/detail?name=%s", name),
+			Path:          fmt.Sprintf("/containers/v1/volumes?name=%s", name),
 			Payload:       nil,
 			Response:      &dataWrapper,
 			ResponseError: errorResponse,
@@ -496,7 +505,7 @@ func (provider *ContainerStorageProvider) GetVolumes() ([]*model.Volume, error) 
 	status, err := provider.invoke(
 		&connectivity.Request{
 			Action:        "GET",
-			Path:          "/containers/v1/volumes/detail",
+			Path:          "/containers/v1/volumes",
 			Payload:       nil,
 			Response:      &dataWrapper,
 			ResponseError: errorResponse,
@@ -531,9 +540,9 @@ func (provider *ContainerStorageProvider) GetSnapshots(volumeID string) ([]*mode
 
 	var path string
 	if volumeID == "" {
-		path = fmt.Sprintf("/containers/v1/snapshots/detail")
+		path = fmt.Sprintf("/containers/v1/snapshots")
 	} else {
-		path = fmt.Sprintf("/containers/v1/snapshots/detail?volume_id=%s", volumeID)
+		path = fmt.Sprintf("/containers/v1/snapshots?volume_id=%s", volumeID)
 	}
 
 	status, err := provider.invoke(
@@ -606,7 +615,7 @@ func (provider *ContainerStorageProvider) GetSnapshotByName(name string, volumeI
 	status, err := provider.invoke(
 		&connectivity.Request{
 			Action:        "GET",
-			Path:          fmt.Sprintf("/containers/v1/snapshots/detail?name=%s&volume_id=%s", name, volumeID),
+			Path:          fmt.Sprintf("/containers/v1/snapshots?name=%s&volume_id=%s", name, volumeID),
 			Payload:       nil,
 			Response:      &dataWrapper,
 			ResponseError: errorResponse,
@@ -642,8 +651,8 @@ func (provider *ContainerStorageProvider) GetSnapshotByName(name string, volumeI
 }
 
 // CreateSnapshot will create a new snapshot of the given name of the source volume ID
-func (provider *ContainerStorageProvider) CreateSnapshot(name, sourceVolumeID string) (*model.Snapshot, error) {
-	log.Tracef(">>>>> CreateSnapshot, name: %v, sourceVolumeID: %v", name, sourceVolumeID)
+func (provider *ContainerStorageProvider) CreateSnapshot(name, description, sourceVolumeID string, opts map[string]interface{}) (*model.Snapshot, error) {
+	log.Tracef(">>>>> CreateSnapshot, name: %v, description: %v, sourceVolumeID: %v", name, description, sourceVolumeID)
 	defer log.Traceln("<<<<< CreateSnapshot")
 
 	dataWrapper := &DataWrapper{
@@ -652,8 +661,10 @@ func (provider *ContainerStorageProvider) CreateSnapshot(name, sourceVolumeID st
 	var errorResponse *ErrorsPayload
 
 	snapshot := &model.Snapshot{
-		Name:     name,
-		VolumeID: sourceVolumeID,
+		Name:        name,
+		VolumeID:    sourceVolumeID,
+		Description: description,
+		Config:      opts,
 	}
 
 	// Create the snapshot on the array
