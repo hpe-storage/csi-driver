@@ -407,11 +407,10 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 					status.Error(codes.InvalidArgument,
 						fmt.Sprintf("Requested volume size %d cannot be lesser than snapshot's parent volume size %d", reqVolumeSize, existingParentVolume.Size))
 			}
-			// TODO: Add 'size' param in the CloneCreate() API so that CSP can resize it accordingly
 
 			// Create a clone from another volume
-			log.Infof("About to create a new clone '%s' from snapshot %s with options %+v", request.Name, existingSnap.ID, createOptions)
-			volume, err := storageProvider.CloneVolume(request.Name, description, "", existingSnap.ID, createOptions)
+			log.Infof("About to create a new clone '%s' with size %d from snapshot %s with options %+v", request.Name, reqVolumeSize, existingSnap.ID, createOptions)
+			volume, err := storageProvider.CloneVolume(request.Name, description, "", existingSnap.ID, reqVolumeSize, createOptions)
 			if err != nil {
 				log.Trace("err: " + err.Error())
 				return nil, status.Error(codes.Internal, "Failed to create volume due to error: "+err.Error())
