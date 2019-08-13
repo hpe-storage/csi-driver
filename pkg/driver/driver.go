@@ -436,7 +436,7 @@ func (driver *Driver) ClearRequest(key string) {
 	}
 	// Remove the entry from the cache map
 	delete(driver.requestCache, key)
-	log.Tracef("Print RequestCache: %v", driver.requestCache) // Debug
+	log.Tracef("Print RequestCache: %v", driver.requestCache) // Trace
 	log.Tracef("Successfully removed an entry with key %s from the cache map", key)
 }
 
