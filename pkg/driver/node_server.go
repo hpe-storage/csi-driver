@@ -723,10 +723,11 @@ func (driver *Driver) nodePublishVolume(
 		}
 		if exists {
 			// Remove the target path before creating the symlink
-			log.Tracef("Removing the target path %s", targetPath)
+			log.Tracef("Removing the target path %s before creating symlink to the device", targetPath)
 			if err := util.FileDelete(targetPath); err != nil {
 				return status.Error(codes.Internal,
-					fmt.Sprintf("Error removing the target path %s, err: %s", targetPath, err.Error()))
+					fmt.Sprintf("Error removing the target path %s before creating symlink to the device, err: %s",
+						targetPath, err.Error()))
 			}
 		}
 

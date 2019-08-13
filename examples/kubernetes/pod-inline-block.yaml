@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod-inline-block-1
+  namespace: kube-system
+spec:
+  containers:
+    - name: my-null-pod
+      image: fedora:26
+      command: ["/bin/sh", "-c"]
+      args: [ "tail -f /dev/null" ]
+      volumeMounts:
+        - name: my-volume-1
+          mountPath: /dev/xvda
+  volumes:
+    - name: my-volume-1
+      csi:
+       driver: csi.hpe.com
+       nodePublishSecretRef:
+         name: nimble-secret
+       volumeAttributes:
+         csi.storage.k8s.io/ephemeral: "true"
+         sizeInGiB: "2"
+         volumeModeBlock: "true"
