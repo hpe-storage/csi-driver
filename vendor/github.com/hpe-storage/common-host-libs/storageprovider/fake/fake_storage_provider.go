@@ -53,7 +53,7 @@ func (provider *StorageProvider) CreateVolume(name, description string, size int
 }
 
 // CloneVolume returns a fake volume
-func (provider *StorageProvider) CloneVolume(name, description, sourceID, snapshotID string, opts map[string]interface{}) (*model.Volume, error) {
+func (provider *StorageProvider) CloneVolume(name, description, sourceID, snapshotID string, size int64, opts map[string]interface{}) (*model.Volume, error) {
 	if _, ok := provider.volumes[name]; ok {
 		return nil, fmt.Errorf("Volume named %s already exists", name)
 	}
@@ -82,6 +82,7 @@ func (provider *StorageProvider) CloneVolume(name, description, sourceID, snapsh
 	fakeClone := model.Volume{
 		ID:         name,
 		Name:       name,
+		Size:       size,
 		BaseSnapID: snapshot.ID,
 	}
 	provider.volumes[name] = fakeClone

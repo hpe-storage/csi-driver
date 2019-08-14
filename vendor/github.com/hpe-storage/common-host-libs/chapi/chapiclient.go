@@ -271,8 +271,8 @@ func (chapiClient *Client) AttachDevice(volumes []*model.Volume) (devices []*mod
 		log.Errorf("AttachDevice: Err:%s for volume(%s)", err.Error(), volumes[0].Name)
 		return nil, err
 	}
-
-	if len(devices) != 0 && devices[0].State == model.ActiveState.String() {
+	
+	if len(devices) != 0 && ((devices[0].State == model.ActiveState.String()) || (devices[0].State == "")) {
 		log.Debugf("Device found with active paths %+v", devices[0])
 		return devices, nil
 	}
