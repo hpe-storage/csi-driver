@@ -30,7 +30,7 @@ type StorageProvider interface {
 	GetVolumeByName(name string) (*model.Volume, error)
 	GetVolumes() ([]*model.Volume, error)
 	CreateVolume(name, description string, size int64, opts map[string]interface{}) (*model.Volume, error)
-	CloneVolume(name, description, sourceID, snapshotID string, opts map[string]interface{}) (*model.Volume, error)
+	CloneVolume(name, description, sourceID, snapshotID string, size int64, opts map[string]interface{}) (*model.Volume, error)
 	DeleteVolume(id string) error
 	PublishVolume(id, hostID, accessProtocol string) (*model.PublishInfo, error) // Idempotent
 	UnpublishVolume(id, hostID string) error                                     // Idempotent
