@@ -344,13 +344,18 @@ func UnmountFileSystem(mountPoint string) (*model.Mount, error) {
 		return nil, fmt.Errorf("empty mountpoint was passed")
 	}
 	isFileExist, _, _ := util.FileExists(mountPoint)
+	if !isFileExist {
+		return nil, fmt.Errorf("mountpoint %s does not exist", mountPoint)
+	}
 
 	mountedDevice, err := GetDeviceFromMountPoint(mountPoint)
-	if err != nil || mountedDevice == "" {
-		return nil, fmt.Errorf("unable to get mounted Device from Mountpoint %s. Error :%s", mountPoint, err.Error())
+	if err != nil {
+		return nil, fmt.Errorf("unable to get mounted Device from Mountpoint %s, err: %s", mountPoint, err.Error())
 	}
-	if isFileExist == false && mountedDevice == "" {
-		return nil, fmt.Errorf("mountpoint %s doesnt exist", mountPoint)
+
+	if mountedDevice == "" {
+		log.Infof("No device is mounted on the mountpoint %s", mountPoint)
+		return nil, nil
 	}
 
 	// try to unmount
