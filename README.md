@@ -132,11 +132,12 @@ csiNodePublishSecretName: nimble-secret
 csiNodePublishSecretNamespace: kube-system
 fsMode: "0644"
 fsOwner: "504:21"
+accessProtocol: "iscsi"
 ```
 
 Kubernetes 1.13 (resizer is 1.14 only):
 ```
-csi.storage.k8s.io/fstype: ext4
+csi.storage.k8s.io/fstype: xfs
 csi.storage.k8s.io/provisioner-secret-name: nimble-secret
 csi.storage.k8s.io/provisioner-secret-namespace: kube-system
 csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
@@ -149,6 +150,7 @@ csi.storage.k8s.io/resizer-secret-name: nimble-secret
 csi.storage.k8s.io/resizer-secret-namespace: kube-system
 fsMode: "0644"
 fsOwner: "504:21"
+accessProtocol: "iscsi"
 ```
 ## Building the HPE CSI Driver
 Instructions on how to build the HPE CSI Driver can be found in [BUILDING.md](BUILDING.md)
