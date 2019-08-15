@@ -16,6 +16,7 @@ parameters:
   # Uncomment for k8s 1.14 for resize support
   #csi.storage.k8s.io/resizer-secret-name: nimble-secret
   #csi.storage.k8s.io/resizer-secret-namespace: kube-system
+  accessProtocol: "iscsi"
   description: "Volume from csi"
   dedupeEnabled: "false"
   performancePolicy: "SQL Server"
