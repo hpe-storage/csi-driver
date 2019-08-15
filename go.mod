@@ -65,10 +65,10 @@ require (
 	github.com/valyala/fasthttp v1.4.0 // indirect
 	go.etcd.io/bbolt v1.3.3 // indirect
 	golang.org/x/crypto v0.0.0-20190701094942-4def268fd1a4 // indirect
-	golang.org/x/mobile v0.0.0-20190806162312-597adff16ade // indirect
+	golang.org/x/mobile v0.0.0-20190814143026-e8b3e6111d02 // indirect
 	golang.org/x/net v0.0.0-20190813141303-74dc4d7220e7
 	golang.org/x/sys v0.0.0-20190813064441-fde4db37ae7a // indirect
-	golang.org/x/tools v0.0.0-20190813214729-9dba7caff850 // indirect
+	golang.org/x/tools v0.0.0-20190814235402-ea4142463bf3 // indirect
 	google.golang.org/grpc v1.23.0
 	gopkg.in/errgo.v1 v1.0.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect

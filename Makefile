@@ -1,5 +1,7 @@
 NAME = csi-driver
-REPO_NAME ?= hpestorage/csi-driver
+ifndef REPO_NAME
+	REPO_NAME ?= hpestorage/csi-driver
+endif
 
 # Use the latest git tag
 TAG = $(shell git tag|tail -n1)
@@ -18,6 +20,12 @@ else
 	endif
 endif
 
+# refers to dockerhub if registry is not specified
+IMAGE = $(REPO_NAME):$(VERSION)
+ifdef CONTAINER_REGISTRY
+	IMAGE = $(CONTAINER_REGISTRY)/$(REPO_NAME):$(VERSION)
+endif
+
 # golangci-lint allows us to have a single target that runs multiple linters in
 # the same fashion.  This variable controls which linters are used.
 LINTER_FLAGS = --disable-all --enable=vet --enable=vetshadow --enable=golint --enable=ineffassign --enable=goconst --enable=deadcode --enable=dupl --enable=varcheck --enable=gocyclo --enable=misspell --deadline=240s
@@ -30,9 +38,9 @@ endif
 
 GOENV = PATH=$$PATH:$(GOPATH)/bin
 
-build: check-env clean compile image push
+build: clean compile image push
 
-all: check-env clean tools lint compile image push
+all: clean tools lint compile image push
 
 .PHONY: help
 help:
@@ -47,11 +55,6 @@ help:
 	@echo "    push     - Push csi driver image to registry."
 	@echo "    all      - Clean, lint, build, test, and push image."
 
-.PHONY: check-env
-check-env:
-ifndef CONTAINER_REGISTRY
-	$(error CONTAINER_REGISTRY is undefined)
-endif
 
 .PHONY: tools
 tools:
@@ -71,7 +74,7 @@ clean:
 	@echo "Removing build artifacts"
 	@rm -rf build
 	@echo "Removing the image"
-	-docker image rm $(CONTAINER_REGISTRY)/$(REPO_NAME):$(VERSION) > /dev/null 2>&1
+	-docker image rm $(IMAGE) > /dev/null 2>&1
 
 .PHONY: compile
 compile:
@@ -96,10 +99,10 @@ image:
 	cp -r ../cmd/csi-driver/conform/ conform/ && \
 	cp -r ../cmd/csi-driver/diag/ diag/ && \
 	rsync -r --no-perms --no-owner --no-group  $(TUNE_LINUX_CONFIG_PATH)/ tune/ && \
-	docker build -t $(CONTAINER_REGISTRY)/$(REPO_NAME):$(VERSION) .
+	docker build -t $(IMAGE) .
 
 .PHONY: push
 push:
 	@echo "Publishing csi-driver:$(VERSION)"
-	@docker push $(CONTAINER_REGISTRY)/$(REPO_NAME):$(VERSION)
+	@docker push $(IMAGE)
 
