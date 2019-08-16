@@ -941,7 +941,7 @@ func (driver *Driver) nodePublishEphemeralVolume(
 	if sizeStr != "" {
 		volSize := resource.MustParse(sizeStr)
 		sizeInBytes = volSize.Value()
-		log.Tracef("Ephemeral volume %s requested with size %s (%v)", sizeStr, sizeInBytes)
+		log.Tracef("Ephemeral volume %s requested with size %s (%v)", ephemeralVolName, sizeStr, sizeInBytes)
 	}
 
 	// Construct volume capabitilities to pass to createVolume()
@@ -957,7 +957,6 @@ func (driver *Driver) nodePublishEphemeralVolume(
 		secrets,
 		nil, /* No Volume Source */
 		volumeContext,
-		volumeContext, /* Pass volumeContext as-is for ephemeral volume */
 	)
 	if err != nil {
 		log.Error("err: ", err.Error())

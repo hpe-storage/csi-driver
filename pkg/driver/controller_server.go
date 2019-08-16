@@ -232,7 +232,6 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 		request.VolumeCapabilities,
 		request.Secrets,
 		request.VolumeContentSource,
-		request.Parameters,
 		createParameters,
 	)
 	if err != nil {
@@ -257,11 +256,10 @@ func (driver *Driver) createVolume(
 	volumeCapabilities []*csi.VolumeCapability,
 	secrets map[string]string,
 	volumeContentSource *csi.VolumeContentSource,
-	requestParameters map[string]string,
 	createParameters map[string]string) (*csi.Volume, error) {
 
-	log.Tracef(">>>>> createVolume, name: %s, size: %d, volumeCapabilities: %v, requestParameters: %v, createParameters: %v",
-		name, size, volumeCapabilities, requestParameters, createParameters)
+	log.Tracef(">>>>> createVolume, name: %s, size: %d, volumeCapabilities: %v, createParameters: %v",
+		name, size, volumeCapabilities, createParameters)
 	defer log.Trace("<<<<< createVolume")
 
 	// Check if the requested volume capabilities are supported.
@@ -322,9 +320,9 @@ func (driver *Driver) createVolume(
 	// Build the volume context to be returned to the CO in the create response
 	// This same context will be used by the CO during Publish and Stage workflows
 	respVolContext := map[string]string{}
-	if requestParameters != nil {
+	if createParameters != nil {
 		// Copy the request parameters into resp context
-		respVolContext = requestParameters
+		respVolContext = createParameters
 		// Block or Mount type
 		respVolContext[volumeAccessModeKey] = volAccessType.String()
 		// For block access, the filesystem will be empty.
@@ -757,7 +755,7 @@ func (driver *Driver) controllerPublishVolume(
 	if err != nil {
 		log.Errorf("Failed to publish volume %s, err: %s", volume.ID, err.Error())
 		return nil, status.Error(codes.Internal,
-			fmt.Sprintf("Failed to add ACL to volume %s for node %v via container provider", volume.ID, node))
+			fmt.Sprintf("Failed to add ACL to volume %s for node %v via CSP", volume.ID, node))
 	}
 	log.Tracef("PublishInfo response from CSP: %+v", publishInfo)
 
@@ -866,7 +864,7 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 	if err != nil {
 		log.Trace("err: ", err.Error())
 		return status.Error(codes.Aborted,
-			fmt.Sprintf("Failed to remove ACL via container provider, err: %s", err.Error()))
+			fmt.Sprintf("Failed to remove ACL via CSP, err: %s", err.Error()))
 	}
 	return nil
 }

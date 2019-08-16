@@ -338,34 +338,25 @@ func (driver *Driver) GetVolumeByName(name string, secrets map[string]string) (*
 	var volume *model.Volume
 	var err error
 	// When secrets specified
-	if len(secrets) != 0 {
-		log.Tracef("Secrets are provided. Checking with this particular storage provider.")
-
-		// Get Storage Provider
-		storageProvider, err := driver.GetStorageProvider(secrets)
-		if err != nil {
-			log.Error("err: ", err.Error())
-			return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
-		}
-
-		// check if the volume exists
-		volume, err = storageProvider.GetVolumeByName(name)
-		if err != nil {
-			log.Error("err: ", err.Error())
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume %s", name))
-		}
-	} else {
-		log.Tracef("Secrets not provided. Checking all known storage providers.")
-
-		// Search the volume in each known storage provider
-		for _, storageProvider := range driver.storageProviders {
-			volume, err = storageProvider.GetVolumeByName(name)
-			if err != nil {
-				log.Error("err: ", err.Error())
-				return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume %s", name))
-			}
-		}
+	if secrets == nil || len(secrets) != 0 {
+		err := fmt.Errorf("Secrets are not provided to get the volume %s via CSP", name)
+		return nil, err
 	}
+
+	// Get Storage Provider
+	storageProvider, err := driver.GetStorageProvider(secrets)
+	if err != nil {
+		log.Error("err: ", err.Error())
+		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
+	}
+
+	// check if the volume exists
+	volume, err = storageProvider.GetVolumeByName(name)
+	if err != nil {
+		log.Error("err: ", err.Error())
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume %s", name))
+	}
+
 	return volume, nil
 }
 
