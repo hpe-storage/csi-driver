@@ -44,8 +44,7 @@ These parameters are applicable only for Pod inline volumes and to be specified 
 
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
-| csi.storage.k8s.io/ephemeral | Boolean | Indicates that the request is for ephemeral inline volume.
-This is a mandatory parameter and must be set to true.|
+| csi.storage.k8s.io/ephemeral | Boolean | Indicates that the request is for ephemeral inline volume. This is a mandatory parameter and must be set to true.|
 | size | Text | The size of ephemeral volume specified in MiB or GiB. If unspecified, a default value will be used.|
 | volumeModeBlock | Boolean | Indicates that the volume to be mounted for raw block access. If unspecified, volume will be mounted for filesystem access.|
 

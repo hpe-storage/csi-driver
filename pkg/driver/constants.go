@@ -70,4 +70,6 @@ const (
 
 	// Used to specify block volume access type in the POD spec
 	volumeModeBlockKey = "volumeModeBlock"
+
+	trueKey = "true"
 )

@@ -56,7 +56,7 @@ Kubernetes 1.15
  * `--allow-privileged` flag must be set to true for the API server for resize support
  * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet for resize support
  * `--feature-gates=CSIInlineVolume=true` feature gate flags must be set to true for both the API server and kubelet for pod inline volumes (Ephemeral Local Volumes) support
- * `VolumePVCDataSource=true` feature gate flags must be set to true for both the API server and kubelet for Volume cloning support
+ * `--feature-gates=VolumePVCDataSource=true` feature gate flags must be set to true for both the API server and kubelet for Volume cloning support
 
 ### Deploying the HPE CSI Driver for Kubernetes
 The following example walks through deployment of the driver with a HPE Nimble Storage CSP backend. Replace any Nimble references with your particular CSP nomenclature.
@@ -162,6 +162,7 @@ accessProtocol: "iscsi"
 ```
 
 Kubernetes 1.14 (Alpha feature: Resizer):
+
 Kubernetes 1.15 (Alpha features: PVC Cloning and Pod Inline Volume):
 
 ```markdown
