@@ -19,7 +19,7 @@ import (
 const (
 	serviceNamePrefix    = "hpe-multiwriter-svc-"
 	deploymentNamePrefix = "hpe-multiwriter-"
-	pvcNamePrefix        = "hpe-multiwriter-pvc"
+	pvcNamePrefix        = "hpe-multiwriter-pvc-"
 	multiWriterNamespace = "kube-system"
 	nfsImage             = "quay.io/luis_pabon0/ganesha" // TODO evaluate latest nfs-ganesha image
 	deletionInterval     = 30                            // 60s with sleep interval of 2s
@@ -28,7 +28,7 @@ const (
 	creationDelay        = 2 * time.Second
 	// defaultVolumeSize is the implementation-specific default value in bytes
 	defaultVolumeSize = 10 * 1024 * 1024 * 1024 // 10 GiB
-	//defaultExportPath = "/exports"
+	defaultExportPath = "/exports"
 )
 
 // CreateMultiWriterVolume creates multi-writer volume abstracting underlying nfs pvc, deployment and service
@@ -43,7 +43,7 @@ func (flavor *Flavor) CreateMultiWriterVolume(request *csi.CreateVolumeRequest) 
 	}
 
 	// clone pvc and modify to RWO mode and destroyOnDelete
-	claimClone, err := flavor.makeNFSPvc(claim)
+	claimClone, err := flavor.cloneClaim(claim)
 	if err != nil {
 		return nil, false, err
 	}
@@ -92,6 +92,7 @@ func (flavor *Flavor) DeleteMultiWriterVolume(claimName string) error {
 	if err != nil {
 		return err
 	}
+
 	// delete service with name hpe-multiwriter-svc-<originalclaim-uid>
 	serviceName := fmt.Sprintf("%s%s", serviceNamePrefix, claim.ObjectMeta.UID)
 	err = flavor.DeleteNFSService(serviceName)
@@ -105,9 +106,10 @@ func (flavor *Flavor) DeleteMultiWriterVolume(claimName string) error {
 	if err != nil {
 		log.Errorf("unable to delete nfs deployment %s as part of cleanup, err %s", deploymentName, err.Error())
 	}
+
 	// delete pvc with name hpe-multiwriter-pvc-<originalclaim-uid>
 	// if deployment is still around, then pvc cannot be deleted due to protection, try to cleanup as best effort
-	pvcName := fmt.Sprintf("%s-%s", pvcNamePrefix, claim.ObjectMeta.UID)
+	pvcName := fmt.Sprintf("%s%s", pvcNamePrefix, claim.ObjectMeta.UID)
 	err = flavor.DeleteNFSPVC(pvcName)
 	if err != nil {
 		log.Errorf("unable to delete nfs pvc %s as part of cleanup, err %s", pvcName, err.Error())
@@ -203,16 +205,16 @@ func (flavor *Flavor) getPvFromName(pvName string) (*core_v1.PersistentVolume, e
 	return pv, nil
 }
 
-func (flavor *Flavor) makeNFSPvc(claim *core_v1.PersistentVolumeClaim) (*core_v1.PersistentVolumeClaim, error) {
-	log.Tracef(">>>>> makeNFSPvc with claim %s", claim.ObjectMeta.Name)
-	defer log.Tracef("<<<<< makeNFSPvc")
+func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim) (*core_v1.PersistentVolumeClaim, error) {
+	log.Tracef(">>>>> cloneClaim with claim %s", claim.ObjectMeta.Name)
+	defer log.Tracef("<<<<< cloneClaim")
 
 	// get copy of original pvc
 	claimClone := claim.DeepCopy()
 	claimClone.ObjectMeta.Namespace = multiWriterNamespace
 	claimClone.ObjectMeta.ResourceVersion = ""
 	// modify name with hpe-multiwriter-pvc-<originalclaim-uid>
-	claimClone.ObjectMeta.Name = fmt.Sprintf("%s-%s", pvcNamePrefix, claim.ObjectMeta.UID)
+	claimClone.ObjectMeta.Name = fmt.Sprintf("%s%s", pvcNamePrefix, claim.ObjectMeta.UID)
 	// change access-mode to RWO for underlying nfs pvc
 	claimClone.Spec.AccessModes = []core_v1.PersistentVolumeAccessMode{core_v1.ReadWriteOnce}
 	return claimClone, nil
@@ -229,7 +231,7 @@ func (flavor *Flavor) CreateNFSPVC(claim *core_v1.PersistentVolumeClaim) (*core_
 	}
 
 	// wait for pvc to be bound
-	err = flavor.waitForPvcCreation(newClaim.ObjectMeta.Name)
+	err = flavor.waitForPVCCreation(newClaim.ObjectMeta.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -613,9 +615,9 @@ func (flavor *Flavor) deleteResourceAndWait(namespace, name, resourceType string
 	return fmt.Errorf("gave up waiting for %s %s to be terminated", resourceType, name)
 }
 
-func (flavor *Flavor) waitForPvcCreation(claimName string) error {
-	log.Tracef(">>>>> waitForPvcCreation with %s", claimName)
-	defer log.Tracef("<<<<< waitForPvcCreation")
+func (flavor *Flavor) waitForPVCCreation(claimName string) error {
+	log.Tracef(">>>>> waitForPVCCreation with %s", claimName)
+	defer log.Tracef("<<<<< waitForPVCCreation")
 
 	// wait for the resource to be deleted
 	sleepTime := creationDelay

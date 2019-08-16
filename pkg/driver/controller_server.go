@@ -739,7 +739,7 @@ func (driver *Driver) controllerPublishVolume(
 	// Check if volume is requested with RWX or ROX modes and intercept here
 	if driver.IsSupportedMultiNodeAccessMode([]*csi.VolumeCapability{request.VolumeCapability}) {
 		// TODO: check and add client ACL here
-		log.Infof("ControllerPublish requested with multi-writer access-mode, returning success")
+		log.Info("ControllerPublish requested with multi-writer access-mode, returning success")
 		return &csi.ControllerPublishVolumeResponse{
 			PublishContext: map[string]string{volumeAccessMode: volAccessType.String()},
 		}, nil
