@@ -16,31 +16,34 @@ const (
 	// Default mount directory
 	defaultMountDir = "/var/lib/kubelet/plugins/hpe.com/mounts"
 
+	// GiB in bytes
+	giB int64 = 1 * 1024 * 1024 * 1024
+
 	// defaultVolumeSize is the implementation-specific default value in bytes
-	defaultVolumeSize = 10 * 1024 * 1024 * 1024 // 10 GiB
+	defaultVolumeSize int64 = 10 * giB // 10 GiB in Bytes
 
 	// MountFlagsSizeMaxAllowed is the CSI spec defined limit
 	mountFlagsSizeMaxAllowed = 4 * 1024 // 4 KiB
 
 	// Filesystem Details
-	filesystemType  = "fsType"
-	filesystemOwner = "fsOwner"
-	filesystemMode  = "fsMode"
+	fsTypeKey  = "fsType"
+	fsOwnerKey = "fsOwner"
+	fsModeKey  = "fsMode"
 
 	// Group Target Scope
 	targetScopeGroup = "group"
 
 	// Volume Publish params
-	serialNumber     = "serialNumber"
-	accessProtocol   = "accessProtocol"
-	targetName       = "targetName"
-	targetScope      = "targetScope"
-	lunID            = "lunId"
-	discoveryIP      = "discoveryIp"
-	chapUsername     = "chapUsername"
-	chapPassword     = "chapPassword"
-	readOnly         = "readOnly"
-	volumeAccessMode = "volumeAccessMode"
+	serialNumberKey     = "serialNumber"
+	accessProtocolKey   = "accessProtocol"
+	targetNameKey       = "targetName"
+	targetScopeKey      = "targetScope"
+	lunIDKey            = "lunId"
+	discoveryIPKey      = "discoveryIp"
+	chapUsernameKey     = "chapUsername"
+	chapPasswordKey     = "chapPassword"
+	readOnlyKey         = "readOnly"
+	volumeAccessModeKey = "volumeAccessMode"
 
 	// deviceInfoFileName is used to store the device details in a JSON file
 	deviceInfoFileName = "deviceInfo.json"
@@ -50,4 +53,21 @@ const (
 
 	// common properties
 	descriptionKey = "description"
+
+	// csiEphemeral attribute to be used to specify ephemeral volume request type
+	csiEphemeral = "csi.storage.k8s.io/ephemeral"
+
+	// POD attributes propogated to the CSI
+	csiEphemeralPodName      = "csi.storage.k8s.io/pod.name"
+	csiEphemeralPodNamespace = "csi.storage.k8s.io/pod.namespace"
+	csiEphemeralPodUID       = "csi.storage.k8s.io/pod.uid"
+
+	// Prefix used by CSI ephemeral inline volume names
+	ephemeralVolNamePrefix = "ephemeral-"
+
+	// Ephemeral volume size specified in the POD spec
+	sizeKey = "size"
+
+	// Used to specify block volume access type in the POD spec
+	volumeModeBlockKey = "volumeModeBlock"
 )

@@ -210,29 +210,6 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 	}
 	defer driver.RemoveFromDBIfPending(dbKey)
 
-	// Check if the requested volume capabilities are supported.
-	_, err := driver.AreVolumeCapabilitiesSupported(request.VolumeCapabilities)
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument,
-			fmt.Sprintf("Found one or more unsupported volume capabilities: %+v",
-				request.VolumeCapabilities))
-	}
-
-	// Validate and Get volume access type
-	volAccessType, err := driver.ValidateAndGetVolumeAccessType(request.VolumeCapabilities)
-	if err != nil {
-		log.Errorf("Failed to validate and retrieve volume access type, err: %v", err.Error())
-		return nil, status.Error(codes.InvalidArgument,
-			fmt.Sprintf("Failed to validate and retrieve volume access type, %v", err.Error()))
-	}
-
-	// Secrets
-	storageProvider, err := driver.GetStorageProvider(request.Secrets)
-	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
-	}
-
 	// CapacityRange
 	reqVolumeSize := int64(defaultVolumeSize) // Default value
 	if request.GetCapacityRange() != nil {
@@ -241,25 +218,63 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 		// Note: 'limit_bytes' not supported ???
 	}
 
+	// Process override parameters if requested
 	createParameters, err := driver.flavor.ConfigureAnnotations(request.Name, request.Parameters)
 	if err != nil {
 		log.Errorf("Failed to configure create parameters from PVC annotations. err=%v", err)
 		return nil, status.Error(codes.Internal, "Failed to configure create parameters from PVC annotations")
 	}
 
-	// TODO: use additional properties here to configure the volume further... these might come in from doryd
-	createOptions := make(map[string]interface{})
-	for k, v := range createParameters {
-		// convert create options to snakecase before passing it to CSP
-		createOptions[util.ToSnakeCase(k)] = v
+	// Create volume
+	volume, err := driver.createVolume(
+		request.Name,
+		reqVolumeSize,
+		request.VolumeCapabilities,
+		request.Secrets,
+		request.VolumeContentSource,
+		createParameters,
+	)
+	if err != nil {
+		log.Errorf("Volume creation failed, err: %s", err.Error())
+		return nil, err
 	}
-	log.Trace("Volume create options: ", createOptions)
 
-	// extract the description if present
-	var description string
-	if val, ok := createOptions[descriptionKey]; ok {
-		description = fmt.Sprintf("%v", val)
-		delete(createOptions, descriptionKey)
+	// Update DB entry
+	if err := driver.UpdateDB(dbKey, volume); err != nil {
+		return nil, err
+	}
+
+	return &csi.CreateVolumeResponse{
+		Volume: volume,
+	}, nil
+}
+
+// nolint: gocyclo
+func (driver *Driver) createVolume(
+	name string,
+	size int64,
+	volumeCapabilities []*csi.VolumeCapability,
+	secrets map[string]string,
+	volumeContentSource *csi.VolumeContentSource,
+	createParameters map[string]string) (*csi.Volume, error) {
+
+	log.Tracef(">>>>> createVolume, name: %s, size: %d, volumeCapabilities: %v, createParameters: %v",
+		name, size, volumeCapabilities, createParameters)
+	defer log.Trace("<<<<< createVolume")
+
+	// Check if the requested volume capabilities are supported.
+	_, err := driver.AreVolumeCapabilitiesSupported(volumeCapabilities)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument,
+			fmt.Sprintf("Found one or more unsupported volume capabilities: %+v", volumeCapabilities))
+	}
+
+	// Validate and Get volume access type
+	volAccessType, err := driver.ValidateAndGetVolumeAccessType(volumeCapabilities)
+	if err != nil {
+		log.Errorf("Failed to validate and retrieve volume access type, err: %v", err.Error())
+		return nil, status.Error(codes.InvalidArgument,
+			fmt.Sprintf("Failed to validate and retrieve volume access type, %v", err.Error()))
 	}
 
 	// The volume access type in the request will be either 'Block' or 'Mount'
@@ -269,7 +284,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 		foundFsType := false
 		// Only one FS type must be specified in the volcaps list.
 		// If more than one is requested, then return appropriate error.
-		for _, cap := range request.VolumeCapabilities {
+		for _, cap := range volumeCapabilities {
 			// Get filesystem type
 			if cap.GetMount() != nil && cap.GetMount().GetFsType() != "" {
 				if foundFsType && filesystem != cap.GetMount().GetFsType() {
@@ -287,20 +302,43 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 		}
 	}
 
+	// TODO: use additional properties here to configure the volume further... these might come in from doryd
+	createOptions := make(map[string]interface{})
+	for k, v := range createParameters {
+		// convert create options to snakecase before passing it to CSP
+		createOptions[util.ToSnakeCase(k)] = v
+	}
+	log.Trace("Volume create options: ", createOptions)
+
+	// extract the description if present
+	var description string
+	if val, ok := createOptions[descriptionKey]; ok {
+		description = fmt.Sprintf("%v", val)
+		delete(createOptions, descriptionKey)
+	}
+
 	// Build the volume context to be returned to the CO in the create response
 	// This same context will be used by the CO during Publish and Stage workflows
 	respVolContext := map[string]string{}
-	if request.Parameters != nil {
+	if createParameters != nil {
 		// Copy the request parameters into resp context
-		respVolContext = request.Parameters
-
+		respVolContext = createParameters
+		// Block or Mount type
+		respVolContext[volumeAccessModeKey] = volAccessType.String()
 		// For block access, the filesystem will be empty.
 		if filesystem != "" {
 			log.Trace("Adding filesystem to the volume context, Filesystem: ", filesystem)
-			respVolContext[filesystemType] = filesystem
+			respVolContext[fsTypeKey] = filesystem
 		}
 	}
 	log.Trace("Volume context in response to CO: ", respVolContext)
+
+	// Secrets
+	storageProvider, err := driver.GetStorageProvider(secrets)
+	if err != nil {
+		log.Error("err: ", err.Error())
+		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
+	}
 
 	// TODO: check for version compatibility for new features
 
@@ -318,7 +356,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 	//
 	// I don't think the spec considers the possiblity of reusing names across multiple groups.
 	// We should ask a question on the email group.
-	existingVolume, err := storageProvider.GetVolumeByName(request.Name)
+	existingVolume, err := storageProvider.GetVolumeByName(name)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Error(codes.Internal, "Failed to check if volume exists")
@@ -332,50 +370,44 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 		// Check if the existing volume's size matches with the requested size
 		// TODO: Nimble doesn't support capacity range, but other SP might.
 		// We may consider adding range support in the future???
-		if existingVolume.Size != reqVolumeSize {
-			log.Trace("Requested size :", reqVolumeSize)
+		if existingVolume.Size != size {
+			log.Errorf("Volume already exists with size %v but different size %v being requested.",
+				existingVolume.Size, size)
 			return nil, status.Error(
 				codes.AlreadyExists,
-				fmt.Sprintf("Volume %s with different size %d already exists", request.Name, existingVolume.Size))
+				fmt.Sprintf("Volume %s with size %v already exists but different size %v being requested.",
+					name, existingVolume.Size, size))
 		}
 
 		// Check if the source content is being requested.
-		if request.VolumeContentSource != nil {
-			log.Tracef("Requested volumeContentSource, %+v", request.VolumeContentSource)
+		if volumeContentSource != nil {
+			log.Tracef("Requested volumeContentSource, %+v", volumeContentSource)
 			return nil, status.Error(
 				codes.AlreadyExists,
-				fmt.Sprintf("Volume %s already exists, but the source content is being requested", request.Name))
+				fmt.Sprintf("Volume %s already exists, but the source content is being requested", name))
 		}
 
-		// Update DB entry
-		if err := driver.UpdateDB(dbKey, existingVolume); err != nil {
-			return nil, err
-		}
-
-		// Return existing volume
+		// Return existing volume with volume context info
 		log.Tracef("Returning the existing volume '%s' with size %d", existingVolume.Name, existingVolume.Size)
-		return &csi.CreateVolumeResponse{
-			Volume: &csi.Volume{
-				VolumeId:      existingVolume.ID,
-				CapacityBytes: existingVolume.Size,
-			},
+		return &csi.Volume{
+			VolumeId:      existingVolume.ID,
+			CapacityBytes: existingVolume.Size,
+			VolumeContext: respVolContext,
 		}, nil
 	}
 
-	// TODO: If volume already exists and volumeContentSource is specified, should CSI throw error ???
-
-	// VolumeContentSource
-	if request.VolumeContentSource != nil {
-		log.Tracef("Requested VolumeContentSource : %+v", request.VolumeContentSource)
+	// Create volume using pre-populated content if requested
+	if volumeContentSource != nil {
+		log.Tracef("Request with volumeContentSource: %+v", volumeContentSource)
 
 		// Verify source snap if specified
-		if request.VolumeContentSource.GetSnapshot() != nil {
+		if volumeContentSource.GetSnapshot() != nil {
 			// Check if the driver supports SNAPSHOT service
 			if !driver.IsSupportedControllerCapability(csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT) {
 				return nil, status.Error(codes.InvalidArgument, "Unable to create volume from snapshot. Driver does not support snapshot create/delete")
 			}
 
-			snapID := request.VolumeContentSource.GetSnapshot().SnapshotId
+			snapID := volumeContentSource.GetSnapshot().SnapshotId
 			// Check if the specified snapshot exists on the CSP
 			log.Trace("Lookup snapshot with ID ", snapID)
 			existingSnap, err := storageProvider.GetSnapshot(snapID)
@@ -386,7 +418,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 			if existingSnap == nil {
 				return nil, status.Error(codes.NotFound, "Could not find base snapshot with ID "+snapID)
 			}
-			log.Tracef("GetSnapshot returned: %#v", existingSnap)
+			log.Tracef("Found snapshot: %#v", existingSnap)
 
 			// Check if parent volume ID is present
 			if existingSnap.VolumeID == "" {
@@ -399,106 +431,87 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 				log.Error("err: ", err.Error())
 				return nil,
 					status.Error(codes.Internal,
-						fmt.Sprintf("Failed to check if snapshot's parent volume %s with ID %s exist", existingSnap.VolumeName, existingSnap.VolumeID))
+						fmt.Sprintf("Failed to check if snapshot's parent volume %s with ID %s exist, err: %s",
+							existingSnap.VolumeName, existingSnap.VolumeID, err.Error()))
 			}
 			// The requested size is must be at least equal to the snapshot's parent volume size
-			if reqVolumeSize < existingParentVolume.Size {
+			if size < existingParentVolume.Size {
 				return nil,
 					status.Error(codes.InvalidArgument,
-						fmt.Sprintf("Requested volume size %d cannot be lesser than snapshot's parent volume size %d", reqVolumeSize, existingParentVolume.Size))
+						fmt.Sprintf("Requested volume size %d cannot be lesser than snapshot's parent volume size %d", size, existingParentVolume.Size))
 			}
 
 			// Create a clone from another volume
-			log.Infof("About to create a new clone '%s' with size %d from snapshot %s with options %+v", request.Name, reqVolumeSize, existingSnap.ID, createOptions)
-			volume, err := storageProvider.CloneVolume(request.Name, description, "", existingSnap.ID, reqVolumeSize, createOptions)
+			log.Infof("About to create a new clone '%s' from snapshot %s with options %+v", name, existingSnap.ID, createOptions)
+			volume, err := storageProvider.CloneVolume(name, description, "", existingSnap.ID, size, createOptions)
 			if err != nil {
-				log.Trace("err: " + err.Error())
+				log.Tracef("Clone creation failed, err: %s", err.Error())
 				return nil, status.Error(codes.Internal, "Failed to create volume due to error: "+err.Error())
 			}
 
-			// Update DB entry
-			if err := driver.UpdateDB(dbKey, volume); err != nil {
-				return nil, err
-			}
-
 			// Return newly cloned volume (clone from snapshot)
-			return &csi.CreateVolumeResponse{
-				Volume: &csi.Volume{
-					VolumeId:      volume.ID,
-					CapacityBytes: volume.Size,
-					VolumeContext: respVolContext,
-				},
+			return &csi.Volume{
+				VolumeId:      volume.ID,
+				CapacityBytes: volume.Size,
+				VolumeContext: respVolContext,
+				ContentSource: volumeContentSource,
 			}, nil
 		}
 
 		// Verify source volume if specified
-		if request.VolumeContentSource.GetVolume() != nil {
-			volID := request.VolumeContentSource.GetVolume().VolumeId
+		if volumeContentSource.GetVolume() != nil {
+			volID := volumeContentSource.GetVolume().VolumeId
 			// Check if the specified volume exists on the CSP
-			log.Trace("Lookup volume with ID", volID)
+			log.Trace("Lookup volume with ID ", volID)
 			existingParentVolume, err := storageProvider.GetVolume(volID)
 			if err != nil {
-				log.Error("Failed to process volume source, err: ", err.Error())
-				return nil, status.Error(codes.Internal, "Error while looking for parent volume with ID "+volID)
+				log.Errorf("Failed to get volume source, err: %s", err.Error())
+				return nil, status.Error(codes.Internal, fmt.Sprintf("Error while looking for parent volume %s, err: %s", volID, err.Error()))
 			}
 			if existingParentVolume == nil {
 				return nil, status.Error(codes.NotFound, "Could not find parent volume with ID "+volID)
 			}
-			log.Trace("Parent Volume found :", existingParentVolume.Name)
+			log.Trace("Found parent volume: %+v", existingParentVolume)
 
 			// The requested size is must be at least equal to the snapshot's parent volume size
-			if reqVolumeSize < existingParentVolume.Size {
+			if size < existingParentVolume.Size {
 				return nil,
 					status.Error(codes.InvalidArgument,
-						fmt.Sprintf("Requested volume size %d cannot be lesser than parent volume size %d", reqVolumeSize, existingParentVolume.Size))
+						fmt.Sprintf("Requested volume size %d cannot be lesser than parent volume size %d", size, existingParentVolume.Size))
 			}
-			// TODO: Add 'size' param in the CloneCreate() API so that CSP can resize it accordingly
 
 			// Create a clone from another volume
-			log.Infof("About to create a new clone '%s' with size %d from volume %s with options %+v", request.Name, reqVolumeSize, existingParentVolume.ID, createOptions)
-			volume, err := storageProvider.CloneVolume(request.Name, description, existingParentVolume.ID, "", reqVolumeSize, createOptions)
+			log.Infof("About to create a new clone '%s' of size %v from volume %s with options %+v", name, size, existingParentVolume.ID, createOptions)
+			volume, err := storageProvider.CloneVolume(name, description, existingParentVolume.ID, "", size, createOptions)
 			if err != nil {
-				log.Trace("err: " + err.Error())
+				log.Tracef("Clone creation failed, err: %s", err.Error())
 				return nil, status.Error(codes.Internal, "Failed to create volume due to error: "+err.Error())
 			}
 
-			// Update DB entry
-			if err := driver.UpdateDB(dbKey, volume); err != nil {
-				return nil, err
-			}
-
 			// Return newly cloned volume (clone from volume)
-			return &csi.CreateVolumeResponse{
-				Volume: &csi.Volume{
-					VolumeId:      volume.ID,
-					CapacityBytes: volume.Size,
-					VolumeContext: respVolContext,
-				},
+			return &csi.Volume{
+				VolumeId:      volume.ID,
+				CapacityBytes: volume.Size,
+				VolumeContext: respVolContext,
+				ContentSource: volumeContentSource,
 			}, nil
 		}
 		return nil, status.Error(codes.InvalidArgument, "One of snapshot or parent volume source must be specified")
 	}
 
 	// Create new volume
-	log.Infof("About to create a new volume '%s' with size %d and options %+v", request.Name, reqVolumeSize, createOptions)
-	volume, err := storageProvider.CreateVolume(request.Name, description, reqVolumeSize, createOptions)
+	log.Infof("About to create a new volume '%s' with size %d and options %+v", name, size, createOptions)
+	volume, err := storageProvider.CreateVolume(name, description, size, createOptions)
 	if err != nil {
-		log.Trace("err: " + err.Error())
-		return nil, status.Error(codes.Internal, "Failed to create volume due to error: "+err.Error())
+		log.Trace("Volume creation failed, err: " + err.Error())
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create volume %s due to error: %s", name, err.Error()))
 	}
 
-	// Update DB entry
-	if err := driver.UpdateDB(dbKey, volume); err != nil {
-		return nil, err
-	}
-
-	// Return newly created volume
-	return &csi.CreateVolumeResponse{
-		Volume: &csi.Volume{
-			VolumeId:      volume.ID,
-			CapacityBytes: volume.Size,
-			VolumeContext: respVolContext,
-		},
+	// Return newly created volume with volume context info
+	return &csi.Volume{
+		VolumeId:      volume.ID,
+		CapacityBytes: volume.Size,
+		VolumeContext: respVolContext,
 	}, nil
 }
 
@@ -524,44 +537,57 @@ func (driver *Driver) DeleteVolume(ctx context.Context, request *csi.DeleteVolum
 	}
 	defer driver.ClearRequest(key)
 
-	log.Infof("DeleteVolume requested volume %s for deletion", request.VolumeId)
+	// Delete by ID
+	if err := driver.deleteVolume(request.VolumeId, request.Secrets, false); err != nil {
+		log.Errorf("Error deleting the volume %s, err: %s", request.VolumeId, err.Error())
+		return nil, err
+	}
+	return &csi.DeleteVolumeResponse{}, nil
+}
+
+func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, force bool) error {
+	log.Tracef(">>>>> deleteVolume, volumeID: %s, force: %v", volumeID, force)
+	defer log.Trace("<<<<< deleteVolume")
 
 	// Get Volume using secrets
-	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+	existingVolume, err := driver.GetVolumeByID(volumeID, secrets)
 	if err != nil {
 		if status.Code(err) == codes.NotFound {
-			log.Trace("Could not find volume with ID " + request.VolumeId)
-			return &csi.DeleteVolumeResponse{}, nil
+			log.Trace("Could not find volume with ID " + volumeID)
+			return nil
 		}
 		// Error while retrieving the volume using id and secrets
-		return nil, err
+		return err
 	}
 	log.Tracef("Found Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
 
 	// Check if volume is busy or in-use
 	if existingVolume.InUse {
 		log.Errorf("Volume %s with ID %s still in use", existingVolume.Name, existingVolume.ID)
-		return nil, status.Errorf(codes.FailedPrecondition, fmt.Sprintf("Volume %s with ID %s is still in use", existingVolume.Name, existingVolume.ID))
+		return status.Errorf(codes.FailedPrecondition, fmt.Sprintf("Volume %s with ID %s is still in use", existingVolume.Name, existingVolume.ID))
 	}
 
 	// Get Storage Provider
-	storageProvider, err := driver.GetStorageProvider(request.Secrets)
+	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
+		return status.Error(codes.Internal,
+			fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
 	}
 
 	// Delete the volume from the array
-	if err := storageProvider.DeleteVolume(request.VolumeId); err != nil {
-		return nil, status.Error(codes.Internal, "Error while deleting volume "+existingVolume.Name)
+	log.Infof("About to delete volume %s with force=%v", volumeID, force)
+	if err := storageProvider.DeleteVolume(volumeID, force); err != nil {
+		log.Error("err: ", err.Error())
+		return status.Error(codes.Internal,
+			fmt.Sprintf("Error while deleting volume %s, err: %s", existingVolume.Name, err.Error()))
 	}
 
 	// Delete DB entry
 	if err := driver.RemoveFromDB(existingVolume.Name); err != nil {
-		return nil, err
+		return err
 	}
-
-	return &csi.DeleteVolumeResponse{}, nil
+	return nil
 }
 
 // ControllerPublishVolume ...
@@ -603,66 +629,103 @@ func (driver *Driver) ControllerPublishVolume(ctx context.Context, request *csi.
 	}
 	defer driver.ClearRequest(key)
 
+	// Publish volume by adding ACL
+	publishContext, err := driver.controllerPublishVolume(
+		request.VolumeId,
+		request.NodeId,
+		request.Secrets,
+		request.VolumeCapability,
+		request.Readonly,
+		request.VolumeContext,
+	)
+	if err != nil {
+		log.Errorf("Error controller publishing volume %s, err: %s", request.VolumeId, err.Error())
+		return nil, err
+	}
+
+	return &csi.ControllerPublishVolumeResponse{
+		PublishContext: publishContext,
+	}, nil
+}
+
+func (driver *Driver) controllerPublishVolume(
+	volumeID string,
+	nodeID string,
+	secrets map[string]string,
+	volumeCapability *csi.VolumeCapability,
+	readOnlyFlag bool,
+	volumeContext map[string]string) (map[string]string, error) {
+
+	log.Tracef(">>>>> controllerPublishVolume with volumeID: %v, nodeID: %s, volumeCapability: %v, readOnlyFlag: %v, volumeContext: %v",
+		volumeID, nodeID, volumeCapability, readOnlyFlag, volumeContext)
+	defer log.Trace("<<<<< controllerPublishVolume")
+
 	// Read-Only
 	// Indicates SP MUST publish the volume in readonly mode.
 	// CO MUST set this field to false if SP does not have the PUBLISH_READONLY controller capability.
 	// This is a REQUIRED field
 	if !driver.IsSupportedControllerCapability(csi.ControllerServiceCapability_RPC_PUBLISH_READONLY) {
-		if request.Readonly != false {
+		if readOnlyFlag != false {
 			return nil, status.Error(codes.InvalidArgument, "Invalid readonly parameter. It must be set to false")
 		}
 	}
-	if request.Readonly {
+	if readOnlyFlag {
 		// Publish the volume in read-only mode if set to true
-		log.Tracef("Volume %s must be published in READONLY mode", request.VolumeId)
+		log.Infof("Volume %s will be published with read-only access", volumeID)
 	}
 
-	log.Infof("ControllerPublishVolume requested volume %s and node %s with capability %v and context %v",
-		request.VolumeId, request.NodeId, request.VolumeCapability, request.VolumeContext)
-
-	// Validate Capability
-	log.Tracef("Validating volume capability: %+v", request.VolumeCapability)
-	_, err := driver.IsValidVolumeCapability(request.VolumeCapability)
+	// Check if driver supports the requested volume capability
+	_, err := driver.IsValidVolumeCapability(volumeCapability)
 	if err != nil {
-		log.Errorf("Found unsupported volume capability %+v", request.VolumeCapability)
+		log.Errorf("Unsupported volume capability %+v, err: %v", volumeCapability, err.Error())
 		return nil, err
 	}
 
 	// Get volume access type
-	volAccessType, err := driver.getVolumeAccessType(request.VolumeCapability)
+	volAccessType, err := driver.getVolumeAccessType(volumeCapability)
 	if err != nil {
-		log.Errorf("Failed to retrieve volume access type, err: %v", err.Error())
+		log.Errorf("Error retrieving volume access type, err: %v", err.Error())
 		return nil, status.Error(codes.InvalidArgument,
 			fmt.Sprintf("Failed to retrieve volume access type, %v", err.Error()))
 	}
 
-	// Get Storage Provider
-	storageProvider, err := driver.GetStorageProvider(request.Secrets)
-	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
+	// Check if the requested access type matches with the volume created access type
+	if volAccessType.String() != volumeContext[volumeAccessModeKey] {
+		log.Errorf("Volume access type '%v' specified at the creation time mismatched with the requested access type '%v'",
+			volumeContext[volumeAccessModeKey], volAccessType.String())
+		return nil, status.Error(codes.InvalidArgument,
+			fmt.Sprintf("Volume %s created with access type %v, but controller publish requested with access type %v",
+				volumeID, volumeContext[volumeAccessModeKey], volAccessType.String()))
 	}
 
-	// Get Volume
-	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+	// Get Volume using secrets
+	volume, err := driver.GetVolumeByID(volumeID, secrets)
 	if err != nil {
-		log.Error("Failed to get volume ", request.VolumeId)
+		log.Errorf("Failed to get volume %s, err: %s", volumeID, err.Error())
 		return nil, err
 	}
-	log.Tracef("Found Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
 
 	// Decode and check if the node is configured
-	node, err := driver.flavor.GetNodeInfo(request.NodeId)
+	node, err := driver.flavor.GetNodeInfo(nodeID)
 	if err != nil {
-		log.Error("Cannot unmarshal node from node ID. Error: ", err.Error())
+		log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
 		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	// Get storageProvider using secrets
+	storageProvider, err := driver.GetStorageProvider(secrets)
+	if err != nil {
+		log.Error("err: ", err.Error())
+		return nil, status.Error(codes.Internal,
+			fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
 	}
 
 	// check if the node context is already available in the CSP
 	existingNode, err := storageProvider.GetNodeContext(node.UUID)
 	if err != nil {
-		log.Error("Error retrieving the node info from the CSP. Error: ", err.Error())
-		return nil, status.Error(codes.Internal, err.Error())
+		log.Errorf("Error retrieving the node info from the CSP. err: %s", err.Error())
+		return nil, status.Error(codes.Internal,
+			fmt.Sprintf("Error retrieving the node info for ID %s from the CSP, err: %s", node.UUID, err.Error()))
 	}
 	if existingNode != nil {
 		log.Tracef("CSP has already been notified about the node with ID %s and UUID %s", existingNode.ID, existingNode.UUID)
@@ -671,64 +734,63 @@ func (driver *Driver) ControllerPublishVolume(ctx context.Context, request *csi.
 		log.Tracef("Notifying CSP about Node with ID %s and UUID %s", node.ID, node.UUID)
 		if err = storageProvider.SetNodeContext(node); err != nil {
 			log.Error("err: ", err.Error())
-			return nil, status.Error(codes.Internal, "Failed to provide node context to CSP")
+			return nil, status.Error(codes.Internal,
+				fmt.Sprintf("Failed to provide node context %v to CSP", node))
 		}
 	}
 
 	// Configure access protocol defaulting to iSCSI when unspecified
-	var requestedAccessProtocol = request.VolumeContext[accessProtocol]
+	var requestedAccessProtocol = volumeContext[accessProtocolKey]
 	if requestedAccessProtocol == "" {
 		if len(node.Iqns) != 0 {
 			requestedAccessProtocol = iscsi
 		} else {
 			requestedAccessProtocol = fc
 		}
+		log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
 	}
 
 	// Add ACL to the volume based on the requested Node ID
-	publishInfo, err := storageProvider.PublishVolume(request.VolumeId, node.UUID, requestedAccessProtocol)
+	publishInfo, err := storageProvider.PublishVolume(volume.ID, node.UUID, requestedAccessProtocol)
 	if err != nil {
-		log.Trace("err: ", err.Error())
-		return nil, status.Error(codes.Internal, "Failed to add ACL via container provider")
+		log.Errorf("Failed to publish volume %s, err: %s", volume.ID, err.Error())
+		return nil, status.Error(codes.Internal,
+			fmt.Sprintf("Failed to add ACL to volume %s for node %v via CSP", volume.ID, node))
 	}
-	log.Tracef("PublishInfo response from CSP: %v", publishInfo)
+	log.Tracef("PublishInfo response from CSP: %+v", publishInfo)
 
 	// target scope is nimble specific therefore extract it from the volume config
 	var requestedTargetScope = targetScopeGroup
-	if val, ok := existingVolume.Config[targetScope]; ok {
+	if val, ok := volume.Config[targetScopeKey]; ok {
 		requestedTargetScope = fmt.Sprintf("%v", val)
 	}
 
 	// TODO: add any additional info necessary to mount the device
 	publishContext := map[string]string{}
-	publishContext[serialNumber] = publishInfo.SerialNumber
-	publishContext[accessProtocol] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
-	publishContext[targetName] = publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetName
-	publishContext[targetScope] = requestedTargetScope
-	publishContext[lunID] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
+	publishContext[serialNumberKey] = publishInfo.SerialNumber
+	publishContext[accessProtocolKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
+	publishContext[targetNameKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetName
+	publishContext[targetScopeKey] = requestedTargetScope
+	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
-		publishContext[discoveryIP] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIP
-		publishContext[chapUsername] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapUser
-		publishContext[chapPassword] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapPassword
+		publishContext[discoveryIPKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIP
+		publishContext[chapUsernameKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapUser
+		publishContext[chapPasswordKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapPassword
 	}
-	publishContext[readOnly] = strconv.FormatBool(request.Readonly)
-	publishContext[volumeAccessMode] = volAccessType.String() // Block or Mount
+	publishContext[readOnlyKey] = strconv.FormatBool(readOnlyFlag)
+	publishContext[volumeAccessModeKey] = volumeContext[volumeAccessModeKey] // Block or Mount type
 
 	// Publish FS details only if 'mount' access is being requested
-	if volAccessType == model.MountType {
+	if publishContext[volumeAccessModeKey] == model.MountType.String() {
 		// Filesystem Details
 		log.Trace("Adding filesystem details to the publish context")
-		publishContext[filesystemType] = request.VolumeContext[filesystemType]
-		publishContext[filesystemOwner] = request.VolumeContext[filesystemOwner]
-		publishContext[filesystemMode] = request.VolumeContext[filesystemMode]
+		publishContext[fsTypeKey] = volumeContext[fsTypeKey]
+		publishContext[fsOwnerKey] = volumeContext[fsOwnerKey]
+		publishContext[fsModeKey] = volumeContext[fsModeKey]
 	}
-
-	log.Tracef("Volume %s with ID %s published with the following details: %v",
-		existingVolume.Name, existingVolume.ID, publishContext)
-
-	return &csi.ControllerPublishVolumeResponse{
-		PublishContext: publishContext,
-	}, nil
+	log.Tracef("Volume %s with ID %s published with the following details: %+v",
+		volume.Name, volume.ID, publishContext)
+	return publishContext, nil
 }
 
 // ControllerUnpublishVolume ...
@@ -763,37 +825,48 @@ func (driver *Driver) ControllerUnpublishVolume(ctx context.Context, request *cs
 	}
 	defer driver.ClearRequest(key)
 
-	log.Infof("ControllerUnpublishVolume requested volume %s and node %s", request.VolumeId, request.NodeId)
-
-	// Decode and get node details
-	node, err := driver.flavor.GetNodeInfo(request.NodeId)
-	if err != nil {
-		return nil, status.Error(codes.Aborted, err.Error())
-	}
-
-	// Get Storage Provider
-	storageProvider, err := driver.GetStorageProvider(request.Secrets)
-	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Aborted, "Failed to get storage provider from secrets")
-	}
-
-	// Get Volume
-	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
-	if err != nil {
-		log.Error("Failed to get volume ", request.VolumeId)
+	// Controller unpublish the volume to remove the ACL
+	if err := driver.controllerUnpublishVolume(request.VolumeId, request.NodeId, request.Secrets); err != nil {
+		log.Errorf("Failed to controller unpublish volume %s, err: %s", request.VolumeId, err.Error())
 		return nil, err
-	}
-	log.Tracef("Found Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
-
-	// Remove ACL from the volume based on the requested Node ID
-	err = storageProvider.UnpublishVolume(request.VolumeId, node.UUID)
-	if err != nil {
-		log.Trace("err: ", err.Error())
-		return nil, status.Error(codes.Aborted, "Failed to remove ACL via container provider")
 	}
 
 	return &csi.ControllerUnpublishVolumeResponse{}, nil
+}
+
+func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, secrets map[string]string) error {
+	log.Tracef(">>>>> controllerUnpublishVolume, volumeID: %s, nodeID: %s", volumeID, nodeID)
+	defer log.Trace("<<<<< controllerUnpublishVolume")
+
+	// Decode and get node details
+	node, err := driver.flavor.GetNodeInfo(nodeID)
+	if err != nil {
+		return status.Error(codes.Aborted, err.Error())
+	}
+
+	// Get Storage Provider
+	storageProvider, err := driver.GetStorageProvider(secrets)
+	if err != nil {
+		log.Error("err: ", err.Error())
+		return status.Error(codes.Internal,
+			fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
+	}
+
+	// Get Volume
+	existingVolume, err := driver.GetVolumeByID(volumeID, secrets)
+	if err != nil {
+		log.Errorf("Failed to get volume %s, err: %s", volumeID, err.Error())
+		return err
+	}
+
+	// Remove ACL from the volume based on the requested Node ID
+	err = storageProvider.UnpublishVolume(existingVolume.ID, node.UUID)
+	if err != nil {
+		log.Trace("err: ", err.Error())
+		return status.Error(codes.Aborted,
+			fmt.Sprintf("Failed to remove ACL via CSP, err: %s", err.Error()))
+	}
+	return nil
 }
 
 // ValidateVolumeCapabilities ...
