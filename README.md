@@ -43,11 +43,11 @@ This guide is primarily written to accommodate installation on upstream Kubernet
 Kubernetes 1.12
  * `--allow-privileged` flag must be set to true for both the API server and the kubelet
  * `--feature-gates=CSINodeInfo=true,CSIDriverRegistry=true,VolumeSnapshotDataSource=true` feature gate flags must be set to true for both the API server and the kubelet
- 
+
 Kubernetes 1.13
  * `--allow-privileged` flag must be set to true for the API server
  * `--feature-gates=VolumeSnapshotDataSource=true` feature gate flags must be set to true for the API server
- 
+
 Kubernetes 1.14
  * `--allow-privileged` flag must be set to true for the API server
  * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet
@@ -123,7 +123,9 @@ The supported `StorageClass` parameters are dictated by the CSP from which the C
 Common CSI Driver parameters regardless of CSP:
 
 Kubernetes 1.12
-```
+
+```markdown
+
 fstype: xfs
 csiProvisionerSecretName: nimble-secret
 csiProvisionerSecretNamespace: kube-system
@@ -138,8 +140,10 @@ fsOwner: "504:21"
 accessProtocol: "iscsi"
 ```
 
-Kubernetes 1.13
-```
+Kubernetes 1.13 (resizer is 1.14 only):
+
+```markdown
+
 csi.storage.k8s.io/fstype: xfs 
 csi.storage.k8s.io/provisioner-secret-name: nimble-secret
 csi.storage.k8s.io/provisioner-secret-namespace: kube-system
@@ -156,8 +160,10 @@ accessProtocol: "iscsi"
 
 Kubernetes 1.14 (Alpha feature: Resizer):
 Kubernetes 1.15 (Alpha features: PVC Cloning and Pod Inline Volume):
-```
-csi.storage.k8s.io/fstype: xfs 
+
+```markdown
+
+csi.storage.k8s.io/fstype: xfs
 csi.storage.k8s.io/provisioner-secret-name: nimble-secret
 csi.storage.k8s.io/provisioner-secret-namespace: kube-system
 csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
@@ -174,13 +180,47 @@ accessProtocol: "iscsi"
 ```
 
 ## Building the HPE CSI Driver
+
 Instructions on how to build the HPE CSI Driver can be found in [BUILDING.md](BUILDING.md)
 
+## Logging and Diagnostic
+
+Log files associated with the HPE CSI Driver logs data to the standard output stream. If the logs need to be retained for long term, use a standard logging solution. Some of the logs on the host are persisted which follow standard logrotate policies.
+
+### CSI Driver Logs
+
+* Node Driver:
+  `kubectl logs -f  daemonset.apps/hpe-csi-node  hpe-csi-driver -n kube-system`
+
+* Controller Driver:
+   `kubectl logs -f deployment.apps/hpe-csi-controller hpe-csi-driver -n kube-system`
+
+**Note:** The logs for both Node and Controller Drivers are persisted at `/var/log/hpe-csi.log`
+
+### Container Service Provider Logs
+
+CSP logs can be accessed as
+
+`kubectl logs -f svc/nimble-csp-svc -n kube-system`
+
+### Log Collector
+
+Log collector script `hpe-logcollector.sh` can be used to collect diagnostic logs from the hosts.
+
+```markdown
+
+hpe-logcollector.sh -h
+Diagnostic LogCollector Script to collect HPE Storage logs
+```
+
 ## Support
+
 The HPE CSI Driver is considered beta software. Do not use for production and do not contact HPE for support. Please file any issues, questions or feature requests [here](https://github.com/hpe-storage/csi-driver/issues). You may also join our Slack community to chat with HPE folks close to this project. We hang out in `#NimbleStorage` and `#Kubernetes` at [slack.hpedev.io](https://slack.hpedev.io/).
 
 ## Contributing
+
 We value all feedback and contributions. If you find any issues or want to contribute, please feel free to open an issue or file a PR. More details in [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ## License
+
 This is open source software licensed using the Apache License 2.0. Please see [LICENSE](LICENSE) for details.

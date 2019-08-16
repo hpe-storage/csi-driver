@@ -285,25 +285,38 @@ func (provider *ContainerStorageProvider) CloneVolume(name, description, sourceI
 		}
 	}
 
-	// Check for valid resize value. Must be equal or higher than the snapshot size.
-	if size < snapshot.Size {
-		errMsg := fmt.Sprintf("Clone size %v requested is smaller than the snapshot size %v", size, snapshot.Size)
-		return nil, fmt.Errorf("Could not create new volume clone, err: %s", errMsg)
+	var volume *model.Volume
+	if size != 0 {
+		// Check for valid resize value. Must be equal or higher than the snapshot size.
+		if size < snapshot.Size {
+			errMsg := fmt.Sprintf("Clone size %v requested is smaller than the snapshot size %v", size, snapshot.Size)
+			return nil, fmt.Errorf("Could not create new volume clone, err: %s", errMsg)
+		}
+		// Create clone with new size (>= parent volume size)
+		volume = &model.Volume{
+			Name:        name,
+			Description: description,
+			Size:        size,
+			BaseSnapID:  snapshot.ID,
+			Clone:       true,
+			Config:      opts,
+		}
+	} else {
+		// Don't set the clone size input (Defaults to parent volume size)
+		volume = &model.Volume{
+			Name:        name,
+			Description: description,
+			BaseSnapID:  snapshot.ID,
+			Clone:       true,
+			Config:      opts,
+		}
 	}
+	log.Tracef("Clone requested with volume config: %+v", volume)
 
 	dataWrapper := &DataWrapper{
 		Data: &model.Volume{},
 	}
 	var errorResponse *ErrorsPayload
-
-	volume := &model.Volume{
-		Name:        name,
-		Description: description,
-		Size:        size,
-		BaseSnapID:  snapshot.ID,
-		Clone:       true,
-		Config:      opts,
-	}
 
 	// Clone the volume on the array
 	status, err := provider.invoke(

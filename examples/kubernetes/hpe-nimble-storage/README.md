@@ -21,11 +21,11 @@ These parameters are mutable betweeen a parent volume and creating a clone from 
 | performancePolicy | Text | The name of the performance policy to assign to the volume. Default example performance policies include "Backup Repository", "Exchange 2003 data store", "Exchange 2007 data store", "Exchange 2010 data store", "Exchange log", "Oracle OLTP", "Other Workloads", "SharePoint", "SQL Server", "SQL Server 2012", "SQL Server Logs". |
 | protectionTemplate | Text | The name of the protection template to assign to the volume. Default examples of protection templates include "Retain-30Daily", "Retain-48Hourly-30aily-52Weekly", and "Retain-90Daily". |
 | folder | Text | The name of the Nimble folder in which to place the volume. |
-| thick | Boolean | Indicates that the volume should be thick provisioned (`dedupeEnabled` and `thick` are mutually exclusive). |
-| dedupeEnabled | Boolean | Indicates that the volume should enable deduplication (`dedupeEnabled` and `thick` are mutually exclusive). |
+| thick | Boolean | Indicates that the volume should be thick provisioned. |
+| dedupeEnabled | Boolean | Indicates that the volume should enable deduplication. |
 | syncOnDetach | Boolean | Indicates that a snapshot of the volume should be synced to the replication partner each time it is detached from a node. |
 
-**Note**: Performance Policies, Folders and Protection Ttemplates are Nimble specific constructs that can be created on the Nimble array itself to address particular requirements or workloads. Please consult with the storage admin or read the admin guide found on [HPE InfoSight](https://infosight.hpe.com).
+**Note**: Performance Policies, Folders and Protection Templates are Nimble specific constructs that can be created on the Nimble array itself to address particular requirements or workloads. Please consult with the storage admin or read the admin guide found on [HPE InfoSight](https://infosight.hpe.com).
 
 ### Provisioning parameters
 These parameters are immutable for clones once a volume has been created.
@@ -34,7 +34,7 @@ These parameters are immutable for clones once a volume has been created.
 | --------- | ------ | ----------- |
 | fsOwner | userId:groupId | The user id and group id that should own the root directory of the filesystem. |
 | fsMode | Octal digits | 1 to 4 octal digits that represent the file mode to be applied to the root directory of the filesystem. |
-| encrypted | Boolean | Indicates that the volume should be encrypted (`dedupeEnabled` and `encrypted` are mutually exclusive). |
+| encrypted | Boolean | Indicates that the volume should be encrypted. |
 | pool | Text | The name of the pool in which to place the volume. |
 
 **Note:** `fsOwner` and `fsMode` is not applicable when using `volumeMode: Block` in the `PersistentVolumeClaim`.
