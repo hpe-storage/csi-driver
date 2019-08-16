@@ -12,6 +12,7 @@ These parameters are mutable betweeen a parent volume and creating a clone from 
 
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
+| accessProtocol | Text | The access protocol to use when accessing the persistent volume.  Defaults to "iscsi" when unspecified. |
 | volumeNameSuffix | Text | A suffix to add to the end of each volume name. |
 | destroyOnDelete | Boolean | Indicates the backing Nimble volume (including snapshots) should be destroyed when the PVC is deleted. |
 | limitIops | Integer | The IOPS limit of the volume. The IOPS limit should be in the range 256 to 4294967294, or -1 for unlimited (default). |
@@ -38,12 +39,22 @@ These parameters are immutable for clones once a volume has been created.
 
 **Note:** `fsOwner` and `fsMode` is not applicable when using `volumeMode: Block` in the `PersistentVolumeClaim`.
 
+### Pod inline volume parameters (Local Ephemeral Volumes)
+These parameters are applicable only for Pod inline volumes and to be specified within Pod spec.
+
+| Parameter | String | Description |
+| --------- | ------ | ----------- |
+| csi.storage.k8s.io/ephemeral | Boolean | Indicates that the request is for ephemeral inline volume.
+This is a mandatory parameter and must be set to true.|
+| size | Text | The size of ephemeral volume specified in MiB or GiB. If unspecified, a default value will be used.|
+| volumeModeBlock | Boolean | Indicates that the volume to be mounted for raw block access. If unspecified, volume will be mounted for filesystem access.|
+
 ### Cloning parameters
 Cloning supports two modes of cloning. Either use `cloneOf` and reference a PVC in the current namespace or use `importVolAsClone` and reference a Nimble volume name to clone and import to Kubernetes.
 
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
-| cloneOf | Text | The name of the PVC to be cloned. `cloneOf` and `importVolAsClone` are mutually exclusive. |
+| cloneOf | Text | The name of the PV to be cloned. `cloneOf` and `importVolAsClone` are mutually exclusive. |
 | importVolAsClone | Text | The name of the Nimble volume to clone and import. `importVolAsClone` and `cloneOf` are mutually exclusive. |
 | snapshot | Text | The name of the snapshot to base the clone on. This is optional. If not specified, a new snapshot is created. |
 | createSnapshot | Boolean | Indicates that a new snapshot of the volume should be taken matching the name provided in the `snapshot` parameter. If the `snapshot` parameter is not specified, a default name will be created. |

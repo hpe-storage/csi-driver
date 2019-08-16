@@ -16,11 +16,11 @@ const (
 	// Default mount directory
 	defaultMountDir = "/var/lib/kubelet/plugins/hpe.com/mounts"
 
-	// defaultVolumeSize is the implementation-specific default value in bytes
-	defaultVolumeSize = 10 * 1024 * 1024 * 1024 // 10 GiB in Bytes
+	// GiB in bytes
+	giB int64 = 1 * 1024 * 1024 * 1024
 
-	// GiBToByte to convert GiB to Bytes
-	GiBToByte = 1 * 1024 * 1024 * 1024
+	// defaultVolumeSize is the implementation-specific default value in bytes
+	defaultVolumeSize int64 = 10 * giB // 10 GiB in Bytes
 
 	// MountFlagsSizeMaxAllowed is the CSI spec defined limit
 	mountFlagsSizeMaxAllowed = 4 * 1024 // 4 KiB
@@ -52,8 +52,7 @@ const (
 	Pending = "PENDING"
 
 	// common properties
-	descriptionKey     = "description"
-	destroyOnDeleteKey = "destroyOnDelete"
+	descriptionKey = "description"
 
 	// csiEphemeral attribute to be used to specify ephemeral volume request type
 	csiEphemeral = "csi.storage.k8s.io/ephemeral"
@@ -67,7 +66,7 @@ const (
 	ephemeralVolNamePrefix = "ephemeral-"
 
 	// Ephemeral volume size specified in the POD spec
-	sizeInGiBKey = "sizeInGiB"
+	sizeKey = "size"
 
 	// Used to specify block volume access type in the POD spec
 	volumeModeBlockKey = "volumeModeBlock"

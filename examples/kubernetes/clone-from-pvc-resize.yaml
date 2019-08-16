@@ -1,15 +1,14 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: clone-of-pvc-1-resized
-  namespace: kube-system
+  name: clone-of-my-pvc-1-resized
 spec:
   dataSource:
-    name: pvc-1
+    name: my-pvc-1
     kind: PersistentVolumeClaim
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
       storage: 20Gi
-  storageClassName: sc-1
+  storageClassName: my-sc-1

@@ -540,18 +540,16 @@ func (driver *Driver) DeleteVolume(ctx context.Context, request *csi.DeleteVolum
 	defer driver.ClearRequest(key)
 
 	// Delete by ID
-	if err := driver.deleteVolume(request.VolumeId, request.Secrets); err != nil {
+	if err := driver.deleteVolume(request.VolumeId, request.Secrets, false); err != nil {
 		log.Errorf("Error deleting the volume %s, err: %s", request.VolumeId, err.Error())
 		return nil, err
 	}
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
-func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string) error {
-	log.Tracef(">>>>> deleteVolume, volumeID: %s", volumeID)
+func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, force bool) error {
+	log.Tracef(">>>>> deleteVolume, volumeID: %s, force: %v", volumeID, force)
 	defer log.Trace("<<<<< deleteVolume")
-
-	log.Infof("About to delete volume %s", volumeID)
 
 	// Get Volume using secrets
 	existingVolume, err := driver.GetVolumeByID(volumeID, secrets)
@@ -580,7 +578,8 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string) e
 	}
 
 	// Delete the volume from the array
-	if err := storageProvider.DeleteVolume(volumeID); err != nil {
+	log.Infof("About to delete volume %s with force=%v", volumeID, force)
+	if err := storageProvider.DeleteVolume(volumeID, force); err != nil {
 		log.Error("err: ", err.Error())
 		return status.Error(codes.Internal,
 			fmt.Sprintf("Error while deleting volume %s, err: %s", existingVolume.Name, err.Error()))

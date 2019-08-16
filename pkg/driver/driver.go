@@ -330,6 +330,65 @@ func (driver *Driver) GetVolumeByID(id string, secrets map[string]string) (*mode
 	return volume, nil
 }
 
+// GetVolumeByName retrieves the volume instance by name from the CSP if exists
+func (driver *Driver) GetVolumeByName(name string, secrets map[string]string) (*model.Volume, error) {
+	log.Trace(">>>>> GetVolumeByName, name: ", name)
+	defer log.Trace("<<<<< GetVolumeByName")
+
+	var volume *model.Volume
+	var err error
+	// When secrets specified
+	if len(secrets) != 0 {
+		log.Tracef("Secrets are provided. Checking with this particular storage provider.")
+
+		// Get Storage Provider
+		storageProvider, err := driver.GetStorageProvider(secrets)
+		if err != nil {
+			log.Error("err: ", err.Error())
+			return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
+		}
+
+		// check if the volume exists
+		volume, err = storageProvider.GetVolumeByName(name)
+		if err != nil {
+			log.Error("err: ", err.Error())
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume %s", name))
+		}
+	} else {
+		log.Tracef("Secrets not provided. Checking all known storage providers.")
+
+		// Search the volume in each known storage provider
+		for _, storageProvider := range driver.storageProviders {
+			volume, err = storageProvider.GetVolumeByName(name)
+			if err != nil {
+				log.Error("err: ", err.Error())
+				return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume %s", name))
+			}
+		}
+	}
+	return volume, nil
+}
+
+// DeleteVolumeByName deletes the volume by name. If force is true, then destroys it immediately.
+func (driver *Driver) DeleteVolumeByName(name string, secrets map[string]string, force bool) error {
+	// Get the volume if exists
+	volume, err := driver.GetVolumeByName(name, secrets)
+	if err != nil {
+		log.Error("err: ", err.Error())
+		return err
+	}
+	if volume != nil {
+		// Destroy volume if exists
+		err = driver.deleteVolume(volume.ID, secrets, force)
+		if err != nil {
+			log.Errorf("Error destroying the volume %s with ID %s, err: %s",
+				name, volume.ID, err.Error())
+			return err
+		}
+	}
+	return nil
+}
+
 // HandleDuplicateRequest checks for the duplicate request in the cache map.
 // If yes, then returns ABORTED error, else inserts the entry into cache map and returns nil
 func (driver *Driver) HandleDuplicateRequest(key string) error {

@@ -25,6 +25,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
+	//"k8s.io/kubernetes/pkg/volume/util"
 )
 
 const (
@@ -408,29 +409,32 @@ func (flavor *Flavor) getNodeInfoByUUID(uuid string) (*crd_v1.HPENodeInfo, error
 	return nil, nil
 }
 
-func (flavor *Flavor) getPodInfoByName(name string, namespace string) (*v1.Pod, error) {
-	log.Infof(">>>>> getPodInfoByName, name: %s, namespace: %s", name, namespace)
-	defer log.Infof("<<<<< getPodInfoByName")
+func (flavor *Flavor) getPodByName(name string, namespace string) (*v1.Pod, error) {
+	log.Infof(">>>>> getPodByName, name: %s, namespace: %s", name, namespace)
+	defer log.Infof("<<<<< getPodByName")
 
 	pod, err := flavor.kubeClient.CoreV1().Pods(namespace).Get(name, meta_v1.GetOptions{})
 	if err != nil {
-		log.Errorf("Error while retrieving the pod %s/%s, err: %v", namespace, name, err.Error())
+		log.Errorf("Error retrieving the pod %s/%s, err: %v", namespace, name, err.Error())
 		return nil, err
 	}
 	return pod, nil
 }
 
-func (flavor *Flavor) getCredentialsFromSecret(k8s kubernetes.Interface, secretRef *v1.LocalObjectReference, namespace string) (map[string]string, error) {
-	credentials := map[string]string{}
-	secret, err := k8s.CoreV1().Secrets(namespace).Get(secretRef.Name, meta_v1.GetOptions{})
+// getSecretForPod locates secret by name in the pod's namespace and returns secret map
+func (flavor *Flavor) getSecretForPod(pod *v1.Pod, secretName string) (map[string]string, error) {
+	log.Infof(">>>>> getSecretForPod, secretName: %s, podNamespace: %s", secretName, pod.Namespace)
+	defer log.Infof("<<<<< getSecretForPod")
+
+	secret := make(map[string]string)
+	secrets, err := flavor.kubeClient.CoreV1().Secrets(pod.Namespace).Get(secretName, meta_v1.GetOptions{})
 	if err != nil {
-		return credentials, fmt.Errorf("Failed to find the secret %s in the namespace %s with error: %v",
-			secretRef.Name, namespace, err.Error())
+		return secret, err
 	}
-	for key, value := range secret.Data {
-		credentials[key] = string(value)
+	for name, data := range secrets.Data {
+		secret[name] = string(data)
 	}
-	return credentials, nil
+	return secret, nil
 }
 
 // makeVolumeHandle returns csi-<sha256(podUID,volSourceSpecName)>
@@ -446,7 +450,7 @@ func (flavor *Flavor) GetVolSecretFromPod(volumeHandle string, podName string, n
 	log.Tracef(">>>>> GetVolSecretFromPod, volumeHandle: %s, podName: %s, namespace: %s", volumeHandle, podName, namespace)
 	defer log.Trace("<<<<< GetVolSecretFromPod")
 
-	pod, err := flavor.getPodInfoByName(podName, namespace)
+	pod, err := flavor.getPodByName(podName, namespace)
 	if err != nil {
 		log.Errorf("Unable to get secrets for volume %s, err: %v", volumeHandle, err.Error())
 		return nil, err
@@ -454,13 +458,12 @@ func (flavor *Flavor) GetVolSecretFromPod(volumeHandle string, podName string, n
 	if pod == nil {
 		return nil, fmt.Errorf("Pod %s is nil", podName)
 	}
-	secrets := map[string]string{}
+
 	for _, vol := range pod.Spec.Volumes {
 		// Compute the volumeHandle for each CSI volume and match with the given volumeHandle
 		handle := makeVolumeHandle(string(pod.GetUID()), vol.Name)
 		if handle == volumeHandle {
-			log.Infof("Matched ephemeral volume %s attached to the POD %s/%s", vol.Name, namespace, podName)
-			//if vol.Name == volName {
+			log.Infof("Matched ephemeral volume %s attached to the POD [%s/%s]", vol.Name, namespace, podName)
 			csiSource := vol.VolumeSource.CSI
 			if csiSource == nil {
 				return nil, fmt.Errorf("CSI volume source is nil")
@@ -469,16 +472,16 @@ func (flavor *Flavor) GetVolSecretFromPod(volumeHandle string, podName string, n
 			// No secrets are configured
 			if csiSource.NodePublishSecretRef == nil {
 				log.Trace("No secrets are configured")
-				return secrets, nil
+				return nil, fmt.Errorf("Missing 'NodePublishSecretRef' in the POD spec")
 			}
 
-			// Get the secrets map
-			secrets, err = flavor.getCredentialsFromSecret(flavor.kubeClient, csiSource.NodePublishSecretRef, namespace)
+			// Get the secrets
+			secret, err := flavor.getSecretForPod(pod, csiSource.NodePublishSecretRef.Name)
 			if err != nil {
-				return nil, fmt.Errorf("Failed to get NodePublishSecretRef %s, err: %v",
-					csiSource.NodePublishSecretRef.Name, err.Error())
+				log.Errorf("failed to get secret from [%q/%q]", pod.Namespace, csiSource.NodePublishSecretRef.Name)
+				return nil, fmt.Errorf("failed to get secret from [%q/%q]", pod.Namespace, csiSource.NodePublishSecretRef.Name)
 			}
-			return secrets, nil
+			return secret, nil
 		}
 	}
 	return nil, fmt.Errorf("Pod %s/%s does not contain the volume %s", namespace, podName, volumeHandle)

@@ -52,6 +52,9 @@ Kubernetes 1.14
  * `--allow-privileged` flag must be set to true for the API server
  * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet
 
+Kubernetes 1.15
+ * `--feature-gates=CSIInlineVolume=true,VolumePVCDataSource=true` feature gate flags must be set to true for both the API server and kubelet
+
 ### Deploying the HPE CSI Driver for Kubernetes
 The following example walks through deployment of the driver with a HPE Nimble Storage CSP backend. Replace any Nimble references with your particular CSP nomenclature.
 
@@ -102,7 +105,7 @@ kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/m
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v1.0.0.yaml
 ```
 
-Kubernetes 1.14
+Kubernetes 1.14 and 1.15
 ```
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v1.1.0.yaml
@@ -132,11 +135,29 @@ csiNodePublishSecretName: nimble-secret
 csiNodePublishSecretNamespace: kube-system
 fsMode: "0644"
 fsOwner: "504:21"
+accessProtocol: "iscsi"
 ```
 
-Kubernetes 1.13 (resizer is 1.14 only):
+Kubernetes 1.13
 ```
-csi.storage.k8s.io/fstype: ext4
+csi.storage.k8s.io/fstype: xfs 
+csi.storage.k8s.io/provisioner-secret-name: nimble-secret
+csi.storage.k8s.io/provisioner-secret-namespace: kube-system
+csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
+csi.storage.k8s.io/controller-publish-secret-namespace: kube-system
+csi.storage.k8s.io/node-stage-secret-name: nimble-secret
+csi.storage.k8s.io/node-stage-secret-namespace: kube-system
+csi.storage.k8s.io/node-publish-secret-name: nimble-secret
+csi.storage.k8s.io/node-publish-secret-namespace: kube-system
+fsMode: "0644"
+fsOwner: "504:21"
+accessProtocol: "iscsi"
+```
+
+Kubernetes 1.14 (Alpha feature: Resizer):
+Kubernetes 1.15 (Alpha features: PVC Cloning and Pod Inline Volume):
+```
+csi.storage.k8s.io/fstype: xfs 
 csi.storage.k8s.io/provisioner-secret-name: nimble-secret
 csi.storage.k8s.io/provisioner-secret-namespace: kube-system
 csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
@@ -149,7 +170,9 @@ csi.storage.k8s.io/resizer-secret-name: nimble-secret
 csi.storage.k8s.io/resizer-secret-namespace: kube-system
 fsMode: "0644"
 fsOwner: "504:21"
+accessProtocol: "iscsi"
 ```
+
 ## Building the HPE CSI Driver
 Instructions on how to build the HPE CSI Driver can be found in [BUILDING.md](BUILDING.md)
 
