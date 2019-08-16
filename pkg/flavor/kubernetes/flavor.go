@@ -13,8 +13,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	crd_v1 "github.com/hpe-storage/k8s-custom-resources/pkg/apis/hpestorage/v1"
 	crd_client "github.com/hpe-storage/k8s-custom-resources/pkg/client/clientset/versioned"
-
-	v1 "k8s.io/api/core/v1"
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"

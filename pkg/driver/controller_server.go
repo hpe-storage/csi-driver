@@ -218,6 +218,30 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 		// Note: 'limit_bytes' not supported ???
 	}
 
+	// Check if volume is requested with RWX or ROX modes and intercept here
+	if driver.IsSupportedMultiNodeAccessMode(request.VolumeCapabilities) {
+		// check if block access type is requested with multi-writer mode
+		if volAccessType == model.BlockType {
+			return nil, status.Error(codes.InvalidArgument, "multi-writer volume access mode is not supported with block access type")
+		}
+		volume, rollback, err := driver.flavor.CreateMultiWriterVolume(request)
+		if err == nil {
+			// Return multi-writer volume
+			return &csi.CreateVolumeResponse{
+				Volume: volume,
+			}, nil
+		}
+		if rollback {
+			// attempt to teardown all nfs resources
+			err2 := driver.flavor.DeleteMultiWriterVolume(request.Name)
+			if err2 != nil {
+				log.Errorf("failed to rollback resources of multi-writer volume for %s, err %s", request.Name, err2.Error())
+			}
+		}
+		log.Errorf("Failed to create multi-writer volume %s, err %s", request.Name, err.Error())
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
 	// Process override parameters if requested
 	createParameters, err := driver.flavor.ConfigureAnnotations(request.Name, request.Parameters)
 	if err != nil {
@@ -549,6 +573,20 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	log.Tracef(">>>>> deleteVolume, volumeID: %s, force: %v", volumeID, force)
 	defer log.Trace("<<<<< deleteVolume")
 
+	// Check if this is a multi-writer volume
+	if driver.flavor.IsMultiWriterVolume(request.VolumeId) {
+		claim, err := driver.flavor.GetMultiWriterClaimFromClaimUID(request.VolumeId)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+
+		err = driver.flavor.DeleteMultiWriterVolume(claim.ObjectMeta.Name)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		return &csi.DeleteVolumeResponse{}, nil
+	}
+
 	// Get Volume using secrets
 	existingVolume, err := driver.GetVolumeByID(volumeID, secrets)
 	if err != nil {
@@ -696,6 +734,22 @@ func (driver *Driver) controllerPublishVolume(
 		return nil, status.Error(codes.InvalidArgument,
 			fmt.Sprintf("Volume %s created with access type %v, but controller publish requested with access type %v",
 				volumeID, volumeContext[volumeAccessModeKey], volAccessType.String()))
+	}
+
+	// Check if volume is requested with RWX or ROX modes and intercept here
+	if driver.IsSupportedMultiNodeAccessMode([]*csi.VolumeCapability{request.VolumeCapability}) {
+		// TODO: check and add client ACL here
+		log.Infof("ControllerPublish requested with multi-writer access-mode, returning success")
+		return &csi.ControllerPublishVolumeResponse{
+			PublishContext: map[string]string{volumeAccessMode: volAccessType.String()},
+		}, nil
+	}
+
+	// Get Storage Provider
+	storageProvider, err := driver.GetStorageProvider(request.Secrets)
+	if err != nil {
+		log.Error("err: ", err.Error())
+		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
 	}
 
 	// Get Volume using secrets

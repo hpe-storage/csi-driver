@@ -6,7 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/hpe-storage/common-host-libs/model"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"k8s.io/api/core/v1"
 )
 
 // Flavor of the CSI driver
@@ -48,4 +52,24 @@ func (flavor *Flavor) GetCredentialsFromPodSpec(volumeHandle string, podName str
 // GetCredentialsFromSecret :
 func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (map[string]string, error) {
 	return nil, nil
+}
+
+func (flavor *Flavor) CreateMultiWriterVolume(request *csi.CreateVolumeRequest) (multiWriterVolume *csi.Volume, rollback bool, err error) {
+	return nil, false, fmt.Errorf("multi-writer is not supported for non-k8s environments")
+}
+
+func (flavor *Flavor) DeleteMultiWriterVolume(claimName string) error {
+	return fmt.Errorf("multi-writer is not supported for non-k8s environments")
+}
+
+func (flavor *Flavor) HandleMultiWriterNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	return nil, status.Error(codes.Internal, "multi-writer is not supported for non-k8s environments")
+}
+
+func (flavor *Flavor) IsMultiWriterVolume(volumeID string) bool {
+	return false
+}
+
+func (flavor *Flavor) GetMultiWriterClaimFromClaimUID(uid string) (*v1.PersistentVolumeClaim, error) {
+	return nil, status.Error(codes.Internal, "multi-writer is not supported for non-k8s environments")
 }

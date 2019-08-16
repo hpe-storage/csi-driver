@@ -2,7 +2,11 @@
 
 package flavor
 
-import "github.com/hpe-storage/common-host-libs/model"
+import (
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/hpe-storage/common-host-libs/model"
+	"k8s.io/api/core/v1"
+)
 
 const (
 	// Vanilla flavored CSI driver
@@ -21,4 +25,10 @@ type Flavor interface {
 	GetNodeInfo(nodeID string) (*model.Node, error)
 	GetCredentialsFromPodSpec(volumeHandle string, podName string, namespace string) (map[string]string, error)
 	GetCredentialsFromSecret(name string, namespace string) (map[string]string, error)
+
+	CreateMultiWriterVolume(request *csi.CreateVolumeRequest) (multiWriterVolume *csi.Volume, rollback bool, err error)
+	DeleteMultiWriterVolume(claimName string) error
+	HandleMultiWriterNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
+	IsMultiWriterVolume(volumeID string) bool
+	GetMultiWriterClaimFromClaimUID(uid string) (*v1.PersistentVolumeClaim, error)
 }

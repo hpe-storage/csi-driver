@@ -105,6 +105,8 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService, supports
 		volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY)
 		// Multi-Node Single Writer
 		volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER)
+		// Multi-Node Multi Writer
+		volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER)
 	}
 	driver.AddVolumeCapabilityAccessModes(volCapabilites)
 
@@ -212,6 +214,20 @@ func (driver *Driver) AddVolumeCapabilityAccessModes(accessModes []csi.VolumeCap
 	}
 
 	driver.volumeCapabilityAccessModes = volumeCapabilityAccessModes
+}
+
+// IsSupportedMultiNodeAccessMode returns true if given capabilities have accessmode of supported multi-node types
+func (driver *Driver) IsSupportedMultiNodeAccessMode(capabilities []*csi.VolumeCapability) bool {
+	for _, volCap := range capabilities {
+		switch volCap.GetAccessMode().GetMode() {
+		case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+			fallthrough
+		case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
+			return true
+		}
+		return false
+	}
+	return false
 }
 
 // AddStorageProvider adds a storage provider to the driver
