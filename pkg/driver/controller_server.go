@@ -471,7 +471,7 @@ func (driver *Driver) createVolume(
 			if existingParentVolume == nil {
 				return nil, status.Error(codes.NotFound, "Could not find parent volume with ID "+volID)
 			}
-			log.Trace("Found parent volume: %+v", existingParentVolume)
+			log.Tracef("Found parent volume: %+v", existingParentVolume)
 
 			// The requested size is must be at least equal to the snapshot's parent volume size
 			if size < existingParentVolume.Size {

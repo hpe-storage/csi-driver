@@ -38,7 +38,7 @@ func getMountInfo(volumeID string, volCap *csi.VolumeCapability, publishContext 
 	// Get Mount options from the requested volume capability and read-only flag
 	mountOptions := getMountOptionsFromVolCap(volCap)
 	// Check if 'Read-Only' is set in the Publish context (By ControllerPublish)
-	if publishContext[readOnlyKey] == "true" {
+	if publishContext[readOnlyKey] == trueKey {
 		log.Trace("Adding'read-only' mount option from the Publish context")
 		mountOptions = append(mountOptions, "ro")
 	}
@@ -507,7 +507,7 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 
 // Returns true if the ephemeral is set to true, else returns false
 func isEphemeral(volContext map[string]string) bool {
-	return volContext[csiEphemeral] == "true"
+	return volContext[csiEphemeral] == trueKey
 }
 
 // Returns volume name with ephemeral prefix
@@ -705,9 +705,7 @@ func (driver *Driver) nodePublishVolume(
 	}
 	if stagingDev == nil {
 		return status.Error(codes.FailedPrecondition,
-			fmt.Sprintf("Staging device is not configured at the staging path %s, err: %s",
-				stagingTargetPath, err.Error()))
-		return nil // Not published
+			fmt.Sprintf("Staging device is not configured at the staging path %s", stagingTargetPath))
 	}
 
 	// Check if the volume has already published on the targetPath.
@@ -860,7 +858,7 @@ func (driver *Driver) rollbackEphemeralVolume(
 		// Unpublish controller for the nodeID
 		err = driver.controllerUnpublishVolume(volume.ID, nodeID, secrets)
 		if err != nil {
-			log.Errorf("Error controller unpublishing the volume %s, err: %s", err.Error())
+			log.Errorf("Error controller unpublishing the volume %s, err: %s", volume.ID, err.Error())
 			return err
 		}
 
@@ -919,7 +917,7 @@ func (driver *Driver) nodePublishEphemeralVolume(
 	var volCapability *csi.VolumeCapability
 
 	// Check if 'volumeModeBlock' is requested in the volume context.
-	if volumeContext[volumeModeBlockKey] == "true" {
+	if volumeContext[volumeModeBlockKey] == trueKey {
 		log.Tracef("Ephemeral volume %s requested for block volume access", volumeHandle)
 
 		// Construct capability with AccessType as 'Block'
