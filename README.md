@@ -167,13 +167,13 @@ Log files associated with the HPE CSI Driver logs data to the standard output st
 
 ### CSI Driver Logs
 
-* Node Plugin:
+* Node Driver:
   `kubectl logs -f  daemonset.apps/hpe-csi-node  hpe-csi-driver -n kube-system`
 
-* Controller Plugin:
+* Controller Driver:
    `kubectl logs -f deployment.apps/hpe-csi-controller hpe-csi-driver -n kube-system`
 
-**Note:** The logs for both Node and Controller Plugins are persisted at `/var/log/hpe-csi.log`
+**Note:** The logs for both Node and Controller Drivers are persisted at `/var/log/hpe-csi.log`
 
 ### Container Service Provider Logs
 
