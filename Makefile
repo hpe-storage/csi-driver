@@ -52,6 +52,7 @@ vendor:
 .PHONY: lint
 lint:
 	@echo "Running lint"
+	@go version
 	export $(GOENV) && golangci-lint run $(LINTER_FLAGS) --exclude vendor
 
 .PHONY: clean
@@ -64,6 +65,7 @@ clean:
 .PHONY: compile
 compile:
 	@echo "Compiling the source for ${GOOS}"
+	@go version
 	@env CGO_ENABLED=0 GOOS=${GOOS} GOARCH=amd64 go build -o build/${NAME} ./cmd/csi-driver/
 
 .PHONY: test
