@@ -507,8 +507,9 @@ func (driver *Driver) DeleteVolume(ctx context.Context, request *csi.DeleteVolum
 	}
 
 	// Delete the volume from the array
-	if err := storageProvider.DeleteVolume(request.VolumeId); err != nil {
-		return nil, status.Error(codes.Internal, "Error while deleting volume "+existingVolume.Name)
+	if err := storageProvider.DeleteVolume(request.VolumeId, false); err != nil {
+		return nil, status.Error(codes.Internal,
+			fmt.Sprintf("Error while deleting volume %s, err: %s", existingVolume.Name, err.Error()))
 	}
 
 	// Delete DB entry
