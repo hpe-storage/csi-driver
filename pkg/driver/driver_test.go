@@ -13,7 +13,6 @@ import (
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/storageprovider"
 	"github.com/hpe-storage/common-host-libs/storageprovider/fake"
-	"github.com/hpe-storage/common-host-libs/util"
 	"github.com/hpe-storage/csi-driver/pkg/flavor"
 )
 
