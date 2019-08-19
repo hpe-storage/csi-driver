@@ -10,6 +10,7 @@ import (
 
 	"github.com/hpe-storage/common-host-libs/chapi"
 	"github.com/hpe-storage/common-host-libs/concurrent"
+	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/storageprovider"
 	"github.com/hpe-storage/common-host-libs/storageprovider/fake"
 	"github.com/hpe-storage/common-host-libs/util"
@@ -23,8 +24,7 @@ func TestPluginSuite(t *testing.T) {
 		t.Fatalf("failed to remove unix domain socket file %s, error: %s", socket, err)
 	}
 
-	util.OpenLogFile("csi-test.log", 10, 4, 90, true)
-	defer util.CloseLogFile()
+	log.InitLogging("csi-test.log", &log.LogParams{Level: "trace"}, false)
 
 	// driver := realDriver(t, endpoint)
 	// secretsFile := "csi-secrets.yaml"
