@@ -228,6 +228,15 @@ func (driver *Driver) nodeStageVolume(
 		return status.Error(codes.Internal,
 			fmt.Sprintf("Failed to stage volume %s, err: %s", volumeID, err.Error()))
 	}
+
+	// Store the secret reference from volume context (if exists) in the staging device
+	if volumeContext[secretNameKey] != "" && volumeContext[secretNamespaceKey] != "" {
+		secret := &Secret{
+			Name:      volumeContext[secretNameKey],
+			Namespace: volumeContext[secretNamespaceKey],
+		}
+		stagingDev.Secret = secret
+	}
 	log.Tracef("Staged volume %s successfully, StagingDev: %#v", volumeID, stagingDev)
 
 	// Save staged device info in the staging area
@@ -515,16 +524,28 @@ func getEphemeralVolName(volumeID string) string {
 	return fmt.Sprintf("%s%s", ephemeralVolNamePrefix, volumeID)
 }
 
-/*
-func isEphemeralVolume(name string) bool {
-	return strings.HasPrefix(name, "csi-")
-}*/
+func (driver *Driver) getEphemeralVolCredentials(volumeHandle string, stagingDev *StagingDevice) (map[string]string, error) {
+	// Check if secret name/namespace exists in the staging device.
+	// If yes, then retrieve credentials using them.
+	if stagingDev.Secret != nil {
+		secrets, err := driver.flavor.GetCredentialsFromSecret(stagingDev.Secret.Name, stagingDev.Secret.Namespace)
+		if err != nil {
+			log.Errorf("Failed to get credentials for ephemeral volume %s from secret %s/%s, err: %s",
+				volumeHandle, stagingDev.Secret.Name, stagingDev.Secret.Namespace, err.Error())
+			return nil, err
+		}
+		return secrets, nil
+	}
 
-func (driver *Driver) getEphemeralVolSecrets(volumeID string, podName string, podNamespace string) (map[string]string, error) {
+	// Get POD name/namespace from the staging device and retrieve credentials from the POD spec.
+	if stagingDev.POD == nil {
+		return nil, fmt.Errorf("Failed to get credentials for ephemeral volume %s. Missing POD information in the staging device %+v",
+			volumeHandle, stagingDev)
+	}
 	// Get secrets from POD spec
-	secrets, err := driver.flavor.GetVolSecretFromPod(volumeID, podName, podNamespace)
+	secrets, err := driver.flavor.GetCredentialsFromPodSpec(volumeHandle, stagingDev.POD.Name, stagingDev.POD.Namespace)
 	if err != nil {
-		log.Errorf("Failed to get secrets from POD, err: %s", err.Error())
+		log.Errorf("Failed to get credentials from POD, err: %s", err.Error())
 		return nil, err
 	}
 	return secrets, nil
@@ -623,13 +644,40 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 		// The device info file will be placed in this directory.
 		stagingTargetPath := filepath.Dir(request.TargetPath)
 
+		var secrets map[string]string
+
+		// Get the secrets from the volume attributes if secrets are unspecified or nil
+		if request.Secrets != nil {
+			log.Tracef("Referencing secrets from the request for %s", request.VolumeId)
+			secrets = request.Secrets
+		} else {
+			secretName := request.VolumeContext[secretNameKey]
+			secretNamespace := request.VolumeContext[secretNamespaceKey]
+
+			if secretName == "" || secretNamespace == "" {
+				errMsg := fmt.Sprintf("Failed to node publish ephemeral volume %s, Missing secrets in the request", request.VolumeId)
+				log.Errorf("err: %s", errMsg)
+				return nil, status.Error(codes.InvalidArgument, errMsg)
+			}
+
+			log.Tracef("Referencing secrets from volume attributes for %s, secretRef: %s/%s",
+				request.VolumeId, secretNamespace, secretName)
+			var err error
+			secrets, err = driver.flavor.GetCredentialsFromSecret(secretName, secretNamespace)
+			if err != nil {
+				errMsg := fmt.Sprintf("Failed to node publish ephemeral volume %s, err: %s", request.VolumeId, err.Error())
+				log.Errorf("err: %s", errMsg)
+				return nil, status.Error(codes.InvalidArgument, errMsg)
+			}
+		}
+
 		// Node publish
 		err = driver.nodePublishEphemeralVolume(
 			request.VolumeId,
 			stagingTargetPath,
 			request.TargetPath,
 			request.VolumeCapability,
-			request.Secrets,
+			secrets,
 			request.Readonly,
 			request.VolumeContext,
 		)
@@ -1242,13 +1290,13 @@ func (driver *Driver) nodeUnpublishEphemeralVolume(volumeHandle string, targetPa
 		return nil
 	}
 
-	// Extract the volume secrets from the POD spec
-	log.Tracef("Fetching volume secrets for %s from POD %s", volumeHandle, stagingDev.POD.Name)
-	secrets, err := driver.getEphemeralVolSecrets(volumeHandle, stagingDev.POD.Name, stagingDev.POD.Namespace)
+	// Extract the volume credentials using staging device info (POD or Secret)
+	log.Tracef("Fetching volume credentials for %s", volumeHandle)
+	secrets, err := driver.getEphemeralVolCredentials(volumeHandle, stagingDev)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return status.Error(codes.Internal,
-			fmt.Sprintf("Error getting volume secrets, so unable to destroy ephemeral volume %s, err: %s",
+			fmt.Sprintf("Error getting volume credentials, so unable to destroy ephemeral volume %s, err: %s",
 				ephemeralVolName, err.Error()))
 	}
 

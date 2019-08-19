@@ -19,5 +19,6 @@ type Flavor interface {
 	LoadNodeInfo(*model.Node) (string, error)
 	UnloadNodeInfo()
 	GetNodeInfo(nodeID string) (*model.Node, error)
-	GetVolSecretFromPod(volumeHandle string, podName string, namespace string) (map[string]string, error)
+	GetCredentialsFromPodSpec(volumeHandle string, podName string, namespace string) (map[string]string, error)
+	GetCredentialsFromSecret(name string, namespace string) (map[string]string, error)
 }

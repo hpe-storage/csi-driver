@@ -11,6 +11,7 @@ type StagingDevice struct {
 	VolumeID         string                 `json:"volume_id"`
 	VolumeAccessMode model.VolumeAccessType `json:"volume_access_mode"` // block or mount
 	POD              *POD                   `json:"pod,omitempty"`      // ephemeral inline volume
+	Secret           *Secret                `json:"secret,omitempty"`   // secret for ephemeral inline volume
 	Device           *model.Device          `json:"device"`
 	MountInfo        *Mount                 `json:"mount_info,omitempty"`
 }
@@ -27,4 +28,10 @@ type POD struct {
 	UID       string `json:"pod_uid"`
 	Name      string `json:"pod_name"`
 	Namespace string `json:"pod_namespace"`
+}
+
+// Secret represents the secret information of ephemeral inline volumes (Provided via volume attributes)
+type Secret struct {
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
 }

@@ -54,8 +54,14 @@ const (
 	// common properties
 	descriptionKey = "description"
 
-	// csiEphemeral attribute to be used to specify ephemeral volume request type
+	// csiEphemeral attribute to be used to specify ephemeral inline volume request type
 	csiEphemeral = "csi.storage.k8s.io/ephemeral"
+
+	// secretNamespace attribute to be used to specify secret namespace name for ephemeral inline volume
+	secretNamespaceKey = "inline-volume-secret-namespace"
+
+	// secretName attribute to be used to specify secret name for ephemeral inline volume
+	secretNameKey = "inline-volume-secret-name"
 
 	// POD attributes propogated to the CSI
 	csiEphemeralPodName      = "csi.storage.k8s.io/pod.name"
