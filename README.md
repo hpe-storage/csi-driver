@@ -38,7 +38,10 @@ This guide is primarily written to accommodate installation on upstream Kubernet
   </tbody>
 </table>
 
-**Requirements:**
+### Requirements 
+Different features matures at different rates. Refer to the [official table](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) of feature gates in the Kubernetes docs.
+
+The following guidelines applies to what feature gates got introduced as alphas for the corresponding version of K8s. For example, `ExpandCSIVolumes` got introduced in 1.14 but is still an alpha in 1.15, hence you need to enable that feature gate in 1.15 as well if you want to use it.
 
 Kubernetes 1.12
  * `--allow-privileged` flag must be set to true for both the API server and the kubelet
@@ -51,6 +54,10 @@ Kubernetes 1.13
 Kubernetes 1.14
  * `--allow-privileged` flag must be set to true for the API server
  * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet
+ 
+Kubernetes 1.15
+ * `--allow-privileged` flag must be set to true for the API server
+ * `--feature-gates=VolumePVCDataSource=true,CSIInlineVolume=true` feature gate flags must be set to true for both the API server and kubelet
 
 Kubernetes 1.15
  * `--allow-privileged` flag must be set to true for the API server for resize support
