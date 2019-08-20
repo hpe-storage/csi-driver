@@ -48,7 +48,6 @@ These parameters are applicable only for Pod inline volumes and to be specified 
 | inline-volume-secret-name | Text | A reference to the secret object containing sensitive information to pass to the CSI driver to complete the CSI NodePublishVolume call.|
 | inline-volume-secret-namespace | Text | The namespace of `inline-volume-secret-name` for ephemeral inline volume.|
 | size | Text | The size of ephemeral volume specified in MiB or GiB. If unspecified, a default value will be used.|
-| volumeModeBlock | Boolean | Indicates that the volume to be mounted for raw block access. If unspecified, volume will be mounted for filesystem access.|
 
 **Note:** The `NodePublishSecretRef` and (`inline-volume-secret-name`, `inline-volume-secret-namespace`) are mutually exclusive. One of them must be specified for ephemeral inline volume.
 
