@@ -40,7 +40,12 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 	return node, err
 }
 
-// GetVolSecretFromPod :
-func (flavor *Flavor) GetVolSecretFromPod(volumeHandle string, podName string, namespace string) (map[string]string, error) {
+// GetCredentialsFromPodSpec :
+func (flavor *Flavor) GetCredentialsFromPodSpec(volumeHandle string, podName string, namespace string) (map[string]string, error) {
+	return nil, nil
+}
+
+// GetCredentialsFromSecret :
+func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (map[string]string, error) {
 	return nil, nil
 }
