@@ -962,23 +962,6 @@ func (driver *Driver) nodePublishEphemeralVolume(
 			fmt.Sprintf("NodePublish of ephemeral volume %s failed due to missing POD uid in the request", volumeHandle))
 	}
 
-	var volCapability *csi.VolumeCapability
-
-	// Check if 'volumeModeBlock' is requested in the volume context.
-	if volumeContext[volumeModeBlockKey] == trueKey {
-		log.Tracef("Ephemeral volume %s requested for block volume access", volumeHandle)
-
-		// Construct capability with AccessType as 'Block'
-		volCapability = &csi.VolumeCapability{
-			AccessType: &csi.VolumeCapability_Block{
-				Block: &csi.VolumeCapability_BlockVolume{},
-			},
-			AccessMode: volumeCapability.GetAccessMode(),
-		}
-	} else {
-		volCapability = volumeCapability
-	}
-
 	// Volume size (Default value will be used if 'sizeInGiB' parameter is unspecified)
 	sizeInBytes := defaultVolumeSize
 
@@ -992,7 +975,7 @@ func (driver *Driver) nodePublishEphemeralVolume(
 
 	// Construct volume capabitilities to pass to createVolume()
 	volCapabilities := []*csi.VolumeCapability{
-		volCapability,
+		volumeCapability,
 	}
 
 	// Create volume
@@ -1030,7 +1013,7 @@ func (driver *Driver) nodePublishEphemeralVolume(
 		volume.VolumeId,
 		nodeID,
 		secrets,
-		volCapability,
+		volumeCapability,
 		readOnly,
 		volumeContext,
 	)
@@ -1047,7 +1030,7 @@ func (driver *Driver) nodePublishEphemeralVolume(
 		volume.VolumeId,
 		stagingTargetPath,
 		targetPath, // Mountpoint
-		volCapability,
+		volumeCapability,
 		secrets,
 		publishContext,
 		volumeContext,
@@ -1065,7 +1048,7 @@ func (driver *Driver) nodePublishEphemeralVolume(
 		volume.VolumeId,
 		stagingTargetPath,
 		targetPath,
-		volCapability,
+		volumeCapability,
 		secrets,
 		readOnly,
 		publishContext,

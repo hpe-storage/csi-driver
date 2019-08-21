@@ -74,8 +74,5 @@ const (
 	// Ephemeral volume size specified in the POD spec
 	sizeKey = "size"
 
-	// Used to specify block volume access type in the POD spec
-	volumeModeBlockKey = "volumeModeBlock"
-
 	trueKey = "true"
 )
