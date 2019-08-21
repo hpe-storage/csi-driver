@@ -1377,7 +1377,7 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 //  - NodeExpandVolume MUST be called after successful NodeStageVolume.
 //  - NodeExpandVolume MAY be called before or after NodePublishVolume.
 // Otherwise NodeExpandVolume MUST be called after successful NodePublishVolume.
-// TODO assuming filesystem type device, need to handle raw block devices as well
+// Handles both filesystem type device and raw block device
 // TODO assuming expand to underlying device size irrespective of provided capacity range. Need to add support of FS resize to fixed capacity eventhough underlying device is much bigger.
 // nolint: dupl
 func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {

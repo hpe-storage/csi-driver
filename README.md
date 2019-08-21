@@ -176,8 +176,8 @@ csi.storage.k8s.io/node-stage-secret-name: nimble-secret
 csi.storage.k8s.io/node-stage-secret-namespace: kube-system
 csi.storage.k8s.io/node-publish-secret-name: nimble-secret
 csi.storage.k8s.io/node-publish-secret-namespace: kube-system
-csi.storage.k8s.io/resizer-secret-name: nimble-secret
-csi.storage.k8s.io/resizer-secret-namespace: kube-system
+csi.storage.k8s.io/controller-expand-secret-name: nimble-secret
+csi.storage.k8s.io/controller-expand-secret-namespace: kube-system
 fsMode: "0644"
 fsOwner: "504:21"
 accessProtocol: "iscsi"

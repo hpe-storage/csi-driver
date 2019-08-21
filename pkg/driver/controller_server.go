@@ -561,8 +561,8 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	}
 	log.Tracef("Found Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
 
-	// Check if volume is busy or in-use
-	if existingVolume.InUse {
+	// Check if volume still in published state or ACL exists
+	if existingVolume.Published {
 		log.Errorf("Volume %s with ID %s still in use", existingVolume.Name, existingVolume.ID)
 		return status.Errorf(codes.FailedPrecondition, fmt.Sprintf("Volume %s with ID %s is still in use", existingVolume.Name, existingVolume.ID))
 	}
@@ -1324,21 +1324,25 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 
 	if existingVolume.Size == request.CapacityRange.GetLimitBytes() {
 		// volume is already at max limit size per request, so no action required.
-		return &csi.ControllerExpandVolumeResponse{CapacityBytes: existingVolume.Size, NodeExpansionRequired: false}, nil
+		return &csi.ControllerExpandVolumeResponse{
+			CapacityBytes:         existingVolume.Size,
+			NodeExpansionRequired: false, /* No NodeExpand() to be called */
+		}, nil
 	}
 
-	onlineExpansionSupported := driver.IsSupportedPluginVolumeExpansionCapability(csi.PluginCapability_VolumeExpansion_ONLINE)
-	// TODO: populate inUse attribute for volume in CSP
-	// check if ONLINE capability is not supported and volume is in use
-	if existingVolume.InUse && !onlineExpansionSupported {
-		return nil, status.Error(codes.FailedPrecondition, "Volume is currently in use and online expansion is not supported by driver")
+	// check if online expansion capability is supported when published volume expand is requested.
+	if existingVolume.Published && !driver.IsSupportedPluginVolumeExpansionCapability(csi.PluginCapability_VolumeExpansion_ONLINE) {
+		return nil, status.Error(codes.FailedPrecondition,
+			fmt.Sprintf("Volume %s could not be expanded because it is currently published on a node but the plugin does not have ONLINE expansion capability",
+				existingVolume.ID))
 	}
 
 	// Get storage provider
 	storageProvider, err := driver.GetStorageProvider(request.Secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
+		return nil, status.Error(codes.Internal,
+			fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
 	}
 
 	var updatedVolume *model.Volume
@@ -1353,5 +1357,17 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to expand volume to requested size, %s", err.Error()))
 	}
-	return &csi.ControllerExpandVolumeResponse{CapacityBytes: updatedVolume.Size, NodeExpansionRequired: existingVolume.InUse}, nil
+
+	// Set node expansion required to 'true' if EXPAND_VOLUME node capability is supported by the driver.
+	nodeExpansionRequired := false
+	if driver.IsSupportedNodeCapability(csi.NodeServiceCapability_RPC_EXPAND_VOLUME) {
+		log.Tracef("Node expansion required for the volume %s", request.VolumeId)
+		nodeExpansionRequired = true
+		// CO calls NodeExpandVolume() whenever the volume is published on a node.
+	}
+
+	return &csi.ControllerExpandVolumeResponse{
+		CapacityBytes:         updatedVolume.Size,
+		NodeExpansionRequired: nodeExpansionRequired,
+	}, nil
 }
