@@ -14,8 +14,8 @@ parameters:
   csi.storage.k8s.io/node-publish-secret-name: nimble-secret
   csi.storage.k8s.io/node-publish-secret-namespace: kube-system
   # Uncomment for k8s 1.14 for resize support
-  #csi.storage.k8s.io/resizer-secret-name: nimble-secret
-  #csi.storage.k8s.io/resizer-secret-namespace: kube-system
+  #csi.storage.k8s.io/controller-expand-secret-name: nimble-secret
+  #csi.storage.k8s.io/controller-expand-secret-namespace: kube-system
   accessProtocol: "iscsi"
   description: "Volume from csi"
   dedupeEnabled: "false"

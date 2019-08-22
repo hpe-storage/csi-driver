@@ -249,7 +249,7 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 	// Create credentails
 	credentials, err := storageprovider.CreateCredentials(secrets)
 	if err != nil {
-		log.Error("Failed to create credentials, ", err.Error())
+		log.Errorf("Failed to create credentials, err: %s", err.Error())
 		return nil, errors.New("No secrets have been provided")
 	}
 
@@ -281,6 +281,16 @@ func (driver *Driver) IsSupportedPluginVolumeExpansionCapability(capType csi.Plu
 // IsSupportedControllerCapability returns true if the given capability is supported else returns false
 func (driver *Driver) IsSupportedControllerCapability(capType csi.ControllerServiceCapability_RPC_Type) bool {
 	for _, cap := range driver.controllerServiceCapabilities {
+		if cap.GetRpc().Type == capType {
+			return true
+		}
+	}
+	return false
+}
+
+// IsSupportedNodeCapability returns true if the given node capability is supported else returns false
+func (driver *Driver) IsSupportedNodeCapability(capType csi.NodeServiceCapability_RPC_Type) bool {
+	for _, cap := range driver.nodeServiceCapabilities {
 		if cap.GetRpc().Type == capType {
 			return true
 		}
@@ -327,6 +337,8 @@ func (driver *Driver) GetVolumeByID(id string, secrets map[string]string) (*mode
 	if volume == nil {
 		return nil, status.Error(codes.NotFound, fmt.Sprintf("Volume with ID %s not found", id))
 	}
+
+	log.Tracef("Found Volume %+v", volume)
 	return volume, nil
 }
 
@@ -357,6 +369,7 @@ func (driver *Driver) GetVolumeByName(name string, secrets map[string]string) (*
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume %s", name))
 	}
 
+	log.Tracef("Found Volume %+v", volume)
 	return volume, nil
 }
 
