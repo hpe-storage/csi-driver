@@ -186,9 +186,15 @@ func (driver *Driver) nodeStageVolume(
 	log.Infof("NodeStageVolume requested volume %s with access type %s, targetPath %s, capability %v, publishContext %v and volumeContext %v",
 		volumeID, volAccessType.String(), stagingTargetPath, volumeCapability, publishContext, volumeContext)
 
+	createNFSResources := ""
+	// Fetch properties for NFS resource creation
+	if _, ok := request.VolumeContext[createNFSResourcesParam]; ok {
+		createNFSResources = request.VolumeContext[createNFSResourcesParam]
+	}
+
 	// Check if volume is requested with RWX or ROX modes and intercept here
-	if driver.IsSupportedMultiNodeAccessMode([]*csi.VolumeCapability{request.VolumeCapability}) {
-		log.Infof("NodeStageVolume requested with multi-writer access-mode, returning success")
+	if driver.IsSupportedMultiNodeAccessMode([]*csi.VolumeCapability{request.VolumeCapability}) && createNFSResources == "true" {
+		log.Infof("NodeStageVolume requested with multi-node access-mode, returning success")
 		return &csi.NodeStageVolumeResponse{}, nil
 	}
 
@@ -640,10 +646,16 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	log.Infof("NodePublishVolume requested volume %s with access type %s, targetPath %s, capability %v, publishContext %v and volumeContext %v",
 		request.VolumeId, volAccessType, request.TargetPath, request.VolumeCapability, request.PublishContext, request.VolumeContext)
 
-	// Check if volume is requested with RWX or ROX modes and intercept here
-	if driver.IsSupportedMultiNodeAccessMode([]*csi.VolumeCapability{request.VolumeCapability}) {
-		log.Infof("NodePublish requested with multi-writer access-mode for %s", request.VolumeId)
-		return driver.flavor.HandleMultiWriterNodePublish(request)
+	createNFSResources := ""
+	// Fetch properties for NFS resource creation
+	if _, ok := request.VolumeContext[createNFSResourcesParam]; ok {
+		createNFSResources = request.VolumeContext[createNFSResourcesParam]
+	}
+
+	// Check if volume is requested with RWX or ROX modes with NFS resources and intercept here
+	if driver.IsSupportedMultiNodeAccessMode([]*csi.VolumeCapability{request.VolumeCapability}) && createNFSResources == "true" {
+		log.Infof("NodePublish requested with multi-node access-mode for %s", request.VolumeId)
+		return driver.flavor.HandleMultiNodeNodePublish(request)
 	}
 
 	// If ephemeral volume request, then create new volume, add ACL and NodeStage/NodePublish

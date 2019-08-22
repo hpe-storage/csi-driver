@@ -230,6 +230,19 @@ func (driver *Driver) IsSupportedMultiNodeAccessMode(capabilities []*csi.VolumeC
 	return false
 }
 
+// IsMultiNodeReadOnlyAccessMode returns true if accessmode is ReadOnlyMany
+func (driver *Driver) IsReadOnlyAccessMode(capabilities []*csi.VolumeCapability) bool {
+	for _, volCap := range capabilities {
+		switch volCap.GetAccessMode().GetMode() {
+		case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY:
+			fallthrough
+		case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+			return true
+		}
+	}
+	return false
+}
+
 // AddStorageProvider adds a storage provider to the driver
 func (driver *Driver) AddStorageProvider(credentials *storageprovider.Credentials) error {
 	log.Trace(">>>>> AddStorageProvider")

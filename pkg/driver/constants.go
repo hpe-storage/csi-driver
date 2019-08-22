@@ -75,4 +75,7 @@ const (
 	sizeKey = "size"
 
 	trueKey = "true"
+
+	// multiwriter properties
+	createNFSResourcesParam = "createNFSResources"
 )

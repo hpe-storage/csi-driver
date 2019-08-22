@@ -26,9 +26,9 @@ type Flavor interface {
 	GetCredentialsFromPodSpec(volumeHandle string, podName string, namespace string) (map[string]string, error)
 	GetCredentialsFromSecret(name string, namespace string) (map[string]string, error)
 
-	CreateMultiWriterVolume(request *csi.CreateVolumeRequest) (multiWriterVolume *csi.Volume, rollback bool, err error)
-	DeleteMultiWriterVolume(claimName string) error
-	HandleMultiWriterNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
-	IsMultiWriterVolume(volumeID string) bool
-	GetMultiWriterClaimFromClaimUID(uid string) (*v1.PersistentVolumeClaim, error)
+	CreateMultiNodeVolume(request *csi.CreateVolumeRequest) (multiWriterVolume *csi.Volume, rollback bool, err error)
+	DeleteMultiNodeVolume(claimName string) error
+	HandleMultiNodeNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
+	IsMultiNodeVolume(volumeID string) bool
+	GetMultiNodeClaimFromClaimUID(uid string) (*v1.PersistentVolumeClaim, error)
 }

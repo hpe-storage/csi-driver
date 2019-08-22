@@ -5,36 +5,40 @@ package kubernetes
 import (
 	"fmt"
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	//"github.com/docker/docker/pkg/mount"
 	log "github.com/hpe-storage/common-host-libs/logger"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	apps_v1 "k8s.io/api/apps/v1"
 	core_v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/kubernetes/pkg/util/mount"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 )
 
 const (
-	serviceNamePrefix    = "hpe-multiwriter-svc-"
-	deploymentNamePrefix = "hpe-multiwriter-"
-	pvcNamePrefix        = "hpe-multiwriter-pvc-"
-	multiWriterNamespace = "kube-system"
-	nfsImage             = "quay.io/luis_pabon0/ganesha" // TODO evaluate latest nfs-ganesha image
-	deletionInterval     = 30                            // 60s with sleep interval of 2s
-	deletionDelay        = 2 * time.Second
-	creationInterval     = 60 // 120s with sleep interval of 2s
-	creationDelay        = 2 * time.Second
+	// TODO: fetch from cli/env args
+	multiNodePrefix    = "hpe-multinode-"
+	multiNodeNamespace = "hpe-multinode"
+	nfsImage           = "gcr.io/google_containers/volume-nfs:0.8"
+
+	deletionInterval = 30 // 60s with sleep interval of 2s
+	deletionDelay    = 2 * time.Second
+	creationInterval = 60 // 120s with sleep interval of 2s
+	creationDelay    = 2 * time.Second
 	// defaultVolumeSize is the implementation-specific default value in bytes
 	defaultVolumeSize = 10 * 1024 * 1024 * 1024 // 10 GiB
-	defaultExportPath = "/exports"
+	defaultExportPath = "/"
+	readOnly          = "readOnly"
 )
 
-// CreateMultiWriterVolume creates multi-writer volume abstracting underlying nfs pvc, deployment and service
-func (flavor *Flavor) CreateMultiWriterVolume(request *csi.CreateVolumeRequest) (multiWriterVolume *csi.Volume, rollback bool, err error) {
-	log.Tracef(">>>>> CreateMultiWriterVolume with %s", request.Name)
-	defer log.Tracef("<<<<< CreateMultiWriterVolume")
+// CreateMultiNodeVolume creates multi-node volume abstracting underlying nfs pvc, deployment and service
+func (flavor *Flavor) CreateMultiNodeVolume(request *csi.CreateVolumeRequest) (multiNodeVolume *csi.Volume, rollback bool, err error) {
+	log.Tracef(">>>>> CreateMultiNodeVolume with %s", request.Name)
+	defer log.Tracef("<<<<< CreateMultiNodeVolume")
 
 	// get pvc from request
 	claim, err := flavor.getClaimFromClaimName(request.Name)
@@ -48,23 +52,35 @@ func (flavor *Flavor) CreateMultiWriterVolume(request *csi.CreateVolumeRequest) 
 		return nil, false, err
 	}
 
+	// create namespace if not already present
+	_, err = flavor.GetMultiNodeNamespace(multiNodeNamespace)
+	if err != nil {
+		_, err = flavor.CreateMultiNodeNamespace(multiNodeNamespace)
+		if err != nil {
+			return nil, false, err
+		}
+	}
+
 	// create pvc
 	newClaim, err := flavor.CreateNFSPVC(claimClone)
 	if err != nil {
+		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
 		return nil, true, err
 	}
 
-	// create deployment with name hpe-multiwriter-<originalclaim-uid>
-	deploymentName := fmt.Sprintf("%s%s", deploymentNamePrefix, claim.ObjectMeta.UID)
+	// create deployment with name hpe-multinode-<originalclaim-uid>
+	deploymentName := fmt.Sprintf("%s%s", multiNodePrefix, claim.ObjectMeta.UID)
 	err = flavor.CreateNFSDeployment(deploymentName, newClaim.ObjectMeta.Name)
 	if err != nil {
+		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
 		return nil, true, err
 	}
 
-	// create service with name hpe-multiwriter-svc-<originalclaim-uid>
-	serviceName := fmt.Sprintf("%s%s", serviceNamePrefix, claim.ObjectMeta.UID)
+	// create service with name hpe-multinode-svc-<originalclaim-uid>
+	serviceName := fmt.Sprintf("%s%s", multiNodePrefix, claim.ObjectMeta.UID)
 	err = flavor.CreateNFSService(serviceName)
 	if err != nil {
+		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
 		return nil, true, err
 	}
 
@@ -74,89 +90,90 @@ func (flavor *Flavor) CreateMultiWriterVolume(request *csi.CreateVolumeRequest) 
 		reqVolumeSize = request.GetCapacityRange().GetRequiredBytes()
 	}
 
-	// Return newly created volume
+	// get NFS volume properties and copy onto original rwx volume
+	volumeContext := make(map[string]string)
+	pv, err := flavor.getPvFromName(fmt.Sprintf("pvc-%s", newClaim.ObjectMeta.UID))
+	if err != nil {
+		return nil, true, err
+	}
+
+	if pv.Spec.PersistentVolumeSource.CSI != nil {
+		for k, v := range pv.Spec.PersistentVolumeSource.CSI.VolumeAttributes {
+			volumeContext[k] = v
+		}
+	}
+
+	// Return newly created underlying nfs claim uid with pv attributes
 	return &csi.Volume{
 		VolumeId:      fmt.Sprintf("%s", claim.ObjectMeta.UID),
 		CapacityBytes: reqVolumeSize,
-		VolumeContext: make(map[string]string),
+		VolumeContext: volumeContext,
 	}, false, nil
 }
 
-// DeleteMultiWriterVolume deletes multi-writer volume which represents nfs pvc, deployment and service
-func (flavor *Flavor) DeleteMultiWriterVolume(claimName string) error {
-	log.Tracef(">>>>> DeleteMultiWriterVolume with %s", claimName)
-	defer log.Tracef("<<<<< DeleteMultiWriterVolume")
+// DeleteMultiNodeVolume deletes multi-node volume which represents nfs pvc, deployment and service
+func (flavor *Flavor) DeleteMultiNodeVolume(pvName string) error {
+	log.Tracef(">>>>> DeleteMultiNodeVolume with %s", pvName)
+	defer log.Tracef("<<<<< DeleteMultiNodeVolume")
 
-	// get pvc from request
-	claim, err := flavor.getClaimFromClaimName(claimName)
+	// delete deployment deployment/hpe-multinode-<originalclaim-uid>
+	resourceName := fmt.Sprintf("%s%s", multiNodePrefix, strings.TrimPrefix(pvName, "pvc-"))
+	err := flavor.DeleteNFSDeployment(resourceName)
 	if err != nil {
-		return err
+		log.Errorf("unable to delete nfs deployment %s as part of cleanup, err %s", resourceName, err.Error())
 	}
 
-	// delete service with name hpe-multiwriter-svc-<originalclaim-uid>
-	serviceName := fmt.Sprintf("%s%s", serviceNamePrefix, claim.ObjectMeta.UID)
-	err = flavor.DeleteNFSService(serviceName)
-	if err != nil {
-		log.Errorf("unable to delete nfs service %s as part of cleanup, err %s", serviceName, err.Error())
-	}
-
-	// delete deployment with name hpe-multiwriter-<originalclaim-uid>
-	deploymentName := fmt.Sprintf("%s%s", deploymentNamePrefix, claim.ObjectMeta.UID)
-	err = flavor.DeleteNFSDeployment(deploymentName)
-	if err != nil {
-		log.Errorf("unable to delete nfs deployment %s as part of cleanup, err %s", deploymentName, err.Error())
-	}
-
-	// delete pvc with name hpe-multiwriter-pvc-<originalclaim-uid>
+	// delete nfs pvc pvc/hpe-multinode-<originalclaim-uuid>
 	// if deployment is still around, then pvc cannot be deleted due to protection, try to cleanup as best effort
-	pvcName := fmt.Sprintf("%s%s", pvcNamePrefix, claim.ObjectMeta.UID)
-	err = flavor.DeleteNFSPVC(pvcName)
+	err = flavor.DeleteNFSPVC(resourceName)
 	if err != nil {
-		log.Errorf("unable to delete nfs pvc %s as part of cleanup, err %s", pvcName, err.Error())
+		log.Errorf("unable to delete nfs pvc %s as part of cleanup, err %s", resourceName, err.Error())
 	}
+
+	// delete service service/hpe-multinode-<originalclaim-uid>
+	err = flavor.DeleteNFSService(resourceName)
+	if err != nil {
+		log.Errorf("unable to delete nfs service %s as part of cleanup, err %s", resourceName, err.Error())
+	}
+
 	return err
 }
 
-func (flavor *Flavor) HandleMultiWriterNodePublish(req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	log.Tracef(">>>>> HandleMultiWriterNodePublish with volume %s target path %s", req.VolumeId, req.TargetPath)
-	defer log.Tracef("<<<<< HandleMultiWriterNodePublish")
+func (flavor *Flavor) HandleMultiNodeNodePublish(req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	log.Tracef(">>>>> HandleMultiNodeNodePublish with volume %s target path %s", req.VolumeId, req.TargetPath)
+	defer log.Tracef("<<<<< HandleMultiNodeNodePublish")
+
+	// get nfs claim for corresponding nfs pv
+	nfsResourceName := fmt.Sprintf("%s%s", multiNodePrefix, req.VolumeId)
 
 	// get service with matching volume-id(i.e original claim-id)
-	serviceName := fmt.Sprintf("%s%s", serviceNamePrefix, req.VolumeId)
-	service, err := flavor.GetNFSService(serviceName)
+	service, err := flavor.GetNFSService(nfsResourceName)
 	if err != nil {
-		log.Errorf("unable to obtain service %s volume-id %s to publish volume", serviceName, req.VolumeId)
-		return err
+		log.Errorf("unable to obtain service %s volume-id %s to publish volume", nfsResourceName, req.VolumeId)
+		return nil, err
 	}
 	clusterIP := service.Spec.ClusterIP
 
 	// TODO: add nfs mount support in chapi
-	targetPath := req.GetTargetPath()
-	notMnt, err := mount.New("").IsLikelyNotMountPoint(targetPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if err := os.MkdirAll(targetPath, 0750); err != nil {
-				return nil, status.Error(codes.Internal, err.Error())
-			}
-			notMnt = true
-		} else {
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-	}
-
-	if !notMnt {
-		return &csi.NodePublishVolumeResponse{}, nil
-	}
-
-	mo := req.GetVolumeCapability().GetMount().GetMountFlags()
-	if req.GetReadonly() {
-		mo = append(mo, "ro")
-	}
-
 	source := fmt.Sprintf("%s:%s", clusterIP, defaultExportPath)
-	mounter := mount.New("")
-	err = mounter.Mount(source, targetPath, "nfs", mo)
-	if err != nil {
+	target := req.GetTargetPath()
+	log.Debugf("mounting nfs volume %s to %s", source, target)
+	opts := []string{
+		"nolock",
+		"intr",
+		fmt.Sprintf("addr=%s", clusterIP),
+	}
+	if req.GetReadonly() {
+		opts = append(opts, "ro")
+	}
+	options := strings.Join(opts, ",")
+
+	log.Debugf("creating target path %s for nfs mount", target)
+	if err := os.MkdirAll(target, 0750); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	if err := syscall.Mount(source, target, "nfs4", 0, options); err != nil {
 		if os.IsPermission(err) {
 			return nil, status.Error(codes.PermissionDenied, err.Error())
 		}
@@ -165,33 +182,39 @@ func (flavor *Flavor) HandleMultiWriterNodePublish(req *csi.NodePublishVolumeReq
 		}
 		return nil, status.Error(codes.Internal, err.Error())
 	}
-
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
-func (flavor *Flavor) IsMultiWriterVolume(volumeID string) bool {
-	serviceName := fmt.Sprintf("%s%s", serviceNamePrefix, volumeID)
-	_, err := flavor.GetNFSService(serviceName)
+func (flavor *Flavor) IsMultiNodeVolume(volumeID string) bool {
+	// get service with matching volume-id(i.e original claim-id)
+	nfsResource := fmt.Sprintf("%s%s", multiNodePrefix, volumeID)
+	_, err := flavor.GetNFSService(nfsResource)
 	if err != nil {
-		log.Debugf("unable to obtain service %s volume-id %s", serviceName, volumeID)
+		log.Tracef("unable to obtain service %s based on volume-id %s", nfsResource, volumeID)
 		return false
 	}
 	return true
 }
 
-func (flavor *Flavor) GetMultiWriterClaimFromClaimUID(uid string) (*core_v1.PersistentVolumeClaim, error) {
-	log.Tracef(">>>>> GetMultiWriterClaimFromClaimUid with claim %s", uid)
-	defer log.Tracef("<<<<< GetMultiWriterClaimFromClaimUid")
+func (flavor *Flavor) GetMultiNodeClaimFromClaimUID(volumeID string) (*core_v1.PersistentVolumeClaim, error) {
+	log.Tracef(">>>>> GetMultiNodeClaimFromClaimUid with claim %s", volumeID)
+	defer log.Tracef("<<<<< GetMultiNodeClaimFromClaimUid")
 
-	claims, err := flavor.claimIndexer.ByIndex("uid", uid)
+	// get underlying pv from volume-id
+	pvName := fmt.Sprintf("pvc-%s", volumeID)
+	_, err := flavor.getPvFromName(pvName)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to retrieve claim by uid %s", uid)
-	} else if len(claims) == 0 {
-		return nil, fmt.Errorf("Requested pvc was not found with uid %s", uid)
+		return nil, fmt.Errorf("Failed to retrieve claim by nfs pv %s", pvName)
 	}
 
-	log.Infof("Found the following claims: %v", claims)
-	return claims[0].(*core_v1.PersistentVolumeClaim), nil
+	// get pvc from request
+	nfsClaim, err := flavor.getClaimFromClaimName(pvName)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Debugf("found nfsClaim %s from pv %s", nfsClaim.ObjectMeta.Name, pvName)
+	return nfsClaim, nil
 }
 
 func (flavor *Flavor) getPvFromName(pvName string) (*core_v1.PersistentVolume, error) {
@@ -211,10 +234,10 @@ func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim) (*core_v1
 
 	// get copy of original pvc
 	claimClone := claim.DeepCopy()
-	claimClone.ObjectMeta.Namespace = multiWriterNamespace
+	claimClone.ObjectMeta.Namespace = multiNodeNamespace
 	claimClone.ObjectMeta.ResourceVersion = ""
-	// modify name with hpe-multiwriter-pvc-<originalclaim-uid>
-	claimClone.ObjectMeta.Name = fmt.Sprintf("%s%s", pvcNamePrefix, claim.ObjectMeta.UID)
+	// modify name with hpe-multinode-pvc-<originalclaim-uid>
+	claimClone.ObjectMeta.Name = fmt.Sprintf("%s%s", multiNodePrefix, claim.ObjectMeta.UID)
 	// change access-mode to RWO for underlying nfs pvc
 	claimClone.Spec.AccessModes = []core_v1.PersistentVolumeAccessMode{core_v1.ReadWriteOnce}
 	return claimClone, nil
@@ -225,7 +248,15 @@ func (flavor *Flavor) CreateNFSPVC(claim *core_v1.PersistentVolumeClaim) (*core_
 	log.Tracef(">>>>> CreateNFSPVC with claim %s", claim.ObjectMeta.Name)
 	defer log.Tracef("<<<<< CreateNFSPVC")
 
-	newClaim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(multiWriterNamespace).Create(claim)
+	// check if nfs service already exists
+	existingClaim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(multiNodeNamespace).Get(claim.ObjectMeta.Name, meta_v1.GetOptions{})
+	if err == nil && existingClaim != nil {
+		log.Infof("nfs pvc %s exists in %s namespace", existingClaim.ObjectMeta.Name, multiNodeNamespace)
+		return existingClaim, nil
+	}
+
+	// create new underlying nfs claim
+	newClaim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(multiNodeNamespace).Create(claim)
 	if err != nil {
 		return nil, err
 	}
@@ -247,23 +278,23 @@ func (flavor *Flavor) CreateNFSService(svcName string) error {
 
 	// validate nfs service settings
 	if svcName == "" {
-		return fmt.Errorf("empty service name provided for creating nfs multiwriter service")
+		return fmt.Errorf("empty service name provided for creating nfs multinode service")
 	}
 
 	// check if nfs service already exists
 	getAction := func() error {
-		_, err := flavor.kubeClient.CoreV1().Services(multiWriterNamespace).Get(svcName, meta_v1.GetOptions{})
+		_, err := flavor.kubeClient.CoreV1().Services(multiNodeNamespace).Get(svcName, meta_v1.GetOptions{})
 		return err
 	}
 	exists, err := flavor.resourceExists(getAction, "service", svcName)
 	if err == nil && exists {
-		log.Infof("nfs service %s exists in %s namespace", svcName, multiWriterNamespace)
+		log.Infof("nfs service %s exists in %s namespace", svcName, multiNodeNamespace)
 		return nil
 	}
 
 	// create the nfs service
 	service := flavor.makeNFSService(svcName)
-	if _, err := flavor.kubeClient.CoreV1().Services(multiWriterNamespace).Create(service); err != nil {
+	if _, err := flavor.kubeClient.CoreV1().Services(multiNodeNamespace).Create(service); err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return fmt.Errorf("failed to create nfs service %s, err %+v", svcName, err)
 		}
@@ -274,11 +305,34 @@ func (flavor *Flavor) CreateNFSService(svcName string) error {
 	return nil
 }
 
+func (flavor *Flavor) GetMultiNodeNamespace(namespace string) (*core_v1.Namespace, error) {
+	log.Tracef(">>>>> GetMultiNodeNamespace with namespace name %s", namespace)
+	defer log.Tracef("<<<<< GetMultiNodeNamespace")
+
+	ns, err := flavor.kubeClient.CoreV1().Namespaces().Get(namespace, meta_v1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return ns, nil
+}
+
+func (flavor *Flavor) CreateMultiNodeNamespace(namespace string) (*core_v1.Namespace, error) {
+	log.Tracef(">>>>> CreateMultiNodeNamespace with namespace name %s", namespace)
+	defer log.Tracef("<<<<< CreateMultiNodeNamespace")
+
+	spec := &core_v1.Namespace{ObjectMeta: meta_v1.ObjectMeta{Name: namespace}}
+	ns, err := flavor.kubeClient.CoreV1().Namespaces().Create(spec)
+	if err != nil {
+		return nil, err
+	}
+	return ns, nil
+}
+
 func (flavor *Flavor) GetNFSService(svcName string) (*core_v1.Service, error) {
 	log.Tracef(">>>>> GetNFSService with service name %s", svcName)
 	defer log.Tracef("<<<<< GetNFSService")
 
-	service, err := flavor.kubeClient.CoreV1().Services(multiWriterNamespace).Get(svcName, meta_v1.GetOptions{})
+	service, err := flavor.kubeClient.CoreV1().Services(multiNodeNamespace).Get(svcName, meta_v1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -287,28 +341,28 @@ func (flavor *Flavor) GetNFSService(svcName string) (*core_v1.Service, error) {
 
 // CreateNFSDeployment creates a nfs deployment with given name
 func (flavor *Flavor) CreateNFSDeployment(deploymentName, pvcName string) error {
-	log.Tracef(">>>>> CreateNFSDeployment with name %s", deploymentName)
+	log.Tracef(">>>>> CreateNFSDeployment with name %s volume %s", deploymentName, pvcName)
 	defer log.Tracef("<<<<< CreateNFSDeployment")
 
 	// validate nfs deployment settings
 	if deploymentName == "" {
-		return fmt.Errorf("empty name provided for creating NFS multiwriter deployment")
+		return fmt.Errorf("empty name provided for creating NFS multinode deployment")
 	}
 
 	// check if nfs deployment already exists
 	getAction := func() error {
-		_, err := flavor.kubeClient.AppsV1().Deployments(multiWriterNamespace).Get(deploymentName, meta_v1.GetOptions{})
+		_, err := flavor.kubeClient.AppsV1().Deployments(multiNodeNamespace).Get(deploymentName, meta_v1.GetOptions{})
 		return err
 	}
 	exists, err := flavor.resourceExists(getAction, "deployment", deploymentName)
 	if err == nil && exists {
-		log.Infof("nfs deployment %s exists in %s namespace", deploymentName, multiWriterNamespace)
+		log.Infof("nfs deployment %s exists in %s namespace", deploymentName, multiNodeNamespace)
 		return nil
 	}
 
 	// create a nfs deployment
 	deployment := flavor.makeNFSDeployment(deploymentName, pvcName)
-	if _, err := flavor.kubeClient.AppsV1().Deployments(multiWriterNamespace).Create(deployment); err != nil {
+	if _, err := flavor.kubeClient.AppsV1().Deployments(multiNodeNamespace).Create(deployment); err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return fmt.Errorf("failed to create nfs deployment %s, err %+v", deploymentName, err)
 		}
@@ -331,11 +385,12 @@ func (flavor *Flavor) makeNFSService(svcName string) *core_v1.Service {
 	log.Tracef(">>>>> makeNFSService with name %s", svcName)
 	defer log.Tracef("<<<<< makeNFSService")
 
-	labels := map[string]string{"app": getDeploymentFromServiceName(svcName)}
+	// pod label is of same format as service name, hpe-multinode-<original claim uuid>
+	labels := map[string]string{"app": svcName}
 	svc := &core_v1.Service{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:      svcName,
-			Namespace: multiWriterNamespace,
+			Namespace: multiNodeNamespace,
 			Labels:    labels,
 		},
 		Spec: core_v1.ServiceSpec{
@@ -383,19 +438,19 @@ func (flavor *Flavor) makeNFSDeployment(name, volumeClaim string) *apps_v1.Deplo
 			Annotations: map[string]string{"tags": name},
 		},
 		Spec: core_v1.PodSpec{
-			Containers:    []core_v1.Container{flavor.makeContainer("hpe-multiwriter", volumeClaim)},
+			Containers:    []core_v1.Container{flavor.makeContainer("hpe-multinode", volumeClaim)},
 			RestartPolicy: core_v1.RestartPolicyAlways,
 			Volumes:       volumes,
-			HostIPC:       true,
-			HostNetwork:   true,
+			HostIPC:       false,
+			HostNetwork:   false,
 		},
 	}
-	podSpec.Spec.DNSPolicy = core_v1.DNSClusterFirstWithHostNet
+	//podSpec.Spec.DNSPolicy = core_v1.DNSClusterFirstWithHostNet
 
 	d := &apps_v1.Deployment{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:      name,
-			Namespace: multiWriterNamespace,
+			Namespace: multiNodeNamespace,
 		},
 		Spec: apps_v1.DeploymentSpec{
 			Selector: &meta_v1.LabelSelector{
@@ -454,7 +509,7 @@ func (flavor *Flavor) DeleteNFSService(svcName string) error {
 
 	// check if service  exists
 	getAction := func() error {
-		_, err := flavor.kubeClient.CoreV1().Services(multiWriterNamespace).Get(svcName, meta_v1.GetOptions{})
+		_, err := flavor.kubeClient.CoreV1().Services(multiNodeNamespace).Get(svcName, meta_v1.GetOptions{})
 		return err
 	}
 	exists, err := flavor.resourceExists(getAction, "service", svcName)
@@ -462,18 +517,18 @@ func (flavor *Flavor) DeleteNFSService(svcName string) error {
 		return fmt.Errorf("failed to detect if there is a NFS service to delete. %+v", err)
 	}
 	if !exists {
-		log.Infof("nfs service %s does not exist in kube-system namespace", svcName)
+		log.Infof("nfs service %s does not exist in %s namespace", svcName, multiNodeNamespace)
 		return nil
 	}
 
-	log.Infof("Deleting nfs service %s from kube-system namespace", svcName)
+	log.Infof("Deleting nfs service %s from %s namespace", svcName, multiNodeNamespace)
 
 	var gracePeriod int64
 	propagation := meta_v1.DeletePropagationForeground
 	options := &meta_v1.DeleteOptions{GracePeriodSeconds: &gracePeriod, PropagationPolicy: &propagation}
 
 	// Delete the nfs service
-	err = flavor.kubeClient.CoreV1().Services(multiWriterNamespace).Delete(svcName, options)
+	err = flavor.kubeClient.CoreV1().Services(multiNodeNamespace).Delete(svcName, options)
 	if err != nil && !errors.IsNotFound(err) {
 		log.Errorf("failed to delete nfs service %s, err %+v", svcName, err)
 	}
@@ -488,13 +543,13 @@ func (flavor *Flavor) DeleteNFSDeployment(name string) error {
 	defer log.Tracef("<<<<< DeleteDeployment")
 
 	deleteAction := func(options *meta_v1.DeleteOptions) error {
-		return flavor.kubeClient.AppsV1().Deployments(multiWriterNamespace).Delete(name, options)
+		return flavor.kubeClient.AppsV1().Deployments(multiNodeNamespace).Delete(name, options)
 	}
 	getAction := func() error {
-		_, err := flavor.kubeClient.AppsV1().Deployments(multiWriterNamespace).Get(name, meta_v1.GetOptions{})
+		_, err := flavor.kubeClient.AppsV1().Deployments(multiNodeNamespace).Get(name, meta_v1.GetOptions{})
 		return err
 	}
-	err := flavor.deleteResourceAndWait(multiWriterNamespace, name, "deployment", deleteAction, getAction)
+	err := flavor.deleteResourceAndWait(multiNodeNamespace, name, "deployment", deleteAction, getAction)
 	if err != nil {
 		return err
 	}
@@ -509,13 +564,13 @@ func (flavor *Flavor) DeleteNFSPVC(claimName string) error {
 
 	// Delete the pvc
 	deleteAction := func(options *meta_v1.DeleteOptions) error {
-		return flavor.kubeClient.CoreV1().PersistentVolumeClaims(multiWriterNamespace).Delete(claimName, options)
+		return flavor.kubeClient.CoreV1().PersistentVolumeClaims(multiNodeNamespace).Delete(claimName, options)
 	}
 	getAction := func() error {
-		_, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(multiWriterNamespace).Get(claimName, meta_v1.GetOptions{})
+		_, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(multiNodeNamespace).Get(claimName, meta_v1.GetOptions{})
 		return err
 	}
-	err := flavor.deleteResourceAndWait(multiWriterNamespace, claimName, "persistentvolumeclaim", deleteAction, getAction)
+	err := flavor.deleteResourceAndWait(multiNodeNamespace, claimName, "persistentvolumeclaim", deleteAction, getAction)
 	if err != nil {
 		return err
 	}
@@ -542,7 +597,7 @@ func (flavor *Flavor) deploymentExists(deploymentName string) (bool, error) {
 	log.Tracef(">>>>> deploymentExists with %s", deploymentName)
 	defer log.Tracef("<<<<< deploymentExists")
 
-	_, err := flavor.kubeClient.AppsV1().Deployments(multiWriterNamespace).Get(deploymentName, meta_v1.GetOptions{})
+	_, err := flavor.kubeClient.AppsV1().Deployments(multiNodeNamespace).Get(deploymentName, meta_v1.GetOptions{})
 	if err == nil {
 		// the deployment was found
 		return true, nil
@@ -560,7 +615,7 @@ func (flavor *Flavor) serviceExists(svcName string) (bool, error) {
 	log.Tracef(">>>>> serviceExists with %s", svcName)
 	defer log.Tracef("<<<<< serviceExists")
 
-	_, err := flavor.kubeClient.CoreV1().Services(multiWriterNamespace).Get(svcName, meta_v1.GetOptions{})
+	_, err := flavor.kubeClient.CoreV1().Services(multiNodeNamespace).Get(svcName, meta_v1.GetOptions{})
 	if err == nil {
 		// the deployment was found
 		return true, nil
@@ -623,18 +678,18 @@ func (flavor *Flavor) waitForPVCCreation(claimName string) error {
 	sleepTime := creationDelay
 	for i := 0; i < creationInterval; i++ {
 		// check for the existence of the resource
-		claim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(multiWriterNamespace).Get(claimName, meta_v1.GetOptions{})
+		claim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(multiNodeNamespace).Get(claimName, meta_v1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to get pvc %s, err %+v", claimName, err)
 		}
 		if claim.Status.Phase != core_v1.ClaimBound {
-			log.Infof("pvc %s still not bound to pv. waiting(try %d)...", claimName, i+1)
+			log.Infof("pvc %s still not bound to pv, current state %s. waiting(try %d)...", claimName, claim.Status.Phase, i+1)
 			time.Sleep(sleepTime)
 		}
 		// successfully bound
 		return nil
 	}
-	return fmt.Errorf("gave up waiting for pvc %s to be bound", claimName)
+	return fmt.Errorf("gave up waiting for pvc %s to be bound")
 }
 
 func (flavor *Flavor) waitForDeployment(deploymentName string) error {
@@ -645,7 +700,7 @@ func (flavor *Flavor) waitForDeployment(deploymentName string) error {
 	sleepTime := creationDelay
 	for i := 0; i < creationInterval; i++ {
 		// check for the existence of the resource
-		deployment, err := flavor.kubeClient.AppsV1().Deployments(multiWriterNamespace).Get(deploymentName, meta_v1.GetOptions{})
+		deployment, err := flavor.kubeClient.AppsV1().Deployments(multiNodeNamespace).Get(deploymentName, meta_v1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to get deployment %s, err %+v", deploymentName, err)
 		}
@@ -657,13 +712,6 @@ func (flavor *Flavor) waitForDeployment(deploymentName string) error {
 		return nil
 	}
 	return fmt.Errorf("gave up waiting for deployment %s to be available", deploymentName)
-}
-
-func getDeploymentFromServiceName(svcName string) string {
-	log.Tracef(">>>>> getDeploymentFromServiceName with %s", svcName)
-	defer log.Tracef("<<<<< getDeploymentFromServiceName")
-	// remove service name prefix and add deployment prefix
-	return deploymentNamePrefix + strings.TrimPrefix(svcName, serviceNamePrefix)
 }
 
 func int32toPtr(i int32) *int32 {
