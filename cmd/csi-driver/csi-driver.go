@@ -54,7 +54,6 @@ var (
 func init() {
 	RootCmd.PersistentFlags().StringVarP(&name, "name", "n", csiDriverName, "CSI driver name")
 	RootCmd.PersistentFlags().StringVarP(&endpoint, "endpoint", "e", csiEndpoint, "CSI endpoint")
-	RootCmd.PersistentFlags().BoolP("multinode", "m", false, "Enable multi-node support in the CSI driver")
 	RootCmd.PersistentFlags().StringVarP(&dbServer, "dbserver", "s", "", "Database server for the CSI driver")
 	RootCmd.PersistentFlags().StringVarP(&dbPort, "dbport", "p", etcd.DefaultPort, "Database server port for the CSI driver")
 	RootCmd.PersistentFlags().BoolP("node-service", "", false, "CSI node-plugin")
@@ -70,7 +69,6 @@ func csiCliHandler(cmd *cobra.Command) error {
 	driverName, _ := cmd.Flags().GetString("name")
 	nodeService, _ := cmd.Flags().GetBool("node-service")
 	endpoint, _ := cmd.Flags().GetString("endpoint")
-	multinodeSupport, _ := cmd.Flags().GetBool("multinode")
 	dbServer, _ := cmd.Flags().GetString("dbserver")
 	dbPort, _ := cmd.Flags().GetString("dbport")
 	flavorName, _ := cmd.Flags().GetString("flavor")
@@ -120,7 +118,6 @@ func csiCliHandler(cmd *cobra.Command) error {
 		endpoint,
 		flavorName,
 		nodeService,
-		multinodeSupport,
 		dbServer,
 		dbPort)
 	if err != nil {

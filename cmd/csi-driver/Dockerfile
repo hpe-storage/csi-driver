@@ -10,6 +10,7 @@ RUN apt-get update && \
     systemd \
     libisns0 \
     gawk \
+    nfs-common \
     dmidecode
 
 # add host conformance checks and configuration

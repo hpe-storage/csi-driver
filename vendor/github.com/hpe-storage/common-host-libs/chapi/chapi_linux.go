@@ -247,7 +247,7 @@ func IsChapidRunning(chapidSocket string) bool {
 func RunNimbled(c chan error) {
 	err := cleanupExistingSockets()
 	if err != nil {
-		util.LogError.Fatal("Unable to cleanup existing sockets")
+		log.Fatal("Unable to cleanup existing sockets")
 	}
 	//1. first check if the directory exists
 	_, isdDir, _ := util.FileExists(ChapidSocketPath)
@@ -255,14 +255,14 @@ func RunNimbled(c chan error) {
 		// create the directory for   chapidSocket
 		err = os.Mkdir(ChapidSocketPath, 0700)
 		if err != nil {
-			util.LogError.Fatal("Unable to create directory " + ChapidSocketPath + " for chapid server to run")
+			log.Fatal("Unable to create directory " + ChapidSocketPath + " for chapid server to run")
 		}
 	}
 
 	//create chapidSocket for listening
 	chapidSocket, err := net.Listen("unix", ChapidSocketPath+ChapidSocketName)
 	if err != nil {
-		util.LogError.Fatal("listen error, Unable to create ChapidServer ", err)
+		log.Fatal("listen error, Unable to create ChapidServer ", err)
 	}
 
 	router := NewRouter()

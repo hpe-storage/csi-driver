@@ -271,7 +271,7 @@ func (chapiClient *Client) AttachDevice(volumes []*model.Volume) (devices []*mod
 		log.Errorf("AttachDevice: Err:%s for volume(%s)", err.Error(), volumes[0].Name)
 		return nil, err
 	}
-	
+	// Win CHAPI doesn't return Device[0].State, added OR condition to handele it.
 	if len(devices) != 0 && ((devices[0].State == model.ActiveState.String()) || (devices[0].State == "")) {
 		log.Debugf("Device found with active paths %+v", devices[0])
 		return devices, nil
@@ -394,7 +394,9 @@ func (chapiClient *Client) Mount(reqMount *model.Mount, respMount *model.Mount) 
 
 // GetDevices will return all the OS devices on the host
 func (chapiClient *Client) GetDevices() (devices []*model.Device, err error) {
-	util.LogDebug.Print("Called GetDevices")
+	log.Trace(">>>>> GetDevices")
+	defer log.Trace("<<<<< GetDevices")
+
 	// fetch host ID
 	err = chapiClient.cacheHostID()
 	if err != nil {
@@ -409,10 +411,10 @@ func (chapiClient *Client) GetDevices() (devices []*model.Device, err error) {
 	_, err = chapiClient.client.DoJSON(&connectivity.Request{Action: "GET", Path: devicesURI, Header: chapiClient.header, Payload: nil, Response: &chapiResp, ResponseError: &chapiResp})
 	if err != nil {
 		if errResp != nil {
-			util.LogError.Print(errResp.Info)
+			log.Error("GetDevices: error response, ", errResp.Info)
 			return nil, errors.New(errResp.Info)
 		}
-		util.LogDebug.Print("Err :", err.Error())
+		log.Debug("GetDevices: error getting device list, ", err.Error())
 		return nil, err
 	}
 	return devices, nil

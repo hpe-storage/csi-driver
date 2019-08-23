@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"path"
 	"runtime"
@@ -390,6 +391,43 @@ func WithFields(fields Fields) *log.Entry {
 // or Panic on the Entry it returns.
 func WithTime(t time.Time) *log.Entry {
 	return log.WithTime(t)
+}
+
+// HTTPLogger : wrapper for http logging
+func HTTPLogger(inner http.Handler, name string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sourced().Infof(
+			">>>>> %s %s - %s",
+			r.Method,
+			r.RequestURI,
+			name,
+		)
+
+		start := time.Now()
+		inner.ServeHTTP(w, r)
+
+		sourced().Infof(
+			"<<<<< %s %s - %s %s",
+			r.Method,
+			r.RequestURI,
+			name,
+			time.Since(start),
+		)
+	})
+}
+
+// Scrubber checks if the args list contains any sensitive information like username/password/secret
+// If found, then returns masked string list, else returns the original input list unmodified.
+func Scrubber(args []string) []string {
+	badwords := []string{"username", "user", "password", "passwd", "secret"}
+	for _, arg := range args {
+		for _, bad := range badwords {
+			if strings.Contains(arg, bad) {
+				return []string{"**********"}
+			}
+		}
+	}
+	return args
 }
 
 // sourced adds a source field to the logger that contains

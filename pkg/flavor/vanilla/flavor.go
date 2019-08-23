@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/hpe-storage/common-host-libs/model"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Flavor of the CSI driver
@@ -48,4 +51,20 @@ func (flavor *Flavor) GetCredentialsFromPodSpec(volumeHandle string, podName str
 // GetCredentialsFromSecret :
 func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (map[string]string, error) {
 	return nil, nil
+}
+
+func (flavor *Flavor) CreateMultiNodeVolume(pvName string, reqVolSize int64) (multiWriterVolume *csi.Volume, rollback bool, err error) {
+	return nil, false, fmt.Errorf("multi-node volume access mode is not supported for non-k8s environments")
+}
+
+func (flavor *Flavor) DeleteMultiNodeVolume(pvName string) error {
+	return fmt.Errorf("multi-node volume access mode is not supported for non-k8s environments")
+}
+
+func (flavor *Flavor) HandleMultiNodeNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	return nil, status.Error(codes.Internal, "multi-node volume access mode is not supported for non-k8s environments")
+}
+
+func (flavor *Flavor) IsMultiNodeVolume(volumeID string) bool {
+	return false
 }

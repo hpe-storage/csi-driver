@@ -53,7 +53,7 @@ type Driver struct {
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
-func NewDriver(name, version, endpoint, flavorName string, nodeService, supportsMultiNode bool, dbServer string, dbPort string) (*Driver, error) {
+func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string) (*Driver, error) {
 
 	// Get CSI driver
 	driver := getDriver(name, version, endpoint)
@@ -98,14 +98,15 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService, supports
 		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,      // Single Node Writer
 		csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY, // Single Node Reader
 	}
-	// Enable multi-node support if requested
-	if supportsMultiNode {
-		log.Trace("Enabling Multi-Node support")
-		// Multi-Node Reader
-		volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY)
-		// Multi-Node Single Writer
-		volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER)
-	}
+
+	// Init Multi-Node Capabilities supported by the driver
+	// Multi-Node Reader
+	volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY)
+	// Multi-Node Single Writer
+	volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER)
+	// Multi-Node Multi Writer
+	volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER)
+
 	driver.AddVolumeCapabilityAccessModes(volCapabilites)
 
 	// Init DB service client instance if DB server name is specified
@@ -212,6 +213,33 @@ func (driver *Driver) AddVolumeCapabilityAccessModes(accessModes []csi.VolumeCap
 	}
 
 	driver.volumeCapabilityAccessModes = volumeCapabilityAccessModes
+}
+
+// IsSupportedMultiNodeAccessMode returns true if given capabilities have accessmode of supported multi-node types
+func (driver *Driver) IsSupportedMultiNodeAccessMode(capabilities []*csi.VolumeCapability) bool {
+	for _, volCap := range capabilities {
+		switch volCap.GetAccessMode().GetMode() {
+		case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+			fallthrough
+		case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
+			return true
+		}
+		return false
+	}
+	return false
+}
+
+// IsMultiNodeReadOnlyAccessMode returns true if accessmode is ReadOnlyMany
+func (driver *Driver) IsReadOnlyAccessMode(capabilities []*csi.VolumeCapability) bool {
+	for _, volCap := range capabilities {
+		switch volCap.GetAccessMode().GetMode() {
+		case csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY:
+			fallthrough
+		case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
+			return true
+		}
+	}
+	return false
 }
 
 // AddStorageProvider adds a storage provider to the driver

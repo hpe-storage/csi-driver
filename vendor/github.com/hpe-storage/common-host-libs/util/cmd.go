@@ -32,7 +32,7 @@ const (
 
 // ExecCommandOutputWithTimeout  executes ExecCommandOutput with the specified timeout
 func ExecCommandOutputWithTimeout(cmd string, args []string, timeout int) (string, int, error) {
-	log.Trace("ExecCommandOutputWithTimeout called with ", cmd, Scrubber(args), timeout)
+	log.Trace("ExecCommandOutputWithTimeout called with ", cmd, log.Scrubber(args), timeout)
 	var err error
 	c := exec.Command(cmd, args...)
 	var b bytes.Buffer
