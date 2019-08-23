@@ -744,11 +744,6 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 		return nil, err
 	}
 
-	// Get Volume
-	if _, err = driver.GetVolumeByID(request.VolumeId, request.Secrets); err != nil {
-		log.Error("Failed to get volume ", request.VolumeId)
-		return nil, status.Error(codes.NotFound, err.Error())
-	}
 	log.Tracef("Published the volume %s to the target path %s successfully",
 		request.VolumeId, request.TargetPath)
 
