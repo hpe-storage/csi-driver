@@ -10,7 +10,6 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/api/core/v1"
 )
 
 // Flavor of the CSI driver
@@ -44,7 +43,6 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 	return node, err
 }
 
-<<<<<<< HEAD
 // GetCredentialsFromPodSpec :
 func (flavor *Flavor) GetCredentialsFromPodSpec(volumeHandle string, podName string, namespace string) (map[string]string, error) {
 	return nil, nil
@@ -55,15 +53,11 @@ func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (m
 	return nil, nil
 }
 
-func (flavor *Flavor) CreateMultiWriterVolume(request *csi.CreateVolumeRequest) (multiWriterVolume *csi.Volume, rollback bool, err error) {
-	return nil, false, fmt.Errorf("multi-writer is not supported for non-k8s environments")
-=======
-func (flavor *Flavor) CreateMultiNodeVolume(request *csi.CreateVolumeRequest) (multiWriterVolume *csi.Volume, rollback bool, err error) {
+func (flavor *Flavor) CreateMultiNodeVolume(pvName string, reqVolSize int64) (multiWriterVolume *csi.Volume, rollback bool, err error) {
 	return nil, false, fmt.Errorf("multi-node volume access mode is not supported for non-k8s environments")
->>>>>>> address review comments and enforce ro mode on RO or ROX access modes
 }
 
-func (flavor *Flavor) DeleteMultiNodeVolume(claimName string) error {
+func (flavor *Flavor) DeleteMultiNodeVolume(pvName string) error {
 	return fmt.Errorf("multi-node volume access mode is not supported for non-k8s environments")
 }
 
@@ -73,8 +67,4 @@ func (flavor *Flavor) HandleMultiNodeNodePublish(request *csi.NodePublishVolumeR
 
 func (flavor *Flavor) IsMultiNodeVolume(volumeID string) bool {
 	return false
-}
-
-func (flavor *Flavor) GetMultiNodeClaimFromClaimUID(uid string) (*v1.PersistentVolumeClaim, error) {
-	return nil, status.Error(codes.Internal, "multi-node volume access mode is not supported for non-k8s environments")
 }

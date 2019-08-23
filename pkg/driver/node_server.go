@@ -188,14 +188,14 @@ func (driver *Driver) nodeStageVolume(
 
 	createNFSResources := ""
 	// Fetch properties for NFS resource creation
-	if _, ok := request.VolumeContext[createNFSResourcesParam]; ok {
-		createNFSResources = request.VolumeContext[createNFSResourcesParam]
+	if _, ok := volumeContext[createNFSResourcesKey]; ok {
+		createNFSResources = volumeContext[createNFSResourcesKey]
 	}
 
 	// Check if volume is requested with RWX or ROX modes and intercept here
-	if driver.IsSupportedMultiNodeAccessMode([]*csi.VolumeCapability{request.VolumeCapability}) && createNFSResources == "true" {
+	if driver.IsSupportedMultiNodeAccessMode([]*csi.VolumeCapability{volumeCapability}) && createNFSResources == "true" {
 		log.Infof("NodeStageVolume requested with multi-node access-mode, returning success")
-		return &csi.NodeStageVolumeResponse{}, nil
+		return nil
 	}
 
 	// Get Volume
@@ -648,8 +648,8 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 
 	createNFSResources := ""
 	// Fetch properties for NFS resource creation
-	if _, ok := request.VolumeContext[createNFSResourcesParam]; ok {
-		createNFSResources = request.VolumeContext[createNFSResourcesParam]
+	if _, ok := request.VolumeContext[createNFSResourcesKey]; ok {
+		createNFSResources = request.VolumeContext[createNFSResourcesKey]
 	}
 
 	// Check if volume is requested with RWX or ROX modes with NFS resources and intercept here

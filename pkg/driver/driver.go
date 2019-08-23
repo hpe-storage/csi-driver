@@ -53,7 +53,7 @@ type Driver struct {
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
-func NewDriver(name, version, endpoint, flavorName string, nodeService, supportsMultiNode bool, dbServer string, dbPort string) (*Driver, error) {
+func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string) (*Driver, error) {
 
 	// Get CSI driver
 	driver := getDriver(name, version, endpoint)
@@ -98,16 +98,15 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService, supports
 		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,      // Single Node Writer
 		csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY, // Single Node Reader
 	}
-	// Enable multi-node support if requested
-	if supportsMultiNode {
-		log.Trace("Enabling Multi-Node support")
-		// Multi-Node Reader
-		volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY)
-		// Multi-Node Single Writer
-		volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER)
-		// Multi-Node Multi Writer
-		volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER)
-	}
+
+	// Init Multi-Node Capabilities supported by the driver
+	// Multi-Node Reader
+	volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY)
+	// Multi-Node Single Writer
+	volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER)
+	// Multi-Node Multi Writer
+	volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER)
+
 	driver.AddVolumeCapabilityAccessModes(volCapabilites)
 
 	// Init DB service client instance if DB server name is specified

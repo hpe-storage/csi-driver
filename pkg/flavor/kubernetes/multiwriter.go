@@ -36,12 +36,12 @@ const (
 )
 
 // CreateMultiNodeVolume creates multi-node volume abstracting underlying nfs pvc, deployment and service
-func (flavor *Flavor) CreateMultiNodeVolume(request *csi.CreateVolumeRequest) (multiNodeVolume *csi.Volume, rollback bool, err error) {
-	log.Tracef(">>>>> CreateMultiNodeVolume with %s", request.Name)
+func (flavor *Flavor) CreateMultiNodeVolume(pvName string, reqVolSize int64) (multiNodeVolume *csi.Volume, rollback bool, err error) {
+	log.Tracef(">>>>> CreateMultiNodeVolume with %s", pvName)
 	defer log.Tracef("<<<<< CreateMultiNodeVolume")
 
 	// get pvc from request
-	claim, err := flavor.getClaimFromClaimName(request.Name)
+	claim, err := flavor.getClaimFromClaimName(pvName)
 	if err != nil {
 		return nil, false, err
 	}
@@ -84,12 +84,6 @@ func (flavor *Flavor) CreateMultiNodeVolume(request *csi.CreateVolumeRequest) (m
 		return nil, true, err
 	}
 
-	// Get capacity requested
-	reqVolumeSize := int64(defaultVolumeSize) // Default value
-	if request.GetCapacityRange() != nil {
-		reqVolumeSize = request.GetCapacityRange().GetRequiredBytes()
-	}
-
 	// get NFS volume properties and copy onto original rwx volume
 	volumeContext := make(map[string]string)
 	pv, err := flavor.getPvFromName(fmt.Sprintf("pvc-%s", newClaim.ObjectMeta.UID))
@@ -106,7 +100,7 @@ func (flavor *Flavor) CreateMultiNodeVolume(request *csi.CreateVolumeRequest) (m
 	// Return newly created underlying nfs claim uid with pv attributes
 	return &csi.Volume{
 		VolumeId:      fmt.Sprintf("%s", claim.ObjectMeta.UID),
-		CapacityBytes: reqVolumeSize,
+		CapacityBytes: reqVolSize,
 		VolumeContext: volumeContext,
 	}, false, nil
 }
@@ -185,36 +179,15 @@ func (flavor *Flavor) HandleMultiNodeNodePublish(req *csi.NodePublishVolumeReque
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
+// IsMultiNodeVolume returns true if given volumeID belongs to multi-node access volume
 func (flavor *Flavor) IsMultiNodeVolume(volumeID string) bool {
-	// get service with matching volume-id(i.e original claim-id)
-	nfsResource := fmt.Sprintf("%s%s", multiNodePrefix, volumeID)
-	_, err := flavor.GetNFSService(nfsResource)
+	// multi-writer pv, will have volume-id embedded in pv name
+	_, err := flavor.getPvFromName(fmt.Sprintf("pvc-%s", volumeID))
 	if err != nil {
-		log.Tracef("unable to obtain service %s based on volume-id %s", nfsResource, volumeID)
+		log.Tracef("unable to obtain pv based on volume-id %s", volumeID)
 		return false
 	}
 	return true
-}
-
-func (flavor *Flavor) GetMultiNodeClaimFromClaimUID(volumeID string) (*core_v1.PersistentVolumeClaim, error) {
-	log.Tracef(">>>>> GetMultiNodeClaimFromClaimUid with claim %s", volumeID)
-	defer log.Tracef("<<<<< GetMultiNodeClaimFromClaimUid")
-
-	// get underlying pv from volume-id
-	pvName := fmt.Sprintf("pvc-%s", volumeID)
-	_, err := flavor.getPvFromName(pvName)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to retrieve claim by nfs pv %s", pvName)
-	}
-
-	// get pvc from request
-	nfsClaim, err := flavor.getClaimFromClaimName(pvName)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Debugf("found nfsClaim %s from pv %s", nfsClaim.ObjectMeta.Name, pvName)
-	return nfsClaim, nil
 }
 
 func (flavor *Flavor) getPvFromName(pvName string) (*core_v1.PersistentVolume, error) {

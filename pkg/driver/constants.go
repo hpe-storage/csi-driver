@@ -77,5 +77,5 @@ const (
 	trueKey = "true"
 
 	// multiwriter properties
-	createNFSResourcesParam = "createNFSResources"
+	createNFSResourcesKey = "createNFSResources"
 )

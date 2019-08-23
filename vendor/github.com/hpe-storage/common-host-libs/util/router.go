@@ -3,6 +3,7 @@ package util
 // Copyright 2019 Hewlett Packard Enterprise Development LP.
 import (
 	"github.com/gorilla/mux"
+	log "github.com/hpe-storage/common-host-libs/logger"
 	"net/http"
 )
 
@@ -20,7 +21,7 @@ func InitializeRouter(router *mux.Router, routes []Route) (err error) {
 		var handler http.Handler
 
 		handler = route.HandlerFunc
-		handler = HTTPLogger(handler, route.Name)
+		handler = log.HTTPLogger(handler, route.Name)
 		router.
 			Methods(route.Method).
 			Path(route.Pattern).

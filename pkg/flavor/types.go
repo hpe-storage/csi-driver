@@ -5,7 +5,6 @@ package flavor
 import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/hpe-storage/common-host-libs/model"
-	"k8s.io/api/core/v1"
 )
 
 const (
@@ -26,9 +25,8 @@ type Flavor interface {
 	GetCredentialsFromPodSpec(volumeHandle string, podName string, namespace string) (map[string]string, error)
 	GetCredentialsFromSecret(name string, namespace string) (map[string]string, error)
 
-	CreateMultiNodeVolume(request *csi.CreateVolumeRequest) (multiWriterVolume *csi.Volume, rollback bool, err error)
-	DeleteMultiNodeVolume(claimName string) error
+	CreateMultiNodeVolume(pvName string, reqVolSize int64) (multiWriterVolume *csi.Volume, rollback bool, err error)
+	DeleteMultiNodeVolume(pvName string) error
 	HandleMultiNodeNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
 	IsMultiNodeVolume(volumeID string) bool
-	GetMultiNodeClaimFromClaimUID(uid string) (*v1.PersistentVolumeClaim, error)
 }

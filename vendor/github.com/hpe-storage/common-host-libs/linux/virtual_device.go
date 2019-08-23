@@ -4,6 +4,7 @@ package linux
 
 import (
 	"fmt"
+	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/util"
 	"io/ioutil"
@@ -23,8 +24,8 @@ const (
 
 // GetNimbleDmDevices : get the scsi device by specified serial
 func GetDeviceBySerial(serialNumber string) (device *model.Device, err error) {
-	util.LogDebug.Printf(">>>>> GetDeviceBySerial called with serial %s", serialNumber)
-	defer util.LogDebug.Println("<<<<< GetDeviceBySerial")
+	log.Tracef(">>>>> GetDeviceBySerial called with serial %s", serialNumber)
+	defer log.Traceln("<<<<< GetDeviceBySerial")
 
 	files, err := ioutil.ReadDir(diskBySerial)
 	if err != nil {
@@ -40,7 +41,7 @@ func GetDeviceBySerial(serialNumber string) (device *model.Device, err error) {
 		if f.Mode()&os.ModeSymlink != 0 {
 			pathName, err := os.Readlink(diskBySerial + f.Name())
 			if err != nil {
-				util.LogError.Printf("unable to read symlink %s to get device details, err %s", f.Name(), err.Error())
+				log.Errorf("unable to read symlink %s to get device details, err %s", f.Name(), err.Error())
 				return nil, err
 			}
 			device := &model.Device{}
@@ -62,8 +63,8 @@ func GetDeviceBySerial(serialNumber string) (device *model.Device, err error) {
 
 //AttachDevices : attached and creates scsi devices to host
 func VmdkAttachDevices(vols []*model.Volume) (devs []*model.Device, err error) {
-	util.LogDebug.Printf(">>>>> VmdkAttachDevices")
-	defer util.LogDebug.Println("<<<<< VmdkAttachDevices")
+	log.Tracef(">>>>> VmdkAttachDevices")
+	defer log.Traceln("<<<<< VmdkAttachDevices")
 
 	// Get all SCSI host objects
 	scsiHosts, err := GetScsiHosts()
@@ -94,8 +95,8 @@ func VmdkAttachDevices(vols []*model.Volume) (devs []*model.Device, err error) {
 
 // DeleteDevice : delete the multipath device
 func VmdkDeleteDevice(dev *model.Device) (err error) {
-	util.LogDebug.Printf(">>>>> VmdkDeleteDevice called with %s", dev.SerialNumber)
-	defer util.LogDebug.Println("<<<<< VmdkDeleteDevice")
+	log.Tracef(">>>>> VmdkDeleteDevice called with %s", dev.SerialNumber)
+	defer log.Traceln("<<<<< VmdkDeleteDevice")
 	deletePath := fmt.Sprintf("/sys/block/%s/device/delete", strings.TrimPrefix(dev.Pathname, "/dev/"))
 	exists, _, _ := util.FileExists(deletePath)
 	if !exists {
@@ -111,17 +112,17 @@ func VmdkDeleteDevice(dev *model.Device) (err error) {
 
 // GetScsiHosts returns all SCSI adapter host objects
 func GetScsiHosts() ([]string, error) {
-	util.LogDebug.Println(">>>>> GetScsiHosts")
-	defer util.LogDebug.Println("<<<<< GetScsiHosts")
+	log.Traceln(">>>>> GetScsiHosts")
+	defer log.Traceln("<<<<< GetScsiHosts")
 	exists, _, err := util.FileExists(ScsiHostPathFormat)
 	if !exists {
-		util.LogError.Printf("no scsi hosts found")
+		log.Errorf("no scsi hosts found")
 		return nil, fmt.Errorf("no scsi hosts found")
 	}
 
 	listOfFiles, err := ioutil.ReadDir(ScsiHostPathFormat)
 	if err != nil {
-		util.LogError.Printf("unable to get list of scsi hosts, error %s", err.Error())
+		log.Errorf("unable to get list of scsi hosts, error %s", err.Error())
 		return nil, fmt.Errorf("unable to get list of scsi hosts, error %s", err.Error())
 	}
 
@@ -130,25 +131,25 @@ func GetScsiHosts() ([]string, error) {
 	}
 	var ScsiHosts []string
 	for _, file := range listOfFiles {
-		util.LogDebug.Printf("host name %s", file.Name())
+		log.Tracef("host name %s", file.Name())
 		ScsiHosts = append(ScsiHosts, file.Name())
 	}
 
-	util.LogDebug.Printf("scsiHosts %v", ScsiHosts)
+	log.Tracef("scsiHosts %v", ScsiHosts)
 
 	return ScsiHosts, nil
 }
 
 // RescanScsiHosts rescan's all SCSI host adapters
 func RescanScsiHosts(scsiHosts []string, lunID string) (err error) {
-	util.LogDebug.Println(">>>>> RescanScsiHosts")
-	defer util.LogDebug.Println("<<<<< RescanScsiHosts")
+	log.Traceln(">>>>> RescanScsiHosts")
+	defer log.Traceln("<<<<< RescanScsiHosts")
 	for _, scsiHost := range scsiHosts {
 		if scsiHost == "" {
 			continue
 		}
 		// perform rescan for all hosts
-		util.LogDebug.Printf("rescanHost initiated for %s", scsiHost)
+		log.Tracef("rescanHost initiated for %s", scsiHost)
 		scsiHostScanPath := fmt.Sprintf(ScsiHostScanPathFormat, scsiHost)
 		exists, _, _ := util.FileExists(scsiHostScanPath)
 		if !exists {
@@ -160,7 +161,7 @@ func RescanScsiHosts(scsiHosts []string, lunID string) (err error) {
 			err = util.FileWriteString(scsiHostScanPath, "- - "+lunID)
 		}
 		if err != nil {
-			util.LogError.Printf("unable to rescan for scsi devices on host %s err %s", scsiHost, err.Error())
+			log.Errorf("unable to rescan for scsi devices on host %s err %s", scsiHost, err.Error())
 			return fmt.Errorf("unable to rescan for scsi devices on host %s err %s", scsiHost, err.Error())
 		}
 	}

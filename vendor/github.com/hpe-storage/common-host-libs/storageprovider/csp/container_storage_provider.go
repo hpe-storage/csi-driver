@@ -343,8 +343,8 @@ func (provider *ContainerStorageProvider) CloneVolume(name, description, sourceI
 
 // DeleteVolume will remove a volume from the CSP
 // nolint: dupl
-func (provider *ContainerStorageProvider) DeleteVolume(id string) error {
-	log.Trace(">>>>> DeleteVolume, id:", id)
+func (provider *ContainerStorageProvider) DeleteVolume(id string, force bool) error {
+	log.Tracef(">>>>> DeleteVolume, id: %v, force: %v", id, force)
 	defer log.Trace("<<<<< DeleteVolume")
 
 	var errorResponse *ErrorsPayload
@@ -352,7 +352,7 @@ func (provider *ContainerStorageProvider) DeleteVolume(id string) error {
 	status, err := provider.invoke(
 		&connectivity.Request{
 			Action:        "DELETE",
-			Path:          fmt.Sprintf("/containers/v1/volumes/%s", id),
+			Path:          fmt.Sprintf("/containers/v1/volumes/%s?force=%v", id, force),
 			Payload:       nil,
 			Response:      nil,
 			ResponseError: errorResponse,
