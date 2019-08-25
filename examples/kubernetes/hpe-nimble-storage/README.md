@@ -44,7 +44,7 @@ These parameters are applicable only for Pod inline volumes and to be specified 
 
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
-| csi.storage.k8s.io/ephemeral | Boolean | Indicates that the request is for ephemeral inline volume. This is a mandatory parameter and must be set to true.|
+| csi.storage.k8s.io/ephemeral | Boolean | Indicates that the request is for ephemeral inline volume. This is a mandatory parameter and must be set to "true".|
 | inline-volume-secret-name | Text | A reference to the secret object containing sensitive information to pass to the CSI driver to complete the CSI NodePublishVolume call.|
 | inline-volume-secret-namespace | Text | The namespace of `inline-volume-secret-name` for ephemeral inline volume.|
 | size | Text | The size of ephemeral volume specified in MiB or GiB. If unspecified, a default value will be used.|
