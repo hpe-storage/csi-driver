@@ -39,7 +39,7 @@ This guide is primarily written to accommodate installation on upstream Kubernet
 </table>
 
 ### Requirements
-Different features matures at different rates. Refer to the [official table](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) of feature gates in the Kubernetes docs.
+Different features mature at different rates. Refer to the [official table](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) of feature gates in the Kubernetes docs.
 
 The following guidelines applies to what feature gates got introduced as alphas for the corresponding version of K8s. For example, `ExpandCSIVolumes` got introduced in 1.14 but is still an alpha in 1.15, hence you need to enable that feature gate in 1.15 as well if you want to use it.
 
