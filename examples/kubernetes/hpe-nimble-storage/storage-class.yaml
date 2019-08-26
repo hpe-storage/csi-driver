@@ -14,6 +14,9 @@ parameters:
   csi.storage.k8s.io/node-publish-secret-name: nimble-secret
   csi.storage.k8s.io/node-publish-secret-namespace: kube-system
   # Uncomment for k8s 1.14 for resize support
+  #csi.storage.k8s.io/resizer-secret-name: nimble-secret
+  #csi.storage.k8s.io/resizer-secret-namespace: kube-system
+  # Uncomment for k8s 1.15 for resize support
   #csi.storage.k8s.io/controller-expand-secret-name: nimble-secret
   #csi.storage.k8s.io/controller-expand-secret-namespace: kube-system
   accessProtocol: "iscsi"
@@ -21,6 +24,5 @@ parameters:
   dedupeEnabled: "false"
   performancePolicy: "SQL Server"
   limitIops: "76800"
-  createNFSResources: "true"
-# Uncomment for k8s 1.14 for resize
+# Uncomment for k8s 1.14+ for resize
 #allowVolumeExpansion: true
