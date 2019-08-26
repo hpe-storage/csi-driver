@@ -21,5 +21,6 @@ parameters:
   dedupeEnabled: "false"
   performancePolicy: "SQL Server"
   limitIops: "76800"
+  createNFSResources: "true"
 # Uncomment for k8s 1.14 for resize
 #allowVolumeExpansion: true

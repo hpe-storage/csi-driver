@@ -38,8 +38,8 @@ This guide is primarily written to accommodate installation on upstream Kubernet
   </tbody>
 </table>
 
-### Requirements 
-Different features matures at different rates. Refer to the [official table](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) of feature gates in the Kubernetes docs.
+### Requirements
+Different features mature at different rates. Refer to the [official table](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) of feature gates in the Kubernetes docs.
 
 The following guidelines applies to what feature gates got introduced as alphas for the corresponding version of K8s. For example, `ExpandCSIVolumes` got introduced in 1.14 but is still an alpha in 1.15, hence you need to enable that feature gate in 1.15 as well if you want to use it.
 
@@ -54,7 +54,7 @@ Kubernetes 1.13
 Kubernetes 1.14
  * `--allow-privileged` flag must be set to true for the API server
  * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet
- 
+
 Kubernetes 1.15
  * `--allow-privileged` flag must be set to true for the API server
  * `--feature-gates=VolumePVCDataSource=true,CSIInlineVolume=true` feature gate flags must be set to true for both the API server and kubelet
@@ -154,7 +154,7 @@ Kubernetes 1.13 (resizer is 1.14 only):
 
 ```markdown
 
-csi.storage.k8s.io/fstype: xfs 
+csi.storage.k8s.io/fstype: xfs
 csi.storage.k8s.io/provisioner-secret-name: nimble-secret
 csi.storage.k8s.io/provisioner-secret-namespace: kube-system
 csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
@@ -166,6 +166,7 @@ csi.storage.k8s.io/node-publish-secret-namespace: kube-system
 fsMode: "0644"
 fsOwner: "504:21"
 accessProtocol: "iscsi"
+createNFSResources: "true"
 ```
 
 Kubernetes 1.14 (Alpha feature: Resizer):
@@ -188,6 +189,7 @@ csi.storage.k8s.io/controller-expand-secret-namespace: kube-system
 fsMode: "0644"
 fsOwner: "504:21"
 accessProtocol: "iscsi"
+createNFSResources: "true"
 ```
 
 ## Building the HPE CSI Driver
