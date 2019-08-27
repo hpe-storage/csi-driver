@@ -53,14 +53,10 @@ Kubernetes 1.13
 
 Kubernetes 1.14
  * `--allow-privileged` flag must be set to true for the API server
- * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet
+ * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet for resize support
 
 Kubernetes 1.15
  * `--allow-privileged` flag must be set to true for the API server
- * `--feature-gates=VolumePVCDataSource=true,CSIInlineVolume=true` feature gate flags must be set to true for both the API server and kubelet
-
-Kubernetes 1.15
- * `--allow-privileged` flag must be set to true for the API server for resize support
  * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet for resize support
  * `--feature-gates=CSIInlineVolume=true` feature gate flags must be set to true for both the API server and kubelet for pod inline volumes (Ephemeral Local Volumes) support
  * `--feature-gates=VolumePVCDataSource=true` feature gate flags must be set to true for both the API server and kubelet for Volume cloning support
@@ -106,19 +102,25 @@ Deployment declarations are stored in [hpe-storage/co-deployments](https://githu
 Kubernetes 1.12
 ```
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v0.3.0.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.12.yaml
 ```
 
 Kubernetes 1.13
 ```
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v1.0.0.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.13.yaml
 ```
 
-Kubernetes 1.14 and 1.15
+Kubernetes 1.14
 ```
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/csi-hpe-v1.1.0.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.14.yaml
+```
+
+Kubernetes 1.15
+```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.15.yaml
 ```
 
 Depending on which version being deployed, different API objects gets created.
@@ -150,7 +152,7 @@ fsOwner: "504:21"
 accessProtocol: "iscsi"
 ```
 
-Kubernetes 1.13 (resizer is 1.14 only):
+Kubernetes 1.13:
 
 ```markdown
 
@@ -166,10 +168,27 @@ csi.storage.k8s.io/node-publish-secret-namespace: kube-system
 fsMode: "0644"
 fsOwner: "504:21"
 accessProtocol: "iscsi"
-createNFSResources: "true"
 ```
 
-Kubernetes 1.14 (Alpha feature: Resizer):
+Kubernetes 1.14 (Alpha feature: Volume Expansion):
+
+```markdown
+
+csi.storage.k8s.io/fstype: xfs
+csi.storage.k8s.io/provisioner-secret-name: nimble-secret
+csi.storage.k8s.io/provisioner-secret-namespace: kube-system
+csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
+csi.storage.k8s.io/controller-publish-secret-namespace: kube-system
+csi.storage.k8s.io/node-stage-secret-name: nimble-secret
+csi.storage.k8s.io/node-stage-secret-namespace: kube-system
+csi.storage.k8s.io/node-publish-secret-name: nimble-secret
+csi.storage.k8s.io/node-publish-secret-namespace: kube-system
+csi.storage.k8s.io/resizer-secret-name: nimble-secret
+csi.storage.k8s.io/resizer-secret-namespace: kube-system
+fsMode: "0644"
+fsOwner: "504:21"
+accessProtocol: "iscsi"
+```
 
 Kubernetes 1.15 (Alpha features: PVC Cloning and Pod Inline Volume):
 
@@ -189,7 +208,6 @@ csi.storage.k8s.io/controller-expand-secret-namespace: kube-system
 fsMode: "0644"
 fsOwner: "504:21"
 accessProtocol: "iscsi"
-createNFSResources: "true"
 ```
 
 ## Building the HPE CSI Driver
