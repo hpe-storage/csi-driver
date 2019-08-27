@@ -33,7 +33,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway v1.9.6 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/hpe-storage/common-host-libs v0.0.0-20190821160716-b46821a0b5d1
-	github.com/hpe-storage/k8s-custom-resources v0.0.0-20190725185337-965fa924678a
+	github.com/hpe-storage/k8s-custom-resources v0.0.0-20190828052325-42886f48215c
 	github.com/klauspost/compress v1.7.6 // indirect
 	github.com/klauspost/cpuid v1.2.1 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
@@ -62,7 +62,6 @@ require (
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/viper v1.4.0 // indirect
-	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.4.0 // indirect
 	github.com/timakin/bodyclose v0.0.0-20190721030226-87058b9bfcec // indirect
 	github.com/ugorji/go v1.1.7 // indirect
@@ -80,7 +79,7 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	honnef.co/go/tools v0.0.1-2019.2.2 // indirect
 	k8s.io/api v0.0.0-20190726022912-69e1bce1dad5
-	k8s.io/apimachinery v0.0.0-20190727130956-f97a4e5b4abc
+	k8s.io/apimachinery v0.0.0-20190827074644-f378a67c6af3
 	k8s.io/client-go v0.0.0-20190722143104-cea58bd85b8c
 	k8s.io/utils v0.0.0-20190712204705-3dccf664f023 // indirect
 	mvdan.cc/unparam v0.0.0-20190720180237-d51796306d8f // indirect

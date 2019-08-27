@@ -4,6 +4,7 @@ package kubernetes
 
 import (
 	"crypto/sha256"
+	b64 "encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -159,10 +160,12 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 				Name: node.Name,
 			},
 			Spec: crd_v1.HPENodeInfoSpec{
-				UUID:     node.UUID,
-				IQNs:     iqns,
-				Networks: networks,
-				WWPNs:    wwpns,
+				UUID:         node.UUID,
+				IQNs:         iqns,
+				Networks:     networks,
+				WWPNs:        wwpns,
+				ChapUser:     node.ChapUser,
+				ChapPassword: b64.StdEncoding.EncodeToString([]byte(node.ChapPassword)),
 			},
 		}
 
@@ -219,11 +222,13 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 				wwpns[i] = &nodeInfo.Spec.WWPNs[i]
 			}
 			node := &model.Node{
-				Name:     nodeInfo.ObjectMeta.Name,
-				UUID:     nodeInfo.Spec.UUID,
-				Iqns:     iqns,
-				Networks: networks,
-				Wwpns:    wwpns,
+				Name:         nodeInfo.ObjectMeta.Name,
+				UUID:         nodeInfo.Spec.UUID,
+				Iqns:         iqns,
+				Networks:     networks,
+				Wwpns:        wwpns,
+				ChapUser:     nodeInfo.Spec.ChapUser,
+				ChapPassword: nodeInfo.Spec.ChapPassword,
 			}
 
 			return node, nil

@@ -1511,10 +1511,17 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 
 	var iqns []*string
 	var wwpns []*string
+	var chapUsername string
+	var chapPassword string
 	for _, initiator := range initiators {
 		if initiator.Type == iscsi {
 			for i := 0; i < len(initiator.Init); i++ {
 				iqns = append(iqns, &initiator.Init[i])
+				// we support only single host initiator
+				if initiator.Chap != nil {
+					chapUsername = initiator.Chap.Name
+					chapPassword = initiator.Chap.Password
+				}
 			}
 		} else {
 			for i := 0; i < len(initiator.Init); i++ {
@@ -1536,11 +1543,13 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 	}
 
 	node := &model.Node{
-		Name:     hostNameAndDomain[0],
-		UUID:     host.UUID,
-		Iqns:     iqns,
-		Networks: computedNetworks,
-		Wwpns:    wwpns,
+		Name:         hostNameAndDomain[0],
+		UUID:         host.UUID,
+		Iqns:         iqns,
+		Networks:     computedNetworks,
+		Wwpns:        wwpns,
+		ChapUser:     chapUsername,
+		ChapPassword: chapPassword,
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)
