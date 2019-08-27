@@ -4,8 +4,15 @@ package kubernetes
 
 import (
 	"fmt"
+
 	"github.com/container-storage-interface/spec/lib/go/csi"
+
 	//"github.com/docker/docker/pkg/mount"
+	"os"
+	"strings"
+	"syscall"
+	"time"
+
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -13,10 +20,6 @@ import (
 	core_v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"os"
-	"strings"
-	"syscall"
-	"time"
 )
 
 const (
@@ -25,14 +28,11 @@ const (
 	multiNodeNamespace = "hpe-multinode"
 	nfsImage           = "gcr.io/google_containers/volume-nfs:0.8"
 
-	deletionInterval = 30 // 60s with sleep interval of 2s
-	deletionDelay    = 2 * time.Second
-	creationInterval = 60 // 120s with sleep interval of 2s
-	creationDelay    = 2 * time.Second
-	// defaultVolumeSize is the implementation-specific default value in bytes
-	defaultVolumeSize = 10 * 1024 * 1024 * 1024 // 10 GiB
+	deletionInterval  = 30 // 60s with sleep interval of 2s
+	deletionDelay     = 2 * time.Second
+	creationInterval  = 60 // 120s with sleep interval of 2s
+	creationDelay     = 2 * time.Second
 	defaultExportPath = "/"
-	readOnly          = "readOnly"
 )
 
 // CreateMultiNodeVolume creates multi-node volume abstracting underlying nfs pvc, deployment and service
@@ -133,6 +133,7 @@ func (flavor *Flavor) DeleteMultiNodeVolume(pvName string) error {
 	return err
 }
 
+// HandleMultiNodeNodePublish :
 func (flavor *Flavor) HandleMultiNodeNodePublish(req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log.Tracef(">>>>> HandleMultiNodeNodePublish with volume %s target path %s", req.VolumeId, req.TargetPath)
 	defer log.Tracef("<<<<< HandleMultiNodeNodePublish")
@@ -216,7 +217,7 @@ func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim) (*core_v1
 	return claimClone, nil
 }
 
-// Create Kubernetes Persistent Volume Claim
+// CreateNFSPVC creates Kubernetes Persistent Volume Claim
 func (flavor *Flavor) CreateNFSPVC(claim *core_v1.PersistentVolumeClaim) (*core_v1.PersistentVolumeClaim, error) {
 	log.Tracef(">>>>> CreateNFSPVC with claim %s", claim.ObjectMeta.Name)
 	defer log.Tracef("<<<<< CreateNFSPVC")
@@ -278,6 +279,7 @@ func (flavor *Flavor) CreateNFSService(svcName string) error {
 	return nil
 }
 
+// GetMultiNodeNamespace :
 func (flavor *Flavor) GetMultiNodeNamespace(namespace string) (*core_v1.Namespace, error) {
 	log.Tracef(">>>>> GetMultiNodeNamespace with namespace name %s", namespace)
 	defer log.Tracef("<<<<< GetMultiNodeNamespace")
@@ -289,6 +291,7 @@ func (flavor *Flavor) GetMultiNodeNamespace(namespace string) (*core_v1.Namespac
 	return ns, nil
 }
 
+// CreateMultiNodeNamespace :
 func (flavor *Flavor) CreateMultiNodeNamespace(namespace string) (*core_v1.Namespace, error) {
 	log.Tracef(">>>>> CreateMultiNodeNamespace with namespace name %s", namespace)
 	defer log.Tracef("<<<<< CreateMultiNodeNamespace")
@@ -301,6 +304,7 @@ func (flavor *Flavor) CreateMultiNodeNamespace(namespace string) (*core_v1.Names
 	return ns, nil
 }
 
+// GetNFSService :
 func (flavor *Flavor) GetNFSService(svcName string) (*core_v1.Service, error) {
 	log.Tracef(">>>>> GetNFSService with service name %s", svcName)
 	defer log.Tracef("<<<<< GetNFSService")
@@ -475,7 +479,7 @@ func (flavor *Flavor) makeContainer(name, volumeName string) core_v1.Container {
 	return cont
 }
 
-// Delete NFS service and its depending artifacts
+// DeleteNFSService deletes NFS service and its depending artifacts
 func (flavor *Flavor) DeleteNFSService(svcName string) error {
 	log.Tracef(">>>>> DeleteNFSService with service %s", svcName)
 	defer log.Tracef("<<<<< DeleteNFSService")
@@ -510,7 +514,7 @@ func (flavor *Flavor) DeleteNFSService(svcName string) error {
 	return nil
 }
 
-// Delete NFS service and its depending artifacts
+// DeleteNFSDeployment deletes NFS service and its depending artifacts
 func (flavor *Flavor) DeleteNFSDeployment(name string) error {
 	log.Tracef(">>>>> DeleteDeployment with %s", name)
 	defer log.Tracef("<<<<< DeleteDeployment")
@@ -530,7 +534,7 @@ func (flavor *Flavor) DeleteNFSDeployment(name string) error {
 	return nil
 }
 
-// Delete NFS service and its depending artifacts
+// DeleteNFSPVC deletes NFS service and its depending artifacts
 func (flavor *Flavor) DeleteNFSPVC(claimName string) error {
 	log.Tracef(">>>>> DeletePVC with %s", claimName)
 	defer log.Tracef("<<<<< DeletePVC")
@@ -662,7 +666,7 @@ func (flavor *Flavor) waitForPVCCreation(claimName string) error {
 		// successfully bound
 		return nil
 	}
-	return fmt.Errorf("gave up waiting for pvc %s to be bound")
+	return fmt.Errorf("gave up waiting for pvc %s to be bound", claimName)
 }
 
 func (flavor *Flavor) waitForDeployment(deploymentName string) error {
