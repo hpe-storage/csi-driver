@@ -76,6 +76,8 @@ const (
 
 	trueKey = "true"
 
-	// multiwriter properties
+	// nfs properties
 	createNFSResourcesKey = "createNFSResources"
+	// indicates if this is an underlying NFS PVC(not exposed to user)
+	nfsPVCKey = "nfsPVC"
 )
