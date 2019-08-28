@@ -313,15 +313,19 @@ func (driver *Driver) createVolume(
 			// Return multi-node volume
 			return volume, nil
 		}
+
+		rollbackStatus := "success"
 		if rollback {
 			// attempt to teardown all nfs resources
 			err2 := driver.flavor.DeleteNFSVolume(name)
 			if err2 != nil {
 				log.Errorf("failed to rollback NFS resources for %s, err %s", name, err2.Error())
+				rollbackStatus = err2.Error()
 			}
 		}
-		log.Errorf("Failed to create NFS provisioned volume %s, err %s", name, err.Error())
-		return nil, status.Error(codes.Internal, err.Error())
+		errStr := fmt.Sprintf("Failed to create NFS provisioned volume %s, err %s, rollback status: %s", name, err.Error(), rollbackStatus)
+		log.Errorf(errStr)
+		return nil, status.Error(codes.Internal, errStr)
 	}
 
 	// TODO: use additional properties here to configure the volume further... these might come in from doryd

@@ -28,6 +28,8 @@ const (
 	defaultExportPath          = "/"
 	nfsResourceLimitsCPUKey    = "nfsResourceLimitsCpuM"
 	nfsResourceLimitsMemoryKey = "nfsResourceLimitsMemoryMi"
+	nfsNodeSelectorKey         = "csi.hpe.com/hpe-nfs"
+	nfsNodeSelectorValue       = "true"
 )
 
 // NFSSpec for creating NFS resources
@@ -242,7 +244,7 @@ func (flavor *Flavor) GetNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 
 	// use node-selector for deployment if we find nodes with hpe-nfs label
 	if len(nodes) > 0 {
-		nfsSpec.nodeSelector = map[string]string{"csi.hpe.com/hpe-nfs": "true"}
+		nfsSpec.nodeSelector = map[string]string{nfsNodeSelectorKey: nfsNodeSelectorValue}
 	}
 	return &nfsSpec, nil
 }
@@ -378,7 +380,7 @@ func (flavor *Flavor) GetNFSNodes() ([]core_v1.Node, error) {
 	defer log.Tracef("<<<<< GetNFSNodes")
 
 	// check if nfs service already exists
-	nodeList, err := flavor.kubeClient.CoreV1().Nodes().List(meta_v1.ListOptions{LabelSelector: "csi.hpe.com/hpe-nfs=true"})
+	nodeList, err := flavor.kubeClient.CoreV1().Nodes().List(meta_v1.ListOptions{LabelSelector: strings.Join([]string{nfsNodeSelectorKey, nfsNodeSelectorValue}, "=")})
 	if err != nil {
 		log.Errorf("unable to get list of nodes with hpe-nfs label, err %s", err.Error())
 		return nil, err

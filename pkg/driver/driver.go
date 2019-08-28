@@ -229,7 +229,7 @@ func (driver *Driver) IsSupportedMultiNodeAccessMode(capabilities []*csi.VolumeC
 	return false
 }
 
-// IsReadOnlyAccessMode returns true if accessmode is ReadOnlyMany
+// IsReadOnlyAccessMode returns true if accessmode is ReadOnly for single and multi-node access
 func (driver *Driver) IsReadOnlyAccessMode(capabilities []*csi.VolumeCapability) bool {
 	for _, volCap := range capabilities {
 		switch volCap.GetAccessMode().GetMode() {
@@ -627,10 +627,10 @@ func (driver *Driver) RemoveFromDBIfPending(key string) error {
 }
 
 func (driver *Driver) IsNFSResourceRequest(parameters map[string]string) bool {
-	createNFSResources := ""
+	nfsResources := ""
 	// Fetch properties for NFS resource creation
-	if _, ok := parameters[createNFSResourcesKey]; ok {
-		createNFSResources = parameters[createNFSResourcesKey]
+	if _, ok := parameters[nfsResourcesKey]; ok {
+		nfsResources = parameters[nfsResourcesKey]
 	}
 
 	nfsPVC := "false"
@@ -639,7 +639,7 @@ func (driver *Driver) IsNFSResourceRequest(parameters map[string]string) bool {
 		nfsPVC = parameters[nfsPVCKey]
 	}
 
-	if createNFSResources == "true" && nfsPVC != "true" {
+	if nfsResources == "true" && nfsPVC != "true" {
 		// this is the original pvc
 		return true
 	}

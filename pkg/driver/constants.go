@@ -77,7 +77,7 @@ const (
 	trueKey = "true"
 
 	// nfs properties
-	createNFSResourcesKey = "nfsResources"
+	nfsResourcesKey = "nfsResources"
 	// indicates if this is an underlying NFS PVC(not exposed to user)
 	nfsPVCKey = "nfsPVC"
 )
