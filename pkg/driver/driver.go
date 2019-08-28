@@ -629,14 +629,14 @@ func (driver *Driver) RemoveFromDBIfPending(key string) error {
 func (driver *Driver) IsNFSResourceRequest(parameters map[string]string) bool {
 	createNFSResources := ""
 	// Fetch properties for NFS resource creation
-	if _, ok := createParameters[createNFSResourcesKey]; ok {
-		createNFSResources = createParameters[createNFSResourcesKey]
+	if _, ok := parameters[createNFSResourcesKey]; ok {
+		createNFSResources = parameters[createNFSResourcesKey]
 	}
 
 	nfsPVC := "false"
 	// Check if this is an underlying NFS PVC creation
-	if _, ok := createParameters[nfsPVCKey]; ok {
-		nfsPVC = createParameters[nfsPVCKey]
+	if _, ok := parameters[nfsPVCKey]; ok {
+		nfsPVC = parameters[nfsPVCKey]
 	}
 
 	if createNFSResources == "true" && nfsPVC != "true" {

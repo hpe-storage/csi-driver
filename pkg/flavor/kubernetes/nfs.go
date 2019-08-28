@@ -21,14 +21,13 @@ const (
 	nfsNamespace = "hpe-nfs"
 	nfsImage     = "gcr.io/google_containers/volume-nfs:0.8"
 
-	deletionInterval       = 30 // 60s with sleep interval of 2s
-	deletionDelay          = 2 * time.Second
-	creationInterval       = 60 // 120s with sleep interval of 2s
-	creationDelay          = 2 * time.Second
-	defaultExportPath      = "/"
-	nfsResourceRequestsKey = "nfsResourceRequests"
-	nfsResourceLimitsKey   = "nfsResourceLimits"
-	nfsNodeSelectorKey     = "nfsNodeSelector"
+	deletionInterval           = 30 // 60s with sleep interval of 2s
+	deletionDelay              = 2 * time.Second
+	creationInterval           = 60 // 120s with sleep interval of 2s
+	creationDelay              = 2 * time.Second
+	defaultExportPath          = "/"
+	nfsResourceLimitsCPUKey    = "nfsResourceLimitsCpuM"
+	nfsResourceLimitsMemoryKey = "nfsResourceLimitsMemoryMi"
 )
 
 // NFSSpec for creating NFS resources
@@ -210,140 +209,42 @@ func (flavor *Flavor) GetNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	defer log.Tracef("<<<<< GetNFSSpec")
 
 	var nfsSpec NFSSpec
-	var resourceRequests core_v1.ResourceList
-	var resourceLimits core_v1.ResourceList
+	resourceLimits := make(core_v1.ResourceList)
 	var err error
 
-	// nfs resource requests eg: cpu=500m, memory=64Mi
-	if val, ok := scParams[nfsResourceRequestsKey]; ok {
-		resourceRequests, err = parseResourceList(val)
+	// nfs cpu limits eg: cpu=500m
+	if val, ok := scParams[nfsResourceLimitsCPUKey]; ok {
+		quantity, err := resource.ParseQuantity(val)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid nfs cpu resource limit %s provided in storage class, err %s", val, err.Error())
 		}
+		resourceLimits[core_v1.ResourceCPU] = quantity
 	}
 
-	// nfs resource limits eg: cpu=1, memory=128Mi
-	if val, ok := scParams[nfsResourceLimitsKey]; ok {
-		resourceLimits, err = parseResourceList(val)
+	// nfs memory limits eg: memory=64Mi
+	if val, ok := scParams[nfsResourceLimitsMemoryKey]; ok {
+		quantity, err := resource.ParseQuantity(val)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("invalid nfs memory resource limit %s provided in storage class, err %s", val, err.Error())
 		}
+		resourceLimits[core_v1.ResourceMemory] = quantity
 	}
 
-	if len(resourceRequests) != 0 || len(resourceLimits) != 0 {
-		// validate requests with limits
-		requirements := core_v1.ResourceRequirements{Requests: resourceRequests, Limits: resourceLimits}
-		err := validateResourceRequirements(&requirements)
-		if err != nil {
-			return nil, err
-		}
-		nfsSpec.resourceRequirements = &requirements
+	if len(resourceLimits) != 0 {
+		nfsSpec.resourceRequirements = &core_v1.ResourceRequirements{Limits: resourceLimits}
 	}
 
-	// get node selector for nfs resources
-	if val, ok := scParams[nfsNodeSelectorKey]; ok {
-		labels, err := parseNodeSelector(val)
-		if err != nil {
-			return nil, err
-		}
-		nfsSpec.nodeSelector = labels
+	// get nodes with hpe-nfs labels
+	nodes, err := flavor.GetNFSNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	// use node-selector for deployment if we find nodes with hpe-nfs label
+	if len(nodes) > 0 {
+		nfsSpec.nodeSelector = map[string]string{"csi.hpe.com/hpe-nfs": "true"}
 	}
 	return &nfsSpec, nil
-}
-
-// Validates resource requirement spec with limits
-func validateResourceRequirements(requirements *core_v1.ResourceRequirements) error {
-	log.Tracef(">>>>> validateResourceRequirements")
-	defer log.Tracef("<<<<< validateResourceRequirements")
-
-	// if not limits are specified, return success
-	if len(requirements.Limits) == 0 {
-		return nil
-	}
-
-	for resourceName, quantity := range requirements.Requests {
-		// Check that request <= limit.
-		limitQuantity, exists := requirements.Limits[resourceName]
-		if exists {
-			if quantity.Cmp(limitQuantity) > 0 {
-				return fmt.Errorf("resource request for %s must be less than or equal to %s limit", resourceName, quantity.String(), limitQuantity.String())
-			}
-		}
-	}
-	return nil
-}
-
-func parseNodeSelector(param string) (map[string]string, error) {
-	log.Tracef(">>>>> parseNodeSelector called with %s", param)
-	defer log.Tracef("<<<<< parseNodeSelector")
-
-	selectorLabels := make(map[string]string)
-	// remove all spaces in input param
-	param = strings.Replace(param, " ", "", -1)
-
-	// parse given string into key=value pairs
-	kvPairs := strings.Split(param, ",")
-	if len(kvPairs) == 0 {
-		// empty param passed
-		return nil, fmt.Errorf("invalid nfs node selector param %s provided in storage class, it needs to be in the format of k1=v1, k2=v2...", param)
-	}
-	for _, kvPair := range kvPairs {
-		if !strings.Contains(kvPair, "=") {
-			return nil, fmt.Errorf("nvalid nfs node selector param provided in storage class, %s", kvPair)
-		}
-
-		entries := strings.Split(kvPair, "=")
-		if len(entries) != 2 {
-			return nil, fmt.Errorf("nvalid nfs node selector param provided in storage class, %s", kvPair)
-		}
-		selectorLabels[entries[0]] = entries[1]
-	}
-	return selectorLabels, nil
-}
-
-func parseResourceList(param string) (core_v1.ResourceList, error) {
-	log.Tracef(">>>>> parseResourceList called with %s", param)
-	defer log.Tracef("<<<<< parseResourceList")
-
-	var resourceList = make(map[core_v1.ResourceName]resource.Quantity)
-
-	// remove all spaces in input param
-	param = strings.Replace(param, " ", "", -1)
-
-	// parse given string into key=value pairs
-	kvPairs := strings.Split(param, ",")
-	if len(kvPairs) == 0 {
-		// empty param passed
-		return nil, fmt.Errorf("invalid nfs resource param %s provided in storage class, it needs to be in the format of k1=v1, k2=v2...", param)
-	}
-	for _, kvPair := range kvPairs {
-		if !strings.Contains(kvPair, "=") {
-			return nil, fmt.Errorf("invalid nfs resource param provided in storage class, %s", kvPair)
-		}
-
-		entries := strings.Split(kvPair, "=")
-		if len(entries) != 2 {
-			return nil, fmt.Errorf("invalid nfs resource param provided in storage class, %s", kvPair)
-		}
-
-		switch strings.ToLower(entries[0]) {
-		case "cpu":
-			quantity, err := resource.ParseQuantity(entries[1])
-			if err != nil {
-				return nil, fmt.Errorf("invalid nfs cpu resource quantity %s provided in storage class, err %s", entries[1], err.Error())
-			}
-			resourceList[core_v1.ResourceCPU] = quantity
-		case "memory":
-			quantity, err := resource.ParseQuantity(entries[1])
-			if err != nil {
-				return nil, fmt.Errorf("invalid nfs cpu resource quantity %s provided in storage class, err %s", entries[1], err.Error())
-			}
-			resourceList[core_v1.ResourceMemory] = quantity
-		default:
-			return nil, fmt.Errorf("invalid request type %s provided in storage class for nfs resource", entries[0])
-		}
-	}
-	return resourceList, nil
 }
 
 func (flavor *Flavor) getPvFromName(pvName string) (*core_v1.PersistentVolume, error) {
@@ -469,6 +370,20 @@ func (flavor *Flavor) GetNFSService(svcName string) (*core_v1.Service, error) {
 		return nil, err
 	}
 	return service, nil
+}
+
+// GetNFSNodes returns nodes labeled to run HPE NFS Pods
+func (flavor *Flavor) GetNFSNodes() ([]core_v1.Node, error) {
+	log.Tracef(">>>>> GetNFSNodes")
+	defer log.Tracef("<<<<< GetNFSNodes")
+
+	// check if nfs service already exists
+	nodeList, err := flavor.kubeClient.CoreV1().Nodes().List(meta_v1.ListOptions{LabelSelector: "csi.hpe.com/hpe-nfs=true"})
+	if err != nil {
+		log.Errorf("unable to get list of nodes with hpe-nfs label, err %s", err.Error())
+		return nil, err
+	}
+	return nodeList.Items, nil
 }
 
 // CreateNFSDeployment creates a nfs deployment with given name
