@@ -301,42 +301,31 @@ func (driver *Driver) createVolume(
 		}
 	}
 
-	createNFSResources := ""
-	// Fetch properties for NFS resource creation
-	if _, ok := createParameters[createNFSResourcesKey]; ok {
-		createNFSResources = createParameters[createNFSResourcesKey]
-	}
-
-	protocol := ""
-	if _, ok := createParameters[accessProtocolKey]; ok {
-		protocol = createParameters[accessProtocolKey]
-	}
-
-	// Check if volume is requested with RWX or ROX modes with NFS and intercept here
-	// Verify if NFS based solution is requested and supported for given protocol
-	if driver.IsSupportedMultiNodeAccessMode(volumeCapabilities) && (protocol == iscsi || protocol == fc) {
-		if createNFSResources != "true" {
-			return nil, status.Error(codes.InvalidArgument, "multi-node volume access is requested without specifying createNFSResources param in storage class")
-		}
+	// Verify if NFS based provisioning is requested
+	if driver.IsNFSResourceRequest(createParameters) {
 		// check if block access type is requested with multi-node mode
 		if volAccessType == model.BlockType {
-			return nil, status.Error(codes.InvalidArgument, "multi-node volume access mode is not supported with block access type")
+			return nil, status.Error(codes.InvalidArgument, "NFS volume provisioning is not supported with block access type")
 		}
 
-		volume, rollback, err := driver.flavor.CreateMultiNodeVolume(name, size)
+		volume, rollback, err := driver.flavor.CreateNFSVolume(name, size, createParameters)
 		if err == nil {
 			// Return multi-node volume
 			return volume, nil
 		}
+
+		rollbackStatus := "success"
 		if rollback {
 			// attempt to teardown all nfs resources
-			err2 := driver.flavor.DeleteMultiNodeVolume(name)
+			err2 := driver.flavor.DeleteNFSVolume(name)
 			if err2 != nil {
-				log.Errorf("failed to rollback resources of multi-node access volume for %s, err %s", name, err2.Error())
+				log.Errorf("failed to rollback NFS resources for %s, err %s", name, err2.Error())
+				rollbackStatus = err2.Error()
 			}
 		}
-		log.Errorf("Failed to create multi-node access volume %s, err %s", name, err.Error())
-		return nil, status.Error(codes.Internal, err.Error())
+		errStr := fmt.Sprintf("Failed to create NFS provisioned volume %s, err %s, rollback status: %s", name, err.Error(), rollbackStatus)
+		log.Errorf(errStr)
+		return nil, status.Error(codes.Internal, errStr)
 	}
 
 	// TODO: use additional properties here to configure the volume further... these might come in from doryd
@@ -587,9 +576,9 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	defer log.Trace("<<<<< deleteVolume")
 
 	// Check if this is a multi-node volume
-	if driver.flavor.IsMultiNodeVolume(volumeID) {
+	if driver.flavor.IsNFSVolume(volumeID) {
 		// volumeId represents nfs claim uid for multinode volume
-		err := driver.flavor.DeleteMultiNodeVolume(fmt.Sprintf("pvc-%s", volumeID))
+		err := driver.flavor.DeleteNFSVolume(fmt.Sprintf("pvc-%s", volumeID))
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
@@ -749,16 +738,10 @@ func (driver *Driver) controllerPublishVolume(
 	// NOTE: required until this is fixed to set request.Readonly correctly: https://github.com/kubernetes/kubernetes/issues/70505
 	readOnlyAccessMode := driver.IsReadOnlyAccessMode([]*csi.VolumeCapability{volumeCapability})
 
-	createNFSResources := ""
-	// Fetch properties for NFS resource creation
-	if _, ok := volumeContext[createNFSResourcesKey]; ok {
-		createNFSResources = volumeContext[createNFSResourcesKey]
-	}
-
-	// Check if volume is requested with RWX or ROX modes and intercept here
-	if driver.IsSupportedMultiNodeAccessMode([]*csi.VolumeCapability{volumeCapability}) && createNFSResources == "true" {
+	// Check if volume is requested with NFS resources and intercept here
+	if driver.IsNFSResourceRequest(volumeContext) {
 		// TODO: check and add client ACL here
-		log.Info("ControllerPublish requested with multi-node access-mode, returning success")
+		log.Info("ControllerPublish requested with NFS resources, returning success")
 		return map[string]string{volumeAccessModeKey: volAccessType.String(), readOnlyKey: strconv.FormatBool(readOnlyAccessMode)}, nil
 	}
 
@@ -908,7 +891,7 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 	defer log.Trace("<<<<< controllerUnpublishVolume")
 
 	// Check if volume is requested with RWX or ROX modes with NFS services and intercept here
-	if driver.flavor.IsMultiNodeVolume(volumeID) {
+	if driver.flavor.IsNFSVolume(volumeID) {
 		// TODO: check and add client ACL here
 		log.Info("ControllerUnpublish requested with multi-node access-mode, returning success")
 		return nil

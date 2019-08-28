@@ -186,15 +186,9 @@ func (driver *Driver) nodeStageVolume(
 	log.Infof("NodeStageVolume requested volume %s with access type %s, targetPath %s, capability %v, publishContext %v and volumeContext %v",
 		volumeID, volAccessType.String(), stagingTargetPath, volumeCapability, publishContext, volumeContext)
 
-	createNFSResources := ""
-	// Fetch properties for NFS resource creation
-	if _, ok := volumeContext[createNFSResourcesKey]; ok {
-		createNFSResources = volumeContext[createNFSResourcesKey]
-	}
-
-	// Check if volume is requested with RWX or ROX modes and intercept here
-	if driver.IsSupportedMultiNodeAccessMode([]*csi.VolumeCapability{volumeCapability}) && createNFSResources == "true" {
-		log.Infof("NodeStageVolume requested with multi-node access-mode, returning success")
+	// Check if volume is requested with NFS resources and intercept here
+	if driver.IsNFSResourceRequest(volumeContext) {
+		log.Infof("NodeStageVolume requested with NFS resources, returning success")
 		return nil
 	}
 
@@ -646,16 +640,10 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	log.Infof("NodePublishVolume requested volume %s with access type %s, targetPath %s, capability %v, publishContext %v and volumeContext %v",
 		request.VolumeId, volAccessType, request.TargetPath, request.VolumeCapability, request.PublishContext, request.VolumeContext)
 
-	createNFSResources := ""
-	// Fetch properties for NFS resource creation
-	if _, ok := request.VolumeContext[createNFSResourcesKey]; ok {
-		createNFSResources = request.VolumeContext[createNFSResourcesKey]
-	}
-
-	// Check if volume is requested with RWX or ROX modes with NFS resources and intercept here
-	if driver.IsSupportedMultiNodeAccessMode([]*csi.VolumeCapability{request.VolumeCapability}) && createNFSResources == "true" {
-		log.Infof("NodePublish requested with multi-node access-mode for %s", request.VolumeId)
-		return driver.flavor.HandleMultiNodeNodePublish(request)
+	// Check if volume is requested with NFS resources and intercept here
+	if driver.IsNFSResourceRequest(request.VolumeContext) {
+		log.Infof("NodePublish requested with NFS resources for %s", request.VolumeId)
+		return driver.flavor.HandleNFSNodePublish(request)
 	}
 
 	// If ephemeral volume request, then create new volume, add ACL and NodeStage/NodePublish
