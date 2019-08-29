@@ -23,13 +23,13 @@ import (
 const (
 	nfsPrefix    = "hpe-nfs-"
 	nfsNamespace = "hpe-nfs"
-	nfsImage     = "gcr.io/google_containers/volume-nfs:0.8"
+	nfsImage     = "nimblestorage/nfs-ganesha"
 
 	deletionInterval           = 30 // 60s with sleep interval of 2s
 	deletionDelay              = 2 * time.Second
 	creationInterval           = 60 // 120s with sleep interval of 2s
 	creationDelay              = 2 * time.Second
-	defaultExportPath          = "/"
+	defaultExportPath          = "/export"
 	nfsResourceLimitsCPUKey    = "nfsResourceLimitsCpuM"
 	nfsResourceLimitsMemoryKey = "nfsResourceLimitsMemoryMi"
 	nfsNodeSelectorKey         = "csi.hpe.com/hpe-nfs"
@@ -527,6 +527,9 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 
 	securityContext := &core_v1.SecurityContext{
 		Privileged: boolToPtr(true),
+		Capabilities: &core_v1.Capabilities{
+			Add: []core_v1.Capability{"SYS_ADMIN", "DAC_READ_SEARCH"},
+		},
 	}
 
 	cont := core_v1.Container{
@@ -534,6 +537,16 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 		Image:           nfsImage,
 		ImagePullPolicy: core_v1.PullAlways,
 		SecurityContext: securityContext,
+		Env: []core_v1.EnvVar{
+			{
+				Name:  "GANESHA_OPTIONS",
+				Value: "-N NIV_DEBUG",
+			},
+			{
+				Name:  "GANESHA_CONFIGFILE",
+				Value: "/etc/ganesha.conf",
+			},
+		},
 		Ports: []core_v1.ContainerPort{
 			{Name: "grpc", ContainerPort: 49000, Protocol: core_v1.ProtocolTCP},
 			{Name: "nfs-tcp", ContainerPort: 2049, Protocol: core_v1.ProtocolTCP},
@@ -552,7 +565,7 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 		VolumeMounts: []core_v1.VolumeMount{
 			{
 				Name:      nfsSpec.volumeClaim,
-				MountPath: "/exports",
+				MountPath: "/export",
 			},
 		},
 	}
