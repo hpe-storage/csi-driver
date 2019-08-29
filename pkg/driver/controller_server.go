@@ -4,6 +4,7 @@
 package driver
 
 import (
+	b64 "encoding/base64"
 	"fmt"
 	"strconv"
 	"strings"
@@ -757,6 +758,11 @@ func (driver *Driver) controllerPublishVolume(
 	if err != nil {
 		log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
 		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	if node.ChapUser != "" && node.ChapPassword != "" {
+		decodedChapPassword, _ := b64.StdEncoding.DecodeString(node.ChapPassword)
+		node.ChapPassword = string(decodedChapPassword)
 	}
 
 	// Get storageProvider using secrets
