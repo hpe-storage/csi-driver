@@ -53,18 +53,18 @@ func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (m
 	return nil, nil
 }
 
-func (flavor *Flavor) CreateMultiNodeVolume(pvName string, reqVolSize int64) (multiWriterVolume *csi.Volume, rollback bool, err error) {
-	return nil, false, fmt.Errorf("multi-node volume access mode is not supported for non-k8s environments")
+func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string) (nfsVolume *csi.Volume, rollback bool, err error) {
+	return nil, false, fmt.Errorf("NFS provisioned volume is not supported for non-k8s environments")
 }
 
-func (flavor *Flavor) DeleteMultiNodeVolume(pvName string) error {
-	return fmt.Errorf("multi-node volume access mode is not supported for non-k8s environments")
+func (flavor *Flavor) DeleteNFSVolume(pvName string) error {
+	return fmt.Errorf("NFS provisioned volume is not supported for non-k8s environments")
 }
 
-func (flavor *Flavor) HandleMultiNodeNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	return nil, status.Error(codes.Internal, "multi-node volume access mode is not supported for non-k8s environments")
+func (flavor *Flavor) HandleNFSNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	return nil, status.Error(codes.Internal, "NFS provisioned volume is not supported for non-k8s environments")
 }
 
-func (flavor *Flavor) IsMultiNodeVolume(volumeID string) bool {
+func (flavor *Flavor) IsNFSVolume(volumeID string) bool {
 	return false
 }

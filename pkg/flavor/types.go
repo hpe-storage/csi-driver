@@ -25,8 +25,8 @@ type Flavor interface {
 	GetCredentialsFromPodSpec(volumeHandle string, podName string, namespace string) (map[string]string, error)
 	GetCredentialsFromSecret(name string, namespace string) (map[string]string, error)
 
-	CreateMultiNodeVolume(pvName string, reqVolSize int64) (multiWriterVolume *csi.Volume, rollback bool, err error)
-	DeleteMultiNodeVolume(pvName string) error
-	HandleMultiNodeNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
-	IsMultiNodeVolume(volumeID string) bool
+	CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string) (nfsVolume *csi.Volume, rollback bool, err error)
+	DeleteNFSVolume(pvName string) error
+	HandleNFSNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
+	IsNFSVolume(volumeID string) bool
 }

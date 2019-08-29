@@ -320,6 +320,10 @@ func (flavor *Flavor) getClassOverrideOptions(optionsMap map[string]string) []st
 			}
 		}
 	}
+
+	// Always let nfsPVC option to be overridden for underlying PVC in case of NFS provisioning
+	overridekeys = append(overridekeys, "nfsPVC")
+
 	log.Infof("resulting override keys :%#v", overridekeys)
 	return overridekeys
 }
