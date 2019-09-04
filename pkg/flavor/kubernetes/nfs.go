@@ -23,7 +23,7 @@ import (
 const (
 	nfsPrefix    = "hpe-nfs-"
 	nfsNamespace = "hpe-nfs"
-	nfsImage     = "nimblestorage/nfs-ganesha"
+	nfsImage     = "nimblestorage/nfs-ganesha:2.5.0"
 
 	deletionInterval           = 30 // 60s with sleep interval of 2s
 	deletionDelay              = 2 * time.Second
@@ -526,7 +526,6 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 	defer log.Tracef("<<<<< makeContainer")
 
 	securityContext := &core_v1.SecurityContext{
-		Privileged: boolToPtr(true),
 		Capabilities: &core_v1.Capabilities{
 			Add: []core_v1.Capability{"SYS_ADMIN", "DAC_READ_SEARCH"},
 		},
