@@ -335,6 +335,11 @@ func (driver *Driver) createVolume(
 		// convert create options to snakecase before passing it to CSP
 		createOptions[util.ToSnakeCase(k)] = v
 	}
+
+	// Get the multi-initiator access mode
+	multiInitiator := driver.IsSupportedMultiNodeAccessMode(volumeCapabilities)
+	createOptions[util.ToSnakeCase(multiInitiatorKey)] = multiInitiator
+
 	log.Trace("Volume create options: ", createOptions)
 
 	// extract the description if present

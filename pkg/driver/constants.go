@@ -44,6 +44,7 @@ const (
 	chapPasswordKey     = "chapPassword"
 	readOnlyKey         = "readOnly"
 	volumeAccessModeKey = "volumeAccessMode"
+	multiInitiatorKey   = "multiInitiator"
 
 	// deviceInfoFileName is used to store the device details in a JSON file
 	deviceInfoFileName = "deviceInfo.json"

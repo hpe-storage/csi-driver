@@ -221,6 +221,8 @@ func (driver *Driver) IsSupportedMultiNodeAccessMode(capabilities []*csi.VolumeC
 		switch volCap.GetAccessMode().GetMode() {
 		case csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY:
 			fallthrough
+		case csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER:
+			fallthrough
 		case csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER:
 			return true
 		}
