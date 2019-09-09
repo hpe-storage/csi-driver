@@ -18,6 +18,7 @@ package util
 
 import (
 	"encoding/base64"
+	log "github.com/hpe-storage/common-host-libs/logger"
 	"regexp"
 )
 
@@ -32,13 +33,13 @@ var (
 
 // DecodeBase64Credential to plain text if its b64 encoded, else return the data as-is.
 func DecodeBase64Credential(b64data string) (string, error) {
-	LogDebug.Print(">>>>> DecodeBase64Credential")
-	defer LogDebug.Print("<<<<< DecodeBase64Credential")
+	log.Trace(">>>>> DecodeBase64Credential")
+	defer log.Trace("<<<<< DecodeBase64Credential")
 
 	if base64StringMatcher.MatchString(b64data) { // Match base64 encoded format
 		decBytes, err := base64.StdEncoding.DecodeString(b64data)
 		if err != nil {
-			LogError.Println("Failed to decode the base64 credential ", b64data)
+			log.Error("Failed to decode the base64 credential ", b64data)
 			return "", err
 		}
 		return string(decBytes), nil

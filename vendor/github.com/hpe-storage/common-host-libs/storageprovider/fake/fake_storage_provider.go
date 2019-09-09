@@ -90,7 +90,7 @@ func (provider *StorageProvider) CloneVolume(name, description, sourceID, snapsh
 }
 
 // DeleteVolume removes a fake volume
-func (provider *StorageProvider) DeleteVolume(id string) error {
+func (provider *StorageProvider) DeleteVolume(id string, force bool) error {
 	if _, ok := provider.volumes[id]; ok {
 		delete(provider.volumes, id)
 		return nil
@@ -100,14 +100,14 @@ func (provider *StorageProvider) DeleteVolume(id string) error {
 }
 
 // PublishVolume returns fake publish data
-func (provider *StorageProvider) PublishVolume(id, hostID, accessProtocol string) (*model.PublishInfo, error) {
+func (provider *StorageProvider) PublishVolume(id, hostUUID, accessProtocol string) (*model.PublishInfo, error) {
 	return &model.PublishInfo{
 		SerialNumber: "eui.fake",
 	}, nil
 }
 
 // UnpublishVolume does nothing
-func (provider *StorageProvider) UnpublishVolume(id, hostID string) error {
+func (provider *StorageProvider) UnpublishVolume(id, hostUUID string) error {
 	return nil
 }
 
