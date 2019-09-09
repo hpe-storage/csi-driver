@@ -215,7 +215,7 @@ type Snapshot struct {
 
 // PublishOptions are the options needed to publish a volume
 type PublishOptions struct {
-	HostID         string `json:"host_id,omitempty"`
+	HostUUID       string `json:"host_uuid,omitempty"`
 	AccessProtocol string `json:"access_protocol,omitempty"`
 }
 

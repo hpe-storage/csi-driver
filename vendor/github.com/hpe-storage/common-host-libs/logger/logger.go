@@ -416,15 +416,35 @@ func HTTPLogger(inner http.Handler, name string) http.Handler {
 	})
 }
 
+// IsSensitive checks if the given key exists in the list of bad words (sensitive info)
+func IsSensitive(key string) bool {
+	// TODO: Add more sensitive words (lower-case) to this list
+	badWords := []string{
+		"x-auth-token",
+		"username",
+		"user",
+		"password",
+		"passwd",
+		"secret",
+		"token",
+		"accesskey",
+	}
+	key = strings.ToLower(key)
+	for _, bad := range badWords {
+		// Perform case-insensitive and substring match
+		if strings.Contains(key, bad) {
+			return true
+		}
+	}
+	return false
+}
+
 // Scrubber checks if the args list contains any sensitive information like username/password/secret
 // If found, then returns masked string list, else returns the original input list unmodified.
 func Scrubber(args []string) []string {
-	badwords := []string{"username", "user", "password", "passwd", "secret"}
 	for _, arg := range args {
-		for _, bad := range badwords {
-			if strings.Contains(arg, bad) {
-				return []string{"**********"}
-			}
+		if IsSensitive(arg) {
+			return []string{"**********"}
 		}
 	}
 	return args

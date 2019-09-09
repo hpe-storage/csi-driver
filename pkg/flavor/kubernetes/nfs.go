@@ -794,7 +794,3 @@ func (flavor *Flavor) waitForDeployment(deploymentName string) error {
 func int32toPtr(i int32) *int32 {
 	return &i
 }
-
-func boolToPtr(b bool) *bool {
-	return &b
-}
