@@ -253,7 +253,7 @@ func RunNimbled(c chan error) {
 	_, isdDir, _ := util.FileExists(ChapidSocketPath)
 	if !isdDir {
 		// create the directory for   chapidSocket
-		err = os.Mkdir(ChapidSocketPath, 0700)
+		err = os.MkdirAll(ChapidSocketPath, 0700)
 		if err != nil {
 			log.Fatal("Unable to create directory " + ChapidSocketPath + " for chapid server to run")
 		}
