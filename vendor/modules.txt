@@ -51,7 +51,7 @@ github.com/hpcloud/tail/ratelimiter
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 github.com/hpcloud/tail/winfile
-# github.com/hpe-storage/common-host-libs v0.0.0-20190813183645-06ce42d57f97
+# github.com/hpe-storage/common-host-libs v0.0.0-20190909160723-f1643ac2b2c2
 github.com/hpe-storage/common-host-libs/dbservice/etcd
 github.com/hpe-storage/common-host-libs/logger
 github.com/hpe-storage/common-host-libs/tunelinux

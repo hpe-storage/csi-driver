@@ -1,5 +1,5 @@
 /*
-(c) Copyright 2017 Hewlett Packard Enterprise Development LP
+(c) Copyright 2019 Hewlett Packard Enterprise Development LP
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,7 +28,6 @@ import (
 
 	"github.com/hpe-storage/common-host-libs/jsonutil"
 	log "github.com/hpe-storage/common-host-libs/logger"
-	"github.com/hpe-storage/common-host-libs/util"
 )
 
 const (
@@ -162,7 +161,7 @@ func (client *Client) DoJSON(r *Request) (int, error) {
 	// Include other headers specified in the input request
 	for key, val := range r.Header {
 		req.Header.Add(key, val)
-		if util.IsSensitive(key) {
+		if log.IsSensitive(key) {
 			// Log sensitive info as *****
 			log.Tracef("Header: {%v : %v}\n", key, "*****")
 		} else {
