@@ -732,7 +732,7 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	// Check if the requested access type matches with the volume created access type
-	if volAccessType.String() != volumeContext[volumeAccessModeKey] {
+	if volumeContext[volumeAccessModeKey] != "" && volumeContext[volumeAccessModeKey] != volAccessType.String() {
 		log.Errorf("Volume access type '%v' specified at the creation time mismatched with the requested access type '%v'",
 			volumeContext[volumeAccessModeKey], volAccessType.String())
 		return nil, status.Error(codes.InvalidArgument,
@@ -748,7 +748,10 @@ func (driver *Driver) controllerPublishVolume(
 	if driver.IsNFSResourceRequest(volumeContext) {
 		// TODO: check and add client ACL here
 		log.Info("ControllerPublish requested with NFS resources, returning success")
-		return map[string]string{volumeAccessModeKey: volAccessType.String(), readOnlyKey: strconv.FormatBool(readOnlyAccessMode)}, nil
+		return map[string]string{
+			volumeAccessModeKey: volAccessType.String(),
+			readOnlyKey:         strconv.FormatBool(readOnlyAccessMode),
+		}, nil
 	}
 
 	// Get Volume using secrets
