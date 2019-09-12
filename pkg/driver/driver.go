@@ -94,20 +94,13 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 	})
 
 	// Init Volume Capabilities supported by the driver
-	volCapabilites := []csi.VolumeCapability_AccessMode_Mode{
-		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,      // Single Node Writer
-		csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY, // Single Node Reader
-	}
-
-	// Init Multi-Node Capabilities supported by the driver
-	// Multi-Node Reader
-	volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY)
-	// Multi-Node Single Writer
-	volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER)
-	// Multi-Node Multi Writer
-	volCapabilites = append(volCapabilites, csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER)
-
-	driver.AddVolumeCapabilityAccessModes(volCapabilites)
+	driver.AddVolumeCapabilityAccessModes([]csi.VolumeCapability_AccessMode_Mode{
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,       // Single-Node Single-Writer Mode
+		csi.VolumeCapability_AccessMode_SINGLE_NODE_READER_ONLY,  // Single-Node Single-Reader Mode
+		csi.VolumeCapability_AccessMode_MULTI_NODE_READER_ONLY,   // Multi-Node Multi-Reader Mode (Read-Only)
+		csi.VolumeCapability_AccessMode_MULTI_NODE_SINGLE_WRITER, // Multi-Node Single-Writer Mode
+		csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER,  // Multi-Node Multi-Writer Mode
+	})
 
 	// Init DB service client instance if DB server name is specified
 	if dbServer != "" {

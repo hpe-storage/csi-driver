@@ -175,7 +175,7 @@ func (driver *Driver) nodeStageVolume(
 	}
 
 	// Controller published volume access type must match with the requested volcap
-	if volAccessType.String() != publishContext[volumeAccessModeKey] {
+	if publishContext[volumeAccessModeKey] != "" && publishContext[volumeAccessModeKey] != volAccessType.String() {
 		log.Errorf("Controller published volume access type %v mismatched with the requested access type %v",
 			publishContext[volumeAccessModeKey], volAccessType.String())
 		return status.Error(codes.InvalidArgument,
@@ -628,7 +628,7 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	// Ephemeral volume request does not contain 'publishContext'. So, skip this validation.
 	if !ephemeral {
 		// Controller published volume access type must match with the requested volcap
-		if volAccessType.String() != request.PublishContext[volumeAccessModeKey] {
+		if request.PublishContext[volumeAccessModeKey] != "" && request.PublishContext[volumeAccessModeKey] != volAccessType.String() {
 			log.Errorf("Controller published volume access type '%v' mismatched with the requested access type '%v'",
 				request.PublishContext[volumeAccessModeKey], volAccessType.String())
 			return nil, status.Error(codes.InvalidArgument,
