@@ -761,6 +761,13 @@ func (driver *Driver) controllerPublishVolume(
 		return nil, err
 	}
 
+	volumeConfig := make(map[string]interface{})
+	for k, v := range volume.Config {
+		// convert volume config from CSP to camelCase before parsing it
+		volumeConfig[util.ToCamelCase(k)] = v
+	}
+	log.Tracef("volume config is %+v", volumeConfig)
+
 	// Decode and check if the node is configured
 	node, err := driver.flavor.GetNodeInfo(nodeID)
 	if err != nil {
@@ -822,7 +829,7 @@ func (driver *Driver) controllerPublishVolume(
 
 	// target scope is nimble specific therefore extract it from the volume config
 	var requestedTargetScope = targetScopeGroup
-	if val, ok := volume.Config[targetScopeKey]; ok {
+	if val, ok := volumeConfig[targetScopeKey]; ok {
 		requestedTargetScope = fmt.Sprintf("%v", val)
 	}
 
