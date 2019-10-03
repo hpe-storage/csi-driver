@@ -13,7 +13,6 @@ These parameters are mutable betweeen a parent volume and creating a clone from 
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
 | accessProtocol | Text | The access protocol to use when accessing the persistent volume.  Defaults to "iscsi" when unspecified. |
-| volumeNameSuffix | Text | A suffix to add to the end of each volume name. |
 | destroyOnDelete | Boolean | Indicates the backing Nimble volume (including snapshots) should be destroyed when the PVC is deleted. |
 | limitIops | Integer | The IOPS limit of the volume. The IOPS limit should be in the range 256 to 4294967294, or -1 for unlimited (default). |
 | limitMbps | Integer | The MB/s throughput limit for the volume. |
