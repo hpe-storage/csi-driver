@@ -478,7 +478,7 @@ func (driver *Driver) createVolume(
 			volume, err := storageProvider.CloneVolume(name, description, "", existingSnap.ID, size, createOptions)
 			if err != nil {
 				log.Tracef("Clone creation failed, err: %s", err.Error())
-				return nil, status.Error(codes.Internal, "Failed to create volume due to error: "+err.Error())
+				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
 			}
 
 			// Return newly cloned volume (clone from snapshot)
@@ -517,7 +517,7 @@ func (driver *Driver) createVolume(
 			volume, err := storageProvider.CloneVolume(name, description, existingParentVolume.ID, "", size, createOptions)
 			if err != nil {
 				log.Tracef("Clone creation failed, err: %s", err.Error())
-				return nil, status.Error(codes.Internal, "Failed to create volume due to error: "+err.Error())
+				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
 			}
 
 			// Return newly cloned volume (clone from volume)
@@ -536,7 +536,7 @@ func (driver *Driver) createVolume(
 	volume, err := storageProvider.CreateVolume(name, description, size, createOptions)
 	if err != nil {
 		log.Trace("Volume creation failed, err: " + err.Error())
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create volume %s due to error: %s", name, err.Error()))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create volume %s, %s", name, err.Error()))
 	}
 
 	// Return newly created volume with volume context info
