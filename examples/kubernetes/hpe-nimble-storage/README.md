@@ -60,7 +60,6 @@ Cloning supports two modes of cloning. Either use `cloneOf` and reference a PVC 
 | importVolAsClone | Text | The name of the Nimble volume to clone and import. `importVolAsClone` and `cloneOf` are mutually exclusive. |
 | snapshot | Text | The name of the snapshot to base the clone on. This is optional. If not specified, a new snapshot is created. |
 | createSnapshot | Boolean | Indicates that a new snapshot of the volume should be taken matching the name provided in the `snapshot` parameter. If the `snapshot` parameter is not specified, a default name will be created. |
-| snapshotNamePrefix | Text | A prefix to add to the beginning of the snapshot name. |
 
 ### Import parameters
 Importing volumes to Kubernetes requires the source Nimble volume to be offline. All previous Access Control Records and Initiator Groups will be stripped from the volume when put under control of the HPE CSI Driver.
