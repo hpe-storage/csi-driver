@@ -55,12 +55,12 @@ func NewVolumeCapabilityAccessMode(mode csi.VolumeCapability_AccessMode_Mode) *c
 
 func logGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	log.Infof("GRPC call: %s", info.FullMethod)
-	log.Infof("GRPC request: %+v", protosanitizer.StripSecrets(req))
+	log.Infof("GRPC request: %+v", protosanitizer.StripSecretsCSI03(req))
 	resp, err := handler(ctx, req)
 	if err != nil {
 		log.Errorf("GRPC error: %v", err)
 	} else {
-		log.Infof("GRPC response: %+v", protosanitizer.StripSecrets(resp))
+		log.Infof("GRPC response: %+v", protosanitizer.StripSecretsCSI03(resp))
 	}
 	return resp, err
 }
