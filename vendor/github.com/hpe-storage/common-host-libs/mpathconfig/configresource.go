@@ -237,16 +237,27 @@ func addOption(section *Section, option string) {
 	}
 }
 
-func isSection(line string) bool {
-	line = strings.TrimSpace(line)
-	prefixes := []string{"defaults", "blacklist", "blacklist_exceptions", "devices", "device", "multipaths", "multipath"}
-	for _, prefix := range prefixes {
-		if strings.HasPrefix(line, prefix) {
-			return true
-		}
-	}
-	return false
+//checks for the section
+func isSection(line string) (bool, error) {
+        line = strings.TrimSpace(line)
+        prefixes := []string{"defaults", "blacklist", "blacklist_exceptions", "devices", "device", "multipaths", "multipath"}
+        for _, prefix := range prefixes {
+                r, err := regexp.Compile("^"+prefix+"\\s*[{]*$")
+                if err != nil {
+                        return false, err
+                }
+
+                if(r.MatchString(line)) {
+                        return true, nil
+                }
+        }
+
+        return false, nil
 }
+
+
+
+
 
 // ParseConfig reads and parses give config file into sections
 func ParseConfig(filePath string) (config *Configuration, err error) {
@@ -268,7 +279,11 @@ func ParseConfig(filePath string) (config *Configuration, err error) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !(strings.HasPrefix(line, "#")) && len(line) > 0 {
-			if isSection(line) {
+			section_present, err := isSection(line)
+			if err != nil {
+				return nil, err
+			}
+			if section_present {
 				name := strings.Trim(line, " {")
 				// add new section with parent updated
 				log.Trace("adding section ", name)

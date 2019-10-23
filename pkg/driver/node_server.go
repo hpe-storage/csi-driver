@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"strings"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi/v0"
 	"golang.org/x/net/context"
@@ -293,13 +294,17 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 	defer log.Trace("<<<<< setupDevice")
 
 	// TODO: Enhance CHAPI to work with a PublishInfo object rather than a volume
+
+	discoveryIps := strings.Split(publishContext[discoveryIPs], ",")
+	log.Tracef("Selecting the first discovery IP of %s from all discovery IPs %s", discoveryIps[0], discoveryIps)
+
 	volume := &model.Volume{
 		SerialNumber:   publishContext[serialNumber],
 		AccessProtocol: publishContext[accessProtocol],
 		Iqn:            publishContext[targetName],
 		TargetScope:    publishContext[targetScope],
 		LunID:          publishContext[lunID],
-		DiscoveryIP:    publishContext[discoveryIP],
+		DiscoveryIP:    discoveryIps[0],
 	}
 	if publishContext[accessProtocol] == iscsi {
 		chapInfo := &model.ChapInfo{

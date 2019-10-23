@@ -658,7 +658,7 @@ func (driver *Driver) ControllerPublishVolume(ctx context.Context, request *csi.
 	publishContext[targetScope] = requestedTargetScope
 	publishContext[lunID] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
-		publishContext[discoveryIP] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIP
+		publishContext[discoveryIPs] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIPs, ",")
 		publishContext[chapUsername] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapUser
 		publishContext[chapPassword] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapPassword
 	}

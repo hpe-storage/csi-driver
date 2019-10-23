@@ -7,11 +7,14 @@ import (
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/util"
+	ping "github.com/sparrc/go-ping"
 	"io/ioutil"
+	"net"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -44,6 +47,10 @@ const (
 	iscsiHostScanPathFormat = "/sys/class/scsi_host/%s/scan"
 	alreadyPresent          = "already present"
 	endPointNotConnected    = "transport endpoint is not connected"
+	PingCount               = 5
+	PingInterval            = 10 * time.Millisecond
+	PingTimeout             = 5 * time.Second
+	DefaultIscsiPort        = 3260
 )
 
 //type of Scope (volume, group)
@@ -166,6 +173,55 @@ func loginToTarget(targets model.IscsiTargets, targetIqn string, ifaces []*model
 	return nil
 }
 
+func isReachable(initiatorIP, targetIP string) (reachable bool, err error) {
+	// Allocate a new ICMP ping object
+	pinger, err := ping.NewPinger(targetIP)
+	if err != nil {
+		log.Errorf("NewPinger creation failure, err=%v", err)
+		return false, err
+	}
+
+	// Send a "privileged" raw ICMP ping
+	pinger.SetPrivileged(true)
+
+	// Ping target from initiatorPort
+	pinger.Source = initiatorIP
+
+	// Count tells pinger to stop after sending (and receiving) Count echo packets
+	pinger.Count = PingCount
+
+	// Interval is the wait time between each packet sent
+	pinger.Interval = PingInterval
+
+	// Timeout specifies a timeout before ping exits, regardless of how many packets have been received
+	pinger.Timeout = PingTimeout
+
+	pinger.OnRecv = func(pkt *ping.Packet) {
+		log.Tracef("Received %d bytes from %s: icmp_seq=%d time=%v ttl=%v\n",
+			pkt.Nbytes, pkt.Addr, pkt.Seq, pkt.Rtt, pkt.Ttl)
+		reachable = true
+		pinger.Stop()
+	}
+
+	// Perform the ping test; if we received any ICMP packet back, stop the test
+	log.Tracef("PING %s --> (%s)", initiatorIP, pinger.Addr())
+	pinger.Run()
+
+	if !reachable {
+		log.Warnf("PING FAILED: %s --> (%s), attempting TCP connection to port 3260", initiatorIP, pinger.Addr())
+		// attempt TCP connection to targetip:iscsiport with timeout
+		local := &net.TCPAddr{IP: net.ParseIP(initiatorIP)}
+		dialer := net.Dialer{Timeout: PingTimeout, LocalAddr: local}
+
+		_, err = dialer.Dial("tcp", fmt.Sprintf("%s:%d", targetIP, DefaultIscsiPort))
+		if err != nil {
+			log.Warnf("TCP connection attempt failed %s --> (%s:%d), err %s", initiatorIP, targetIP, DefaultIscsiPort, err.Error())
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 func updateConnectionMode(target *model.IscsiTarget, targets model.IscsiTargets, connectionMode string) {
 	log.Tracef("updateConnectionMode called for target %s mode %s", target.Name, connectionMode)
 	if !(connectionMode == "automatic" || connectionMode == "manual") {
@@ -221,6 +277,17 @@ func addTarget(target *model.IscsiTarget, ifaces []*model.Iface) (err error) {
 	args := []string{"--mode", "node", "--targetname", target.Name, "--login"}
 	if len(ifaces) > 0 {
 		for _, iface := range ifaces {
+			// verify if the target is reachable from this interface
+			reachable, err := isReachable(iface.Network.AddressV4, target.Address)
+			if err != nil {
+				log.Warnf("failed to run ping test from %s --> (%s)", iface.Network.AddressV4, target.Address)
+				// if we cannot issue ping for some reason, proceed with iscsi login
+				reachable = true
+			}
+			if !reachable {
+				log.Errorf("ping test failed from %s --> (%s), skipping iscsi login on this portal to %s", iface.Network.AddressV4, target.Address, target.Name)
+				continue
+			}
 			// login using each iface bound
 			ifaceArgs := append(args, "-I")
 			ifaceArgs = append(ifaceArgs, iface.Name)

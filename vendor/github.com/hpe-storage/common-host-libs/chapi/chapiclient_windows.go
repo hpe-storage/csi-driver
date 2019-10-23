@@ -126,7 +126,7 @@ func NewChapiClient() (*Client, error) {
 
 	//windows port is required
 	//chapiClient, err = NewChapiHTTPClient("http://127.0.0.1", 49725)
-	var timeout time.Duration = 1 * time.Minute
+	var timeout time.Duration = 5 * time.Minute
 	chapiClient, err = NewChapiClientWithTimeout(timeout)
 	if err != nil {
 		log.Errorln(err.Error())
