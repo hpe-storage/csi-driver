@@ -39,7 +39,7 @@ const (
 	targetNameKey       = "targetName"
 	targetScopeKey      = "targetScope"
 	lunIDKey            = "lunId"
-	discoveryIPKey      = "discoveryIp"
+	discoveryIPsKey     = "discoveryIps"
 	chapUsernameKey     = "chapUsername"
 	chapPasswordKey     = "chapPassword"
 	readOnlyKey         = "readOnly"

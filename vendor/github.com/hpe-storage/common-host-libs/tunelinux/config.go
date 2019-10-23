@@ -154,6 +154,16 @@ const (
 
 // GetConfigFile returns config.json file path if bundled with NLT accordingly
 func GetConfigFile() (configFile string) {
+	pluginType := os.Getenv("PLUGIN_TYPE")
+	if pluginType != "" {
+		if pluginType == "cv" {
+			// path bundled with cloud container plugins
+			return "/opt/hpe-storage/nimbletune/cloud_vm_config.json"
+		}
+		// path bundled with on-prem container plugins
+		return "/opt/hpe-storage/nimbletune/config.json"
+	}
+
 	if util.GetNltHome() != "" {
 		// path bundled with NLT
 		return util.GetNltHome() + "nimbletune/config.json"

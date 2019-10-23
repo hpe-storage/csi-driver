@@ -187,16 +187,19 @@ type Volume struct {
 	ConnectionMode string                 `json:"connection_mode,omitempty"`
 	LunID          string                 `json:"lun_id,omitempty"`
 	TargetScope    string                 `json:"target_scope,omitempty"` //GST="group", VST="volume" or empty(older array fiji etc), and no-op for FC
-	IscsiSessions  []*iscsiSession        `json:"iscsi_sessions,omitempty"`
-	FcSessions     []*fcSession           `json:"fc_sessions,omitempty"`
+	IscsiSessions  []*IscsiSession        `json:"iscsi_sessions,omitempty"`
+	FcSessions     []*FcSession           `json:"fc_sessions,omitempty"`
 }
 
-type fcSession struct {
-	InitiatorWwpn string `json:"initiatorWwpn,omitempty"`
+// FcSession info
+type FcSession struct {
+	InitiatorWwpn string `json:"initiator_wwpn,omitempty"`
 }
 
-type iscsiSession struct {
-	InitiatorName string `json:"initiatorName,omitempty"`
+// IscsiSession info
+type IscsiSession struct {
+	InitiatorName string `json:"initiator_name,omitempty"`
+	InitiatorIP   string `json:"initiator_ip_addr,omitempty"`
 }
 
 // Snapshot is a snapshot of a volume
@@ -241,9 +244,9 @@ type BlockDeviceAccessInfo struct {
 
 // IscsiAccessInfo contains the fields necessary for iSCSI access
 type IscsiAccessInfo struct {
-	DiscoveryIP  string `json:"discovery_ip,omitempty"`
-	ChapUser     string `json:"chap_user,omitempty"`
-	ChapPassword string `json:"chap_password,omitempty"`
+	DiscoveryIPs []string `json:"discovery_ips,omitempty"`
+	ChapUser     string   `json:"chap_user,omitempty"`
+	ChapPassword string   `json:"chap_password,omitempty"`
 }
 
 // VirtualDeviceAccessInfo contains the required data to access a virtual device
