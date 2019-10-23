@@ -163,7 +163,7 @@ func Run() (err error) {
 	_, isdDir, _ := util.FileExists(ChapidSocketPath)
 	if !isdDir {
 		// create the directory for   chapidSocket
-		err = os.Mkdir(ChapidSocketPath, 0700)
+		err = os.MkdirAll(ChapidSocketPath, 0700)
 		if err != nil {
 			log.Error("Unable to create directory " + ChapidSocketPath + " for chapid routine to run")
 			return err

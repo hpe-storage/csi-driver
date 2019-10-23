@@ -228,6 +228,7 @@ func doWithRetry(client *Client, request *http.Request) (*http.Response, error) 
 
 func decode(rc io.ReadCloser, dest interface{}, r *Request) error {
 	if rc != nil && dest != nil {
+		log.Debugf("About to decode the error response %v into destination interface", rc)
 		if err := json.NewDecoder(rc).Decode(&dest); err != nil {
 			switch {
 			case err == io.EOF:
@@ -238,8 +239,13 @@ func decode(rc io.ReadCloser, dest interface{}, r *Request) error {
 			jsonutil.PrintPrettyJSONToLog(rc)
 			return err
 		}
-	} else {
-		log.Debugf("Received a null reader or a null destination interface.  That is not expected.")
+		return nil // Successfully decoded error response into destination interface.
+	}
+	if rc != nil {
+		log.Debugf("Received a null reader. That is not expected.")
+	}
+	if dest != nil {
+		log.Debugf("Received a null destination interface. That is not expected.")
 	}
 	return nil
 }

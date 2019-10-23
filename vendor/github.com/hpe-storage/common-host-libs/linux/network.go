@@ -20,7 +20,7 @@ var (
 	nameMtuStateKeyPattern = "^\\d+:\\s+(?P<Name>.*):\\s+<.*mtu\\s+(?P<Mtu>\\d+)\\s+.*state\\s+(?P<UP>\\w+)"
 	ipv4AddrBcastPattern   = "inet\\s+(?P<IPAddress>[\\d\\.]*)/(?P<Mask>\\d+)\\s+brd\\s+(?P<Bcast>[\\d\\.]*)\\s+"
 	etherAddrKeyPattern    = "ether\\s+(?P<Mac>[\\d\\:A-Fa-f]+)"
-	ipv4AddrKeyPattern     = "inet\\s+(?P<IPAddress>[\\d\\.]*)/(?P<Mask>\\d.)\\s+"
+	ipv4AddrKeyPattern     = "inet\\s+(?P<IPAddress>[\\d\\.]*)/(?P<Mask>\\d+)\\s+"
 	up                     = "UP"
 	unknown                = "UNKNOWN"
 	ethtool                = "ethtool"

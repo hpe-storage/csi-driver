@@ -116,7 +116,7 @@ func (provider *ContainerStorageProvider) login() (int, error) {
 			Path:          "/containers/v1/tokens",
 			Payload:       &DataWrapper{Data: token},
 			Response:      &dataWrapper,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {
@@ -167,7 +167,7 @@ func (provider *ContainerStorageProvider) SetNodeContext(node *model.Node) error
 			Path:          "/containers/v1/hosts",
 			Payload:       &DataWrapper{Data: node},
 			Response:      nil,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {
@@ -231,7 +231,7 @@ func (provider *ContainerStorageProvider) CreateVolume(name, description string,
 			Path:          "/containers/v1/volumes",
 			Payload:       &DataWrapper{Data: volume},
 			Response:      &dataWrapper,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {
@@ -325,7 +325,7 @@ func (provider *ContainerStorageProvider) CloneVolume(name, description, sourceI
 			Path:          "/containers/v1/volumes",
 			Payload:       &DataWrapper{Data: volume},
 			Response:      &dataWrapper,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {
@@ -355,7 +355,7 @@ func (provider *ContainerStorageProvider) DeleteVolume(id string, force bool) er
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s?force=%v", id, force),
 			Payload:       nil,
 			Response:      nil,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {
@@ -385,7 +385,7 @@ func (provider *ContainerStorageProvider) PublishVolume(id, hostUUID, accessProt
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s/actions/publish", id),
 			Payload:       &DataWrapper{Data: publishOptions},
 			Response:      &dataResponse,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {
@@ -405,7 +405,7 @@ func (provider *ContainerStorageProvider) UnpublishVolume(id, hostUUID string) e
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s/actions/unpublish", id),
 			Payload:       &DataWrapper{Data: &model.PublishOptions{HostUUID: hostUUID}},
 			Response:      nil,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {
@@ -437,7 +437,7 @@ func (provider *ContainerStorageProvider) ExpandVolume(id string, requestBytes i
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s", id),
 			Payload:       &DataWrapper{Data: volume},
 			Response:      &dataWrapper,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {
@@ -460,7 +460,7 @@ func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, e
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s", id),
 			Payload:       nil,
 			Response:      &dataWrapper,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if status == http.StatusNotFound {
@@ -487,7 +487,7 @@ func (provider *ContainerStorageProvider) GetVolumeByName(name string) (*model.V
 			Path:          fmt.Sprintf("/containers/v1/volumes?name=%s", name),
 			Payload:       nil,
 			Response:      &dataWrapper,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if status == http.StatusNotFound {
@@ -528,7 +528,7 @@ func (provider *ContainerStorageProvider) GetVolumes() ([]*model.Volume, error) 
 			Path:          "/containers/v1/volumes",
 			Payload:       nil,
 			Response:      &dataWrapper,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {
@@ -571,7 +571,7 @@ func (provider *ContainerStorageProvider) GetSnapshots(volumeID string) ([]*mode
 			Path:          path,
 			Payload:       nil,
 			Response:      &dataWrapper,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {
@@ -609,7 +609,7 @@ func (provider *ContainerStorageProvider) GetSnapshot(id string) (*model.Snapsho
 			Path:          fmt.Sprintf("/containers/v1/snapshots/%s", id),
 			Payload:       nil,
 			Response:      &dataWrapper,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if status == http.StatusNotFound {
@@ -638,7 +638,7 @@ func (provider *ContainerStorageProvider) GetSnapshotByName(name string, volumeI
 			Path:          fmt.Sprintf("/containers/v1/snapshots?name=%s&volume_id=%s", name, volumeID),
 			Payload:       nil,
 			Response:      &dataWrapper,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 
@@ -694,7 +694,7 @@ func (provider *ContainerStorageProvider) CreateSnapshot(name, description, sour
 			Path:          "/containers/v1/snapshots",
 			Payload:       &DataWrapper{Data: snapshot},
 			Response:      &dataWrapper,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 
@@ -726,7 +726,7 @@ func (provider *ContainerStorageProvider) DeleteSnapshot(id string) error {
 			Path:          fmt.Sprintf("/containers/v1/snapshots/%s", id),
 			Payload:       nil,
 			Response:      nil,
-			ResponseError: errorResponse,
+			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {

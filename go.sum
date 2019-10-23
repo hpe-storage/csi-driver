@@ -269,6 +269,8 @@ github.com/hpe-storage/common-host-libs v0.0.0-20190813183645-06ce42d57f97 h1:kA
 github.com/hpe-storage/common-host-libs v0.0.0-20190813183645-06ce42d57f97/go.mod h1:qQxvwt4l9C79p2V8bY1P13As1+ylyznKJVp3K2P5bz8=
 github.com/hpe-storage/common-host-libs v0.0.0-20190909160723-f1643ac2b2c2 h1:Yfbirq4fZsfA5wZ1yyz1P+qmjeJxtMUE7wYGkSt8sKo=
 github.com/hpe-storage/common-host-libs v0.0.0-20190909160723-f1643ac2b2c2/go.mod h1:qQxvwt4l9C79p2V8bY1P13As1+ylyznKJVp3K2P5bz8=
+github.com/hpe-storage/common-host-libs v0.0.0-20191023151626-8099ba365825 h1:IRywE3jicr9oTylmZGnJZWxO7zMubJCKONuVBNvppvo=
+github.com/hpe-storage/common-host-libs v0.0.0-20191023151626-8099ba365825/go.mod h1:qQxvwt4l9C79p2V8bY1P13As1+ylyznKJVp3K2P5bz8=
 github.com/hpe-storage/k8s-custom-resources v0.0.0-20190725185337-965fa924678a h1:cpkiN7PNdZKOElyH1tYgEc+a7X1BbqS7fCd/dMski1c=
 github.com/hpe-storage/k8s-custom-resources v0.0.0-20190725185337-965fa924678a/go.mod h1:J5Gwdo2nG3SwcXUG4dXWeQWWfQNd3FDcXH/7VyuHSy0=
 github.com/imdario/mergo v0.3.5/go.mod h1:2EnlNZ0deacrJVfApfmtdGgDfMuh/nq6Ok1EcJh5FfA=
@@ -436,6 +438,8 @@ github.com/sourcegraph/go-diff v0.5.1 h1:gO6i5zugwzo1RVTvgvfwCOSVegNuvnNi6bAD1QC
 github.com/sourcegraph/go-diff v0.5.1/go.mod h1:j2dHj3m8aZgQO8lMTcTnBcXkRRRqi34cd2MNlA9u1mE=
 github.com/spaolacci/murmur3 v0.0.0-20180118202830-f09979ecbc72/go.mod h1:JwIasOWyU6f++ZhiEuf87xNszmSA2myDM2Kzu9HwQUA=
 github.com/spaolacci/murmur3 v1.1.0/go.mod h1:JwIasOWyU6f++ZhiEuf87xNszmSA2myDM2Kzu9HwQUA=
+github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c h1:gqEdF4VwBu3lTKGHS9rXE9x1/pEaSwCXRLOZRF6qtlw=
+github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c/go.mod h1:eMyUVp6f/5jnzM+3zahzl7q6UXLbgSc3MKg/+ow9QW0=
 github.com/spf13/afero v1.1.0/go.mod h1:j4pytiNVoe2o6bmDsKpLACNPDBIoEAkihy7loJ1B0CQ=
 github.com/spf13/afero v1.1.2/go.mod h1:j4pytiNVoe2o6bmDsKpLACNPDBIoEAkihy7loJ1B0CQ=
 github.com/spf13/afero v1.2.2 h1:5jhuqJyZCZf2JRofRvN/nIFgIWNzPa3/Vz8mYylgbWc=
@@ -663,6 +667,7 @@ google.golang.org/appengine v1.4.0/go.mod h1:xpcJRLb0r/rnEns0DIKYYv+WjYCduHsrkT7
 google.golang.org/appengine v1.5.0/go.mod h1:xpcJRLb0r/rnEns0DIKYYv+WjYCduHsrkT7/EB5XEv4=
 google.golang.org/appengine v1.6.1 h1:QzqyMA1tlu6CgqCDUtU9V+ZKhLFT2dkJuANu5QaxI3I=
 google.golang.org/appengine v1.6.1/go.mod h1:i06prIuMbXzDqacNJfV5OdTW448YApPu5ww/cMBSeb0=
+google.golang.org/appengine v1.6.2 h1:j8RI1yW0SkI+paT6uGwMlrMI/6zwYA6/CFil8rxOzGI=
 google.golang.org/appengine v1.6.2/go.mod h1:i06prIuMbXzDqacNJfV5OdTW448YApPu5ww/cMBSeb0=
 google.golang.org/genproto v0.0.0-20180817151627-c66870c02cf8/go.mod h1:JiN7NxoALGmiZfu7CAH4rXhgtRTLTxftemlI0sWmxmc=
 google.golang.org/genproto v0.0.0-20190307195333-5fe7a883aa19/go.mod h1:VzzqZJRnGkLBvHegQrXjBqPurQTc5/KpmUdxsrq26oE=

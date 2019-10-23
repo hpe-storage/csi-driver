@@ -353,3 +353,4 @@ func ConfigureMultipath() (err error) {
 	}
 	return nil
 }
+

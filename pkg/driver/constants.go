@@ -36,7 +36,7 @@ const (
 	targetName       = "targetName"
 	targetScope      = "targetScope"
 	lunID            = "lunId"
-	discoveryIP      = "discoveryIp"
+	discoveryIPs     = "discoveryIps"
 	chapUsername     = "chapUsername"
 	chapPassword     = "chapPassword"
 	readOnly         = "readOnly"
