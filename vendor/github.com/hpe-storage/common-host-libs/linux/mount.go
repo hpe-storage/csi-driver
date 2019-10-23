@@ -488,8 +488,8 @@ func MountDevice(device *model.Device, mountPoint string, options []string) (*mo
 	return mount, nil
 }
 
-// MountDeviceWithFileSystem : Mount device with filesystem at the mountPoint
-// nolint: gocyclo
+// MountDeviceWithFileSystem : Mount device with filesystem at the mountPoint, if partitions are present, then
+// largest partition will be mounted
 func MountDeviceWithFileSystem(devPath string, mountPoint string, options []string) (*model.Mount, error) {
 	log.Tracef(">>>>> MountDeviceWithFileSystem, devPath: %s, mountPoint: %s, options: %v", devPath, mountPoint, options)
 	defer log.Trace("<<<<< MountDeviceWithFileSystem")
@@ -527,7 +527,29 @@ func MountDeviceWithFileSystem(devPath string, mountPoint string, options []stri
 	}
 
 	log.Tracef("got Filesystem Type=%s from device %s. Proceeding with mount.", fsType, devPath)
-	// if not already mounted try to mount the device
+
+	// If there are partitions on the device, then mount the largest partition.
+	deviceParitionInfos, err := GetPartitionInfo(&model.Device{AltFullPathName: devPath})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to verify if partitions exist on device %s, %s", devPath, err.Error())
+	}
+	if len(deviceParitionInfos) != 0 {
+		mount, err := mountForPartition(devPath, mountPoint, options)
+		if mount != nil {
+			return mount, nil
+		}
+		return nil, err
+	}
+
+	// whole block device. perform mount if not already mounted
+	mount, err := performMount(devPath, mountPoint, options)
+	if err != nil {
+		return nil, err
+	}
+	return mount, nil
+}
+
+func performMount(devPath string, mountPoint string, options []string) (*model.Mount, error) {
 	args := []string{devPath, mountPoint}
 	optionArgs := []string{}
 	if len(options) != 0 {
@@ -536,11 +558,19 @@ func MountDeviceWithFileSystem(devPath string, mountPoint string, options []stri
 	args = append(optionArgs, args...)
 	try := 0
 	var rc int
+	var err error
 	for {
 		_, rc, err = util.ExecCommandOutput(mountCommand, args)
 		if err != nil || rc != 0 {
-			// if error is not nil for 5 retries
-			if try < 5 {
+			// if failed due to duplicate FS UUID(snapshot), attempt mount with no-uuid check option
+			if rc == mountUUIDErr {
+				log.Infof("mount failed for dev %s with rc=%d(duplicate uuid), trying again with no uuid option", devPath, mountUUIDErr)
+				_, _, err = util.ExecCommandOutput(mountCommand, []string{"-o", "nouuid", devPath, mountPoint})
+				if err != nil {
+					return nil, err
+				}
+			} else if try < 5 {
+				// retry on other generic errors
 				try++
 				log.Debugf("mount not yet complete with err :%s rc %d.. will retry", err.Error(), rc)
 				time.Sleep(time.Duration(try) * time.Second)
@@ -550,35 +580,34 @@ func MountDeviceWithFileSystem(devPath string, mountPoint string, options []stri
 		break
 	}
 	if err != nil {
-		if rc == mountUUIDErr {
-			//TODO: this works for docker workflow. Need to see if it needs to be changed for oracle and other linux use cases
-			log.Trace("rc=" + strconv.Itoa(mountUUIDErr) + " trying again with no uuid option")
-			_, _, err = util.ExecCommandOutput(mountCommand, []string{"-o", "nouuid", devPath, mountPoint})
-		}
-	}
-	if err != nil {
-		mount := mountForPartition(devPath, mountPoint)
-		if mount != nil {
-			return mount, nil
-		}
 		return nil, err
 	}
 
-	// verify the mount worked
+	// verify that mount is successful
 	err = verifyMount(devPath, mountPoint)
-	device := &model.Device{
-		AltFullPathName: devPath,
+	if err != nil {
+		return nil, err
 	}
-	mount := &model.Mount{
-		Mountpoint: mountPoint,
-		Device:     device}
-	return mount, err
+	return &model.Mount{Mountpoint: mountPoint, Device: &model.Device{AltFullPathName: devPath}}, nil
 }
 
 // GetFilesystemType returns the filesystem type if present else empty string
 func GetFilesystemType(devPath string) (string, error) {
 	log.Trace(">>>>> GetFilesystemType, devPath: ", devPath)
 	defer log.Trace("<<<<< GetFilesystemType")
+
+	// If there are partitions on the device, then return FS type of largest partition.
+	deviceParitionInfos, err := GetPartitionInfo(&model.Device{AltFullPathName: devPath})
+	if err != nil {
+		return "", fmt.Errorf("Failed to verify if partitions exists on device %s, %s", devPath, err.Error())
+	}
+	if len(deviceParitionInfos) != 0 {
+		largestPartition := getLargestPartition(deviceParitionInfos)
+		if largestPartition != nil {
+			log.Debugf("Got largest partition for device %s as %s to check fsType", devPath, largestPartition.Name)
+			devPath = devMapperPath + largestPartition.Name
+		}
+	}
 
 	// Sample input/output format:
 	// # blkid dev/mapper/21bab810d4d816c6a6c9ce900b13eb9ef
@@ -612,10 +641,9 @@ func GetFilesystemType(devPath string) (string, error) {
 	return "", nil
 }
 
-func mountForPartition(devPath, mountPoint string) *model.Mount {
+func mountForPartition(devPath, mountPoint string, options []string) (mount *model.Mount, err error) {
 	log.Tracef("mountForPartition called for %s and %s", devPath, mountPoint)
 	// check if there are partitions
-	var mount *model.Mount
 	mount = nil
 	deviceParitionInfos, _ := GetPartitionInfo(&model.Device{AltFullPathName: devPath})
 	if len(deviceParitionInfos) != 0 {
@@ -623,24 +651,14 @@ func mountForPartition(devPath, mountPoint string) *model.Mount {
 		if largestPartition != nil {
 			log.Tracef("%s could not be mounted, but partition(s) were found %v", devPath, largestPartition)
 			// lsblk talks in terms of dev mapper
-			_, err := MountDeviceWithFileSystem(devMapperPath+largestPartition.Name, mountPoint, nil)
-			if err == nil {
-				log.Tracef("mounted using partition %s", devMapperPath+largestPartition.Name)
-				// verify the mount worked
-				err = verifyMount(devMapperPath+largestPartition.Name, mountPoint)
-				if err != nil {
-					return nil
-				}
-				device := &model.Device{
-					AltFullPathName: devPath,
-				}
-				mount = &model.Mount{
-					Mountpoint: mountPoint,
-					Device:     device}
+			mount, err = performMount(devMapperPath+largestPartition.Name, mountPoint, options)
+			if err != nil {
+				return nil, err
 			}
+			log.Tracef("mounted using partition %s", devMapperPath+largestPartition.Name)
 		}
 	}
-	return mount
+	return mount, nil
 }
 
 func verifyUnMount(mountPoint string) error {
@@ -841,13 +859,8 @@ func SetupFilesystem(device *model.Device, filesystemType string) error {
 		return err
 	}
 	if fsType != "" {
-		log.Tracef("Filesystem %s already exists on the device %s", filesystemType, device.AltFullPathName)
-		// Check if the FS is same as the request. If yes, return here with success
-		if fsType == filesystemType {
-			log.Tracef("Filesystem %s already exists on the device %s", filesystemType, device.AltFullPathName)
-			return nil
-		}
-		return fmt.Errorf("Another filesystem type %s already exists on the device %s", fsType, device.AltFullPathName)
+		log.Tracef("Filesystem %s already exists on the device %s", fsType, device.AltFullPathName)
+		return nil
 	}
 
 	log.Tracef("Creating filesystem %s on device path %s", filesystemType, device.AltFullPathName)

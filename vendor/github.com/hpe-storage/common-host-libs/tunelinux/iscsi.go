@@ -409,5 +409,11 @@ func ConfigureIscsi() (err error) {
 	if err != nil {
 		return err
 	}
+
+	err = SetIscsiRecommendations()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
