@@ -7,11 +7,11 @@ RUN apt-get update && \
     xfsprogs \
     iproute2 \
     util-linux \
-    systemd \
     libisns0 \
     gawk \
     nfs-common \
-    dmidecode
+    dmidecode \
+    open-iscsi
 
 # add host conformance checks and configuration
 ADD [ "conform/*", "/opt/hpe-storage/lib/" ]
