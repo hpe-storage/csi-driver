@@ -5,7 +5,6 @@ package driver
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -273,7 +272,7 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 	credentials, err := storageprovider.CreateCredentials(secrets)
 	if err != nil {
 		log.Errorf("Failed to create credentials, err: %s", err.Error())
-		return nil, errors.New("No secrets have been provided")
+		return nil, err
 	}
 
 	if csp, ok := driver.storageProviders[credentials.Backend]; ok {
@@ -336,14 +335,14 @@ func (driver *Driver) GetVolumeByID(id string, secrets map[string]string) (*mode
 		storageProvider, err := driver.GetStorageProvider(secrets)
 		if err != nil {
 			log.Error("err: ", err.Error())
-			return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 		}
 
 		// check if the volume exists
 		volume, err = storageProvider.GetVolume(id)
 		if err != nil {
 			log.Error("err: ", err.Error())
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume with ID %s", id))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume with ID %s, %s", id, err.Error()))
 		}
 	} else {
 		log.Tracef("Secrets not provided. Checking all known storage providers.")
@@ -353,7 +352,7 @@ func (driver *Driver) GetVolumeByID(id string, secrets map[string]string) (*mode
 			volume, err = storageProvider.GetVolume(id)
 			if err != nil {
 				log.Error("err: ", err.Error())
-				return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume with ID %s", id))
+				return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume with ID %s, %s", id, err.Error()))
 			}
 		}
 	}
@@ -372,24 +371,19 @@ func (driver *Driver) GetVolumeByName(name string, secrets map[string]string) (*
 
 	var volume *model.Volume
 	var err error
-	// When secrets specified
-	if secrets == nil || len(secrets) != 0 {
-		err := fmt.Errorf("Secrets are not provided to get the volume %s via CSP", name)
-		return nil, err
-	}
 
 	// Get Storage Provider
 	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 	}
 
 	// check if the volume exists
 	volume, err = storageProvider.GetVolumeByName(name)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume %s", name))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume %s, %s", name, err.Error()))
 	}
 
 	log.Tracef("Found Volume %+v", volume)

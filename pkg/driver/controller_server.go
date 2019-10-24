@@ -369,7 +369,7 @@ func (driver *Driver) createVolume(
 	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 	}
 
 	// TODO: check for version compatibility for new features
@@ -1129,7 +1129,7 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 	storageProvider, err := driver.GetStorageProvider(request.Secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 	}
 
 	// Check if the source volume exists using Secrets
@@ -1247,7 +1247,7 @@ func (driver *Driver) DeleteSnapshot(ctx context.Context, request *csi.DeleteSna
 	storageProvider, err := driver.GetStorageProvider(request.Secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, "Failed to get storage provider from secrets")
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 	}
 
 	// Get Snapshot using secrets
