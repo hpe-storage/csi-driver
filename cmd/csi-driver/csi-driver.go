@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	csiVersion    = "0.1"
-	csiDriverName = "csi.hpe.com"
-	csiLogFile    = "/var/log/hpe-csi.log"
-	csiEndpoint   = "unix:///var/lib/kubelet/csi.hpe.com/csi.sock"
+	csiVersion           = "0.1"
+	csiDriverName        = "csi.hpe.com"
+	csiControllerLogFile = "/var/log/hpe-csi-controller.log"
+	csiNodeLogFile       = "/var/log/hpe-csi-node.log"
+	csiEndpoint          = "unix:///var/lib/kubelet/csi.hpe.com/csi.sock"
 )
 
 var (
@@ -42,6 +43,19 @@ var (
 		Long:             `A command-line utility for managing the HPE Container Storage Interface (CSI) plugin`,
 		TraverseChildren: true,
 		Run: func(cmd *cobra.Command, args []string) {
+			isNode, _ := cmd.Flags().GetBool("node-service")
+			if isNode {
+				log.InitLogging(csiNodeLogFile, nil, true)
+			} else {
+				log.InitLogging(csiControllerLogFile, nil, true)
+			}
+			log.Info("**********************************************")
+			log.Info("*************** HPE CSI DRIVER ***************")
+			log.Info("**********************************************")
+
+			log.Infof(">>>>> CMDLINE Exec, args: %v", args)
+			defer log.Info("<<<<< CMDLINE Exec")
+
 			if err := csiCliHandler(cmd); err != nil {
 				log.Errorf("Failed to execute CLI handler, Err: %v", err.Error())
 				os.Exit(1)
@@ -142,14 +156,6 @@ func csiCliHandler(cmd *cobra.Command) error {
 
 // Main runs csi interpreting command-line flags and commands
 func Main() {
-	log.InitLogging(csiLogFile, nil, true)
-
-	log.Trace(" **********************************************")
-	log.Trace(" *************** HPE CSI DRIVER ***************")
-	log.Trace(" **********************************************")
-
-	log.Trace(">>>>> Main, os.Args:", os.Args)
-	defer log.Trace("<<<<< Main")
 
 	if err := RootCmd.Execute(); err != nil {
 		log.Error("Failed to execute, err:", err.Error())
