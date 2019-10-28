@@ -606,7 +606,9 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	// Check if volume still in published state or ACL exists
 	if existingVolume.Published {
 		log.Errorf("Volume %s with ID %s still in use", existingVolume.Name, existingVolume.ID)
-		return status.Errorf(codes.FailedPrecondition, fmt.Sprintf("Volume %s with ID %s is still in use", existingVolume.Name, existingVolume.ID))
+		// TODO: Return correct error code 'FailedPrecondition' as per CSI spec.
+		//       Here, we return 'internal' error code so that the external provisioner performs enough retries to cleanup the volume.
+		return status.Errorf(codes.Internal, fmt.Sprintf("Volume %s with ID %s is still in use", existingVolume.Name, existingVolume.ID))
 	}
 
 	// Get Storage Provider
