@@ -22,8 +22,9 @@
 log_collection() {
 # Initializing the file and directory
 case_number=$1
-today=`date '+%Y%m%d_%H%M%S'`
-filename="hpe-storage-logs-$today.tar.gz"
+timestamp=`date '+%Y%m%d_%H%M%S'`
+hostname=`hostname -s`
+filename="hpe-storage-logs-$hostname-$timestamp.tar.gz"
 
 destinationDir="/var/log/tmp"
 #Destination Hpe logs directory
