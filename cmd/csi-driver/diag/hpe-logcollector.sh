@@ -78,9 +78,7 @@ mkdir -p $directory
 nimble_ftp_site="ftp.nimblestorage.com"
 nimble_ftp_folder="upload"
 nimble_ftp_user="anonymous"
-nimble_ftp_password="hpestoragelogupload@nimblestorage.com"
-
-
+nimble_ftp_password="foo@bar"
 
 if [ -d $directory ]; then
     #HPE Logs
