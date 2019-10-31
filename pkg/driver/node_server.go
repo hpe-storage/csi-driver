@@ -293,6 +293,22 @@ func (driver *Driver) isVolumeStaged(
 		return false, nil // Not staged as volume id mismatch
 	}
 
+	// Check if the staged device exists. If error (i.e, device is missing), then return as 'Not staged'
+	mounts, err := driver.chapiDriver.GetMountsForDevice(stagingDev.Device)
+	if err != nil {
+		log.Infof("Device %+v not present on the host", stagingDev.Device)
+		return false, nil // Not staged as device doesn't exist on the host
+	}
+	log.Tracef("Found %v mounts for device with serial number %v", len(mounts), stagingDev.Device.SerialNumber)
+
+	// For each mount, check if the device is active. If inactive, then return as "Unstaged"
+	for _, mount := range mounts {
+		if mount.Device != nil && mount.Device.State != model.ActiveState.String() {
+			log.Tracef("Found device state as '%s' for mountpoint %s. So, returning as unstaged", mount.Device.State, mount.Mountpoint)
+			return false, nil // Not staged as device is inactive
+		}
+	}
+
 	// Validate the requested mount details with the staged device details
 	if volAccessType == model.MountType && stagingDev.MountInfo != nil {
 		mountInfo := getMountInfo(volumeID, volumeCapability, publishContext, stagingMountPoint)
