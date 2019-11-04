@@ -302,7 +302,6 @@ func (driver *Driver) isVolumeStaged(
 		}
 		log.Tracef("Found %v mounts for device with serial number %v", len(mounts), stagingDev.Device.SerialNumber)
 
-		// For each mount, check if the device is active. If inactive, then return as "Unstaged"
 		foundMount := false
 		for _, mount := range mounts {
 			if stagingDev.MountInfo != nil && mount.Mountpoint == stagingDev.MountInfo.MountPoint {
@@ -321,7 +320,7 @@ func (driver *Driver) isVolumeStaged(
 		exists, _, _ := util.FileExists(stagingDev.Device.AltFullPathName)
 		if !exists {
 			log.Infof("Device path %s does not exist on the node", stagingDev.Device.AltFullPathName)
-			return false, nil // Not published yet as targetPath does not exists
+			return false, nil // Not staged yet as targetPath does not exists
 		}
 	}
 
