@@ -31,16 +31,17 @@ const (
 	targetScopeGroup = "group"
 
 	// Volume Publish params
-	serialNumber     = "serialNumber"
-	accessProtocol   = "accessProtocol"
-	targetName       = "targetName"
-	targetScope      = "targetScope"
-	lunID            = "lunId"
-	discoveryIPs     = "discoveryIps"
-	chapUsername     = "chapUsername"
-	chapPassword     = "chapPassword"
-	readOnly         = "readOnly"
-	volumeAccessMode = "volumeAccessMode"
+	serialNumber          = "serialNumber"
+	accessProtocol        = "accessProtocol"
+	targetName            = "targetName"
+	targetScope           = "targetScope"
+	lunID                 = "lunId"
+	discoveryIPs          = "discoveryIps"
+	chapUsername          = "chapUsername"
+	chapPassword          = "chapPassword"
+	readOnly              = "readOnly"
+	volumeAccessMode      = "volumeAccessMode"
+	defaultConnectionMode = "manual"
 
 	// deviceInfoFileName is used to store the device details in a JSON file
 	deviceInfoFileName = "deviceInfo.json"
