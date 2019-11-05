@@ -941,6 +941,11 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 		return err
 	}
 
+	if !existingVolume.Published {
+		log.Infof("Volume %s is already unpublished from node %s", existingVolume.Name, node.Name)
+		return nil
+	}
+
 	// Remove ACL from the volume based on the requested Node ID
 	err = storageProvider.UnpublishVolume(existingVolume.ID, node.UUID)
 	if err != nil {
