@@ -222,6 +222,37 @@ func (driver *Driver) isVolumeStaged(request *csi.NodeStageVolumeRequest, volAcc
 		return false, nil // Not staged as volume id mismatch
 	}
 
+	if volAccessType == model.MountType {
+		// Check if the staged device exists. If error (i.e, device is missing), then return as 'Not staged'
+		mounts, err := driver.chapiDriver.GetMountsForDevice(stagingDev.Device)
+		if err != nil || len(mounts) == 0 {
+			log.Infof("Device %+v not present on the host", stagingDev.Device)
+			return false, nil // Not staged as device doesn't exist on the host
+		}
+		log.Tracef("Found %v mounts for device with serial number %v", len(mounts), stagingDev.Device.SerialNumber)
+
+		foundMount := false
+		for _, mount := range mounts {
+			if stagingDev.MountInfo != nil && mount.Mountpoint == stagingDev.MountInfo.MountPoint {
+				foundMount = true
+				break
+			}
+		}
+		if !foundMount {
+			log.Infof("Device %+v not mounted on the host", stagingDev.Device)
+			return false, nil
+		}
+	}
+
+	if volAccessType == model.BlockType {
+		// Check if path exists
+		exists, _, _ := util.FileExists(stagingDev.Device.AltFullPathName)
+		if !exists {
+			log.Infof("Device path %s does not exist on the node", stagingDev.Device.AltFullPathName)
+			return false, nil // Not staged yet as device path does not exists
+		}
+	}
+
 	// Validate the requested mount details with the staged device details
 	if volAccessType == model.MountType && stagingDev.MountInfo != nil {
 		mountInfo := getMountInfo(request.VolumeId, request.VolumeCapability, request.PublishInfo)
