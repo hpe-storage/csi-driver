@@ -41,12 +41,11 @@ GOENV = PATH=$$PATH:$(GOPATH)/bin
 
 build: clean compile image push
 
-all: clean tools lint compile image push
+all: clean lint compile image push
 
 .PHONY: help
 help:
 	@echo "Targets:"
-	@echo "    tools    - Download and install go tooling required to build."
 	@echo "    vendor   - Download dependencies (go mod vendor)"
 	@echo "    lint     - Static analysis of source code.  Note that this must pass in order to build."
 	@echo "    clean    - Remove build artifacts."
@@ -56,11 +55,6 @@ help:
 	@echo "    push     - Push csi driver image to registry."
 	@echo "    all      - Clean, lint, build, test, and push image."
 
-
-.PHONY: tools
-tools:
-	@echo "Get golangci-lint"
-	@go get -u github.com/golangci/golangci-lint/cmd/golangci-lint
 
 vendor:
 	@go mod vendor
