@@ -270,7 +270,7 @@ parameters:
   dedupeEnabled: "false"
   performancePolicy: "SQL Server"
   limitIops: "76800"
-  allowOverrides: description,limitIOPS,performancePolicy
+  allowOverrides: description,limitIops,performancePolicy
 ```
 
 The end-user may now control those parameters (the `StorageClass` provide the default values):
@@ -281,8 +281,8 @@ metadata:
  name: my-pvc-1
  annotations:
     csi.hpe.com/description: "This is my custom description"
-    csi.hpe.com/limitIOPS: "8000"
-    csi.hpe.com/performancePolicy: "MariaDB"
+    csi.hpe.com/limitIops: "8000"
+    csi.hpe.com/performancePolicy: "Oracle OLTP"
 spec:
   accessModes:
     - ReadWriteOnce
