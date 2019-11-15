@@ -1284,7 +1284,7 @@ func (driver *Driver) nodeUnpublishVolume(targetPath string) error {
 
 	// Else Mount volume: Unmount the filesystem
 	log.Trace("Unmounting filesystem from target path " + targetPath)
-	_, err := driver.chapiDriver.UnmountFileSystem(targetPath)
+	_, err := driver.chapiDriver.BindUnmount(targetPath)
 	if err != nil {
 		return status.Error(codes.Internal,
 			fmt.Sprintf("Error unmounting target path %s, err: %s", targetPath, err.Error()))
