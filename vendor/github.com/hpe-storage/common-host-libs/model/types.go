@@ -191,15 +191,32 @@ type Volume struct {
 	FcSessions     []*FcSession           `json:"fc_sessions,omitempty"`
 }
 
+// Workaround NOS 5.0.x vs 5.1.x responses with different case
 // FcSession info
 type FcSession struct {
-	InitiatorWwpn string `json:"initiator_wwpn,omitempty"`
+	InitiatorWwpn       string `json:"initiator_wwpn,omitempty"`
+	InitiatorWwpnLegacy string `json:"initiatorWwpn,omitempty"`
 }
 
 // IscsiSession info
 type IscsiSession struct {
-	InitiatorName string `json:"initiator_name,omitempty"`
-	InitiatorIP   string `json:"initiator_ip_addr,omitempty"`
+	InitiatorName       string `json:"initiator_name,omitempty"`
+	InitiatorNameLegacy string `json:"initiatorName,omitempty"`
+	InitiatorIP         string `json:"initiator_ip_addr,omitempty"`
+}
+
+func (s FcSession) InitiatorWwpnStr() string {
+	if s.InitiatorWwpnLegacy != "" {
+		return s.InitiatorWwpnLegacy
+	}
+	return s.InitiatorWwpn
+}
+
+func (s IscsiSession) InitiatorNameStr() string {
+	if s.InitiatorNameLegacy != "" {
+		return s.InitiatorNameLegacy
+	}
+	return s.InitiatorName
 }
 
 // Snapshot is a snapshot of a volume

@@ -18,6 +18,7 @@ type Driver interface {
 	OfflineDevice(device *model.Device) error
 	MountDevice(device *model.Device, mountPoint string, mountOptions []string, fsOpts *model.FilesystemOpts) (*model.Mount, error) // Idempotent
 	BindMount(mountPoint string, newMountPoint string, rbind bool) error                                                            // Idempotent
+	BindUnmount(mountPoint string) error                                                                                            // Idempotent
 	UnmountDevice(device *model.Device, mountPoint string) (*model.Mount, error)                                                    // Idempotent
 	UnmountFileSystem(mountPoint string) (*model.Mount, error)                                                                      // Idempotent
 	GetMounts(serialNumber string) ([]*model.Mount, error)

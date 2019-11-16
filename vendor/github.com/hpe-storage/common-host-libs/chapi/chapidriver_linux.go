@@ -9,11 +9,11 @@ import (
 	"os"
 	"strings"
 
-	uuid "github.com/satori/go.uuid"
 	"github.com/hpe-storage/common-host-libs/linux"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/util"
+	uuid "github.com/satori/go.uuid"
 	"sort"
 	"sync"
 )
@@ -274,6 +274,15 @@ func (driver *LinuxDriver) BindMount(mountPoint string, newMountPoint string, rb
 
 	// Bind Mount
 	return linux.RetryBindMount(mountPoint, newMountPoint, rbind)
+}
+
+// BindUnmount unmounts the given bind mount
+func (driver *LinuxDriver) BindUnmount(mountPoint string) error {
+	log.Tracef(">>>>> BindUnmount, mountPoint: %s", mountPoint)
+	defer log.Trace("<<<<< BindMount")
+
+	// Unmount given bind mount
+	return linux.RetryBindUnmount(mountPoint)
 }
 
 // UnmountDevice unmounts the given device from the given mount point
