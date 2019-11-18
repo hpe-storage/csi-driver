@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -43,34 +44,50 @@ func GetPartitionInfo(dev *model.Device) (partInfo []model.DevicePartition, err 
 	log.Tracef(">>>>> GetPartitionInfo called for device %+v", dev)
 	defer log.Trace("<<<<< GetPartitionInfo")
 
-	args := []string{"-b", "-l", "-o", "NAME,TYPE,SIZE"}
-
 	if dev.AltFullPathName == "" {
-		err = fmt.Errorf("Pathname not set for device %s", dev.AltFullPathName)
-		log.Tracef(err.Error())
+		err = fmt.Errorf("Pathname not set for device %s to obtain partition info", dev.AltFullPathName)
+		log.Errorf(err.Error())
 		return nil, err
 	}
 
-	args = append(args, dev.AltFullPathName)
-	output, _, err := util.ExecCommandOutput(lsblkcommand, args)
+	return retryGetPartitionInfo(dev)
+}
 
-	if err != nil {
-		err = fmt.Errorf("unable to execute lsblk command, err=%s", err.Error())
-		fmt.Printf(err.Error())
-		return nil, err
+func retryGetPartitionInfo(dev *model.Device) ([]model.DevicePartition, error) {
+	log.Tracef(">>>>> retryGetPartitionInfo called for device %s", dev.AltFullPathName)
+	defer log.Trace("<<<<< retryGetPartitionInfo")
+	try := 0
+	maxTries := 3
+	args := []string{"-b", "-l", "-o", "NAME,TYPE,SIZE", dev.AltFullPathName}
+
+	// lsblk can fail with error "no block device" if multipath is not setup completely
+	for {
+		output, _, err := util.ExecCommandOutput(lsblkcommand, args)
+		if err != nil {
+			if strings.Contains(err.Error(), notBlockDevice) {
+				if try < maxTries {
+					try++
+					time.Sleep(time.Duration(try) * time.Second)
+					continue
+				}
+			}
+			err = fmt.Errorf("unable to execute lsblk command, err=%s", err.Error())
+			return nil, err
+		}
+
+		if strings.Contains(output, failedDevPath) {
+			err = fmt.Errorf("unable to execute lsblk command for %s, err %s", dev.AltFullPathName, output)
+			return nil, err
+		}
+		return getPartitions(&output)
 	}
-
-	if strings.Contains(output, failedDevPath) {
-		err = fmt.Errorf("%s for %s", failedDevPath, dev.Pathname)
-		return nil, err
-	}
-
-	return getPartitions(&output)
 }
 
 // process the output of the lsblkcommand command
 func getPartitions(output *string) ([]model.DevicePartition, error) {
-	log.Tracef("getPartition called with %+v", *output)
+	log.Tracef(">>>>> getPartitions called with %+v", *output)
+	defer log.Trace("<<<<< getPartitions")
+
 	r := regexp.MustCompile(lsblkPattern)
 	out := r.FindAllString(*output, -1)
 	devicePartitions := []model.DevicePartition{}

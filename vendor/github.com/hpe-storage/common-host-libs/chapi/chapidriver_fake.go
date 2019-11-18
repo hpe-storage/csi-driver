@@ -96,6 +96,11 @@ func (driver *FakeDriver) BindMount(mountPoint string, newMountPoint string, rbi
 	return nil
 }
 
+// BindUnmount unmounts the given bind mount
+func (driver *FakeDriver) BindUnmount(mountPoint string) error {
+	return nil
+}
+
 // GetMounts reports all mounts on this host
 func (driver *FakeDriver) GetMounts(serialNumber string) ([]*model.Mount, error) {
 	device := &model.Device{

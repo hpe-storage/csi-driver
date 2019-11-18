@@ -404,13 +404,14 @@ func ConfigureIscsi() (err error) {
 		return err
 	}
 
-	// Start service
-	err = linux.ServiceCommand(iscsi, "start")
+	// Set best practice settings
+	err = SetIscsiRecommendations()
 	if err != nil {
 		return err
 	}
 
-	err = SetIscsiRecommendations()
+	// Start service
+	err = linux.ServiceCommand(iscsi, "start")
 	if err != nil {
 		return err
 	}

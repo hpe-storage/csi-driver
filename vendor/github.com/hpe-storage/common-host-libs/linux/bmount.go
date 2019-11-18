@@ -17,6 +17,7 @@ limitations under the License.
 package linux
 
 import (
+	"fmt"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/util"
 	"strings"
@@ -103,7 +104,7 @@ func RetryBindUnmount(mountPoint string) error {
 				time.Sleep(time.Duration(try) * time.Second)
 				continue
 			}
-			log.Errorf("BindUnmount failed for mountPoint %s : %s", mountPoint, err.Error())
+			log.Errorf("BindUnmount failed for mountpoint %s : %s", mountPoint, err.Error())
 			return err
 		}
 		if err != nil {
@@ -116,7 +117,18 @@ func RetryBindUnmount(mountPoint string) error {
 //BindUnmount unmounts a bind mount.
 func BindUnmount(mountPoint string) error {
 	log.Tracef("BindUnmount called with %s", mountPoint)
-	err := unmount(mountPoint)
+
+	mountedDevice, err := GetDeviceFromMountPoint(mountPoint)
+	if err != nil {
+		return fmt.Errorf("Unable to get mounted device from mountpoint %s, err: %s", mountPoint, err.Error())
+	}
+
+	if mountedDevice == "" {
+		log.Infof("No device is mounted at mountpoint %s", mountPoint)
+		return nil
+	}
+
+	err = unmount(mountPoint)
 	if err != nil {
 		return err
 	}

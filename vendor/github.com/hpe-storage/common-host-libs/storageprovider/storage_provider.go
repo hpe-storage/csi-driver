@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
+	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 )
 
@@ -54,6 +55,14 @@ type Credentials struct {
 
 // CreateCredentials creates the credentail object from the given secrets
 func CreateCredentials(secrets map[string]string) (*Credentials, error) {
+	log.Trace(">>>>> CreateCredentials")
+	defer log.Trace("<<<<< CreateCredentials")
+
+	// When secrets specified
+	if secrets == nil || len(secrets) == 0 {
+		return nil, fmt.Errorf("No secrets have been provided")
+	}
+
 	credentials := &Credentials{}
 	// Note: CSI does not perform b64 decoding for secrets as the external-attacher/doryd does it for you.
 

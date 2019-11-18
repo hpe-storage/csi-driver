@@ -68,7 +68,7 @@ func NewContainerStorageProvider(credentials *storageprovider.Credentials) (*Con
 	// Initialize the container provider client here so we don't have to do it in every method
 	client, err := getCspClient(credentials)
 	if err != nil {
-		log.Trace("Failed to initialize CSP client")
+		log.Errorf("Failed to initialize CSP client, Error: %s", err.Error())
 		return nil, err
 	}
 
@@ -79,13 +79,12 @@ func NewContainerStorageProvider(credentials *storageprovider.Credentials) (*Con
 
 	log.Trace("Attempting initial login to CSP")
 	status, err := csp.login()
-
 	if status != http.StatusOK {
 		log.Errorf("Failed to login to CSP.  Status code: %d.  Error: %s", status, err.Error())
 		return nil, err
 	}
 	if err != nil {
-		log.Tracef("Failed to login to CSP.  Error: %s", err.Error())
+		log.Errorf("Failed to login to CSP.  Error: %s", err.Error())
 		return nil, err
 	}
 
@@ -107,6 +106,7 @@ func (provider *ContainerStorageProvider) login() (int, error) {
 
 	// If serviceName is not specified (i.e, Off-Array), then pass the array IP address as well.
 	if provider.Credentials.ServiceName != "" {
+		log.Infof("About to attempt login to CSP for backend %s", provider.Credentials.Backend)
 		token.ArrayIP = provider.Credentials.Backend
 	}
 
@@ -131,8 +131,25 @@ func (provider *ContainerStorageProvider) login() (int, error) {
 // Currently, it will login again if the server responds with a status code of unauthorized.
 func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) (int, error) {
 	request.Header = make(map[string]string)
+
+	// Perform login attempt when AuthToken is empty
+	if provider.AuthToken == "" {
+		log.Info("Cached auth-token is empty, attempting login to CSP")
+		status, err := provider.login()
+		if status != http.StatusOK {
+			log.Errorf("Failed login attempt. Status %d. Error: %s", status, err.Error())
+			return status, err
+		}
+		if err != nil {
+			log.Errorf("Error while attempting login to CSP. Error: %s", err.Error())
+			return http.StatusInternalServerError, err
+		}
+		log.Info("Successfully re-generated new login auth-token")
+	}
+
 	request.Header[tokenHeader] = provider.AuthToken
 	if provider.Credentials.ServiceName != "" {
+		log.Tracef("About to invoke CSP request for backend %s", provider.Credentials.Backend)
 		request.Header[arrayIPHeader] = provider.Credentials.Backend
 	}
 
@@ -146,6 +163,10 @@ func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) 
 		if status != http.StatusOK {
 			log.Errorf("Failed login during re-attempt. Status %d. Error: %s", status, err.Error())
 			return status, err
+		}
+		if err != nil {
+			log.Errorf("Error while login to CSP during re-attempt. Error: %s", err.Error())
+			return http.StatusInternalServerError, err
 		}
 		request.Path = reqPath      // Set the original path value
 		request.ResponseError = nil // Reset the previous error response

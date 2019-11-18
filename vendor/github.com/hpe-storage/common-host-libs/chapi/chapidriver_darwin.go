@@ -117,6 +117,11 @@ func (driver *MacDriver) BindMount(mountPoint string, newMountPoint string, rbin
 	return fmt.Errorf("not implemented")
 }
 
+// BindUnmount unmounts the given bind mount
+func (driver *MacDriver) BindUnmount(mountPoint string) error {
+	return fmt.Errorf("not implemented")
+}
+
 // ExpandDevice will expand the given device/filesystem on the host
 func (driver *MacDriver) ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error {
 	return fmt.Errorf("not implemented")

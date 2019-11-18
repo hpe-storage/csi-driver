@@ -166,6 +166,8 @@ func obtainOsInfoUsingLsbRelease() (string, error) {
 	return out, nil
 }
 
+// From container, system files can appear as directories, ignore them
+// https://github.com/kubernetes/kubernetes/issues/65825
 // nolint :
 func setOsInfo() (osInfo *OsInfo, err error) {
 	var out string
@@ -177,11 +179,11 @@ func setOsInfo() (osInfo *OsInfo, err error) {
 			return nil, err
 		}
 		isObtainedUsingLsbRelease = true
-	} else if f, err := os.Stat(systemReleaseFile); err == nil && f.Size() != 0 {
+	} else if f, err := os.Stat(systemReleaseFile); err == nil && !f.IsDir() && f.Size() != 0 {
 		out, err = util.FileReadFirstLine(systemReleaseFile)
-	} else if f, err := os.Stat(systemRedhatReleaseFile); err == nil && f.Size() != 0 {
+	} else if f, err := os.Stat(systemRedhatReleaseFile); err == nil && !f.IsDir() && f.Size() != 0 {
 		out, err = util.FileReadFirstLine(systemRedhatReleaseFile)
-	} else if f, err := os.Stat(osReleaseFile); err == nil && f.Size() != 0 {
+	} else if f, err := os.Stat(osReleaseFile); err == nil && !f.IsDir() && f.Size() != 0 {
 		// get only PRETTY_NAME field of os-release
 		var lines []string
 		lines, err = util.FileGetStrings(osReleaseFile)
@@ -192,7 +194,7 @@ func setOsInfo() (osInfo *OsInfo, err error) {
 				break
 			}
 		}
-	} else if f, err := os.Stat(systemIssueFile); err == nil && f.Size() != 0 {
+	} else if f, err := os.Stat(systemIssueFile); err == nil && !f.IsDir() && f.Size() != 0 {
 		// /etc/issue contains empty lines, so get first non-empty line
 		var lines []string
 		lines, err = util.FileGetStrings(systemIssueFile)

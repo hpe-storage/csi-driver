@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -25,6 +26,11 @@ import (
 	"github.com/hpe-storage/common-host-libs/stringformat"
 	"github.com/hpe-storage/common-host-libs/util"
 	"k8s.io/apimachinery/pkg/api/resource"
+)
+
+var (
+	stageLock   sync.Mutex
+	unstageLock sync.Mutex
 )
 
 // Helper utility to construct default mountpoint path
@@ -359,6 +365,10 @@ func (driver *Driver) stageVolume(
 		volumeID, stagingMountPoint, volAccessType.String(), volCap, publishContext, volumeContext)
 	defer log.Trace("<<<<< stageVolume")
 
+	// serialize stage requests
+	stageLock.Lock()
+	defer stageLock.Unlock()
+
 	// Create device for volume on the node
 	device, err := driver.setupDevice(publishContext)
 	if err != nil {
@@ -532,6 +542,10 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 		return status.Error(codes.Internal,
 			fmt.Sprintf("Missing device info in the staging device %v", stagingDev))
 	}
+
+	// serialize unstage requests
+	unstageLock.Lock()
+	defer unstageLock.Unlock()
 
 	// If mounted, then unmount the filesystem
 	if stagingDev.VolumeAccessMode == model.MountType && stagingDev.MountInfo != nil {
@@ -1284,7 +1298,7 @@ func (driver *Driver) nodeUnpublishVolume(targetPath string) error {
 
 	// Else Mount volume: Unmount the filesystem
 	log.Trace("Unmounting filesystem from target path " + targetPath)
-	_, err := driver.chapiDriver.UnmountFileSystem(targetPath)
+	err := driver.chapiDriver.BindUnmount(targetPath)
 	if err != nil {
 		return status.Error(codes.Internal,
 			fmt.Sprintf("Error unmounting target path %s, err: %s", targetPath, err.Error()))
