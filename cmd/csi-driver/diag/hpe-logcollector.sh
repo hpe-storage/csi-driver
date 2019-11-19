@@ -34,13 +34,13 @@ directory="$destinationDir/hpestorage-logs-$today"
 
 # Writing to  destinationDir/
 echo "Command :iscsiadm -m session -P 3" > $destinationDir/iscsiadm-m-P3
-iscsiadm -m session -P 3 >> $destinationDir/iscsiadm-m-P3 2>&1
+timeout 30 iscsiadm -m session -P 3 >> $destinationDir/iscsiadm-m-P3 2>&1
 echo "Command :ps -aux " > $destinationDir/ps-aux
-ps -aux >> $destinationDir/ps-aux 2>&1
+timeout 30 ps -aux >> $destinationDir/ps-aux 2>&1
 echo "Command :mount"> $destinationDir/mounts
-mount >> $destinationDir/mounts 2>&1
+timeout 30 mount >> $destinationDir/mounts 2>&1
 echo "Command :dmsetup table " > $destinationDir/dmsetup
-dmsetup table >> $destinationDir/dmsetup 2>&1
+timeout 30 dmsetup table >> $destinationDir/dmsetup 2>&1
 if rpm -qa > /dev/null 2>&1; then
     echo "Command :rpm -qa | egrep 'multipath|iscsi'" > $destinationDir/rpm
     rpm -qa | egrep "multipath|iscsi" >> $destinationDir/rpm 2>&1
@@ -49,11 +49,11 @@ elif dpkg -l > /dev/null 2>&1; then
     dpkg -l | egrep "multipath|iscsi" >> $destinationDir/dpkg 2>&1
 fi
 echo "Command :multipath -ll " > $destinationDir/multipath
-multipath -ll >> $destinationDir/multipath 2>&1
+timeout 30 multipath -ll >> $destinationDir/multipath 2>&1
 echo "Command :multipathd show paths format '%w %d %t %i %o %T %c  %r %R %m %s'" > $destinationDir/multipathd
-multipathd show paths format "%w %d %t %i %o %T %c  %r %R %m %s" >> $destinationDir/multipathd 2>&1
+timeout 30 multipathd show paths format "%w %d %t %i %o %T %c  %r %R %m %s" >> $destinationDir/multipathd 2>&1
 echo "Command :multipathd show maps format '%w %d %n %S' ">> $destinationDir/multipathd
-multipathd show maps format "%w %d %n %S" >> $destinationDir/multipathd 2>&1
+timeout 30 multipathd show maps format "%w %d %n %S" >> $destinationDir/multipathd 2>&1
 echo "Command :ip addr " > $destinationDir/host-info
 ip addr >> $destinationDir/host-info 2>&1
 echo "Command :hostname " >> $destinationDir/host-info
