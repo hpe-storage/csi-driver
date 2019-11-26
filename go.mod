@@ -22,7 +22,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.12.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
-	github.com/hpe-storage/common-host-libs v0.0.0-20191125214838-865199deaa22
+	github.com/hpe-storage/common-host-libs v0.0.0-20191126193806-137fbb8e1cc9
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20190828052325-42886f48215c
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/json-iterator/go v1.1.8 // indirect

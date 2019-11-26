@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -426,7 +425,6 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 	// TODO: Enhance CHAPI to work with a PublishInfo object rather than a volume
 
 	discoveryIps := strings.Split(publishContext[discoveryIPsKey], ",")
-	log.Tracef("Selecting the first discovery IP of %s from all discovery IPs %s", discoveryIps[0], discoveryIps)
 
 	volume := &model.Volume{
 		SerialNumber:   publishContext[serialNumberKey],
@@ -434,7 +432,7 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 		Iqn:            publishContext[targetNameKey],
 		TargetScope:    publishContext[targetScopeKey],
 		LunID:          publishContext[lunIDKey],
-		DiscoveryIP:    discoveryIps[0],
+		DiscoveryIPs:   discoveryIps,
 		ConnectionMode: defaultConnectionMode,
 	}
 	if publishContext[accessProtocolKey] == iscsi {
@@ -1579,15 +1577,12 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 		}
 	}
 
-	var computedNetworks []*string
+	var cidrNetworks []*string
 	for _, network := range networks {
-		log.Infof("Processing network named %s with IP %s and mask %s", network.Name, network.AddressV4, network.MaskV4)
-		if network.AddressV4 != "" {
-			ip := net.ParseIP(network.AddressV4)
-			maskIP := net.ParseIP(network.MaskV4)
-			mask := net.IPv4Mask(maskIP[12], maskIP[13], maskIP[14], maskIP[15])
-			computedNetwork := ip.Mask(mask).String()
-			computedNetworks = append(computedNetworks, &computedNetwork)
+		log.Infof("Processing network named %s with IpV4 CIDR %s", network.Name, network.CidrNetwork)
+		if network.CidrNetwork != "" {
+			cidrNetwork := network.CidrNetwork
+			cidrNetworks = append(cidrNetworks, &cidrNetwork)
 		}
 	}
 
@@ -1595,7 +1590,7 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 		Name:         hostNameAndDomain[0],
 		UUID:         host.UUID,
 		Iqns:         iqns,
-		Networks:     computedNetworks,
+		Networks:     cidrNetworks,
 		Wwpns:        wwpns,
 		ChapUser:     chapUsername,
 		ChapPassword: chapPassword,
