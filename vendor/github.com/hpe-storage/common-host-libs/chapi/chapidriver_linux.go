@@ -166,6 +166,10 @@ func (driver *LinuxDriver) CreateDevices(volumes []*model.Volume) ([]*model.Devi
 	return linux.CreateNimbleDevices(volumes)
 }
 
+func (driver *LinuxDriver) GetDevice(volume *model.Volume) (*model.Device, error) {
+	return linux.GetDeviceFromVolume(volume)
+}
+
 // CreateFilesystemOnDevice writes the given filesystem on the given device
 func (driver *LinuxDriver) CreateFilesystemOnDevice(device *model.Device, filesystemType string) error {
 	log.Tracef(">>>>> CreateFilesystemOnDevice, device: %+v, type: %s", device, filesystemType)

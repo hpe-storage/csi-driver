@@ -47,6 +47,15 @@ func (driver *FakeDriver) GetHostNameAndDomain() ([]string, error) {
 	}, nil
 }
 
+// GetDevice will return device matching given volume serial
+func (driver *FakeDriver) GetDevice(volume *model.Volume) (*model.Device, error) {
+	device := &model.Device{
+		SerialNumber:    volume.SerialNumber,
+		AltFullPathName: "/dev/mapper/fakeMpath",
+	}
+	return device, nil
+}
+
 // CreateDevices will create devices on this host based on the volume details provided
 func (driver *FakeDriver) CreateDevices(volumes []*model.Volume) ([]*model.Device, error) {
 	device := &model.Device{
