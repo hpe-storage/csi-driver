@@ -14,6 +14,7 @@ type Driver interface {
 	GetHostNetworks() ([]*model.Network, error)
 	GetHostNameAndDomain() ([]string, error)
 	CreateDevices(volumes []*model.Volume) ([]*model.Device, error)
+	GetDevice(volume *model.Volume) (*model.Device, error)
 	DeleteDevice(device *model.Device) error
 	OfflineDevice(device *model.Device) error
 	MountDevice(device *model.Device, mountPoint string, mountOptions []string, fsOpts *model.FilesystemOpts) (*model.Mount, error) // Idempotent

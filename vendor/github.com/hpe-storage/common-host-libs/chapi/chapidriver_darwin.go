@@ -92,6 +92,11 @@ func (driver *MacDriver) BindMountDevice(mountPoint string, newMountPoint string
 	return fmt.Errorf("not implemented")
 }
 
+// GetDevice will return device matching given volume serial
+func (driver *MacDriver) GetDevice(volume *model.Volume) (*model.Device, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
 // CreateDevices will create devices on this host based on the volume details provided
 func (driver *MacDriver) CreateDevices(volumes []*model.Volume) ([]*model.Device, error) {
 	return nil, fmt.Errorf("not implemented")
