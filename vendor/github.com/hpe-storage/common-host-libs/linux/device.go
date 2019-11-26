@@ -39,7 +39,7 @@ const (
 	deletePathString    = "/sys/block/%s/device/delete"
 	sysBlockHolders     = "/sys/block/%s/holders/"
 	holderPattern       = "^.*dm-"
-	countdownTicker     = 30
+	countdownTicker     = 5
 	sectorstoMiBFactor  = 2 * 1024
 	procScsiPath        = "/proc/scsi/scsi"
 	procScsiPathLocal   = "/proc_local/scsi/scsi"
@@ -416,7 +416,7 @@ func createNimbleDevice(volume *model.Volume) (dev *model.Device, err error) {
 	// find multipath devices after the rescan and login
 	// Start a Countdown ticker
 	var devices []*model.Device
-	for i := 1; i <= countdownTicker; i++ {
+	for i := 0; i <= countdownTicker; i++ {
 		devices, err = GetNimbleDmDevices(true, GetLinuxSerialNumber(volume.SerialNumber), volume.LunID)
 		if err != nil {
 			return nil, err
@@ -443,8 +443,8 @@ func createNimbleDevice(volume *model.Volume) (dev *model.Device, err error) {
 		handleOrphanPaths(volume)
 		// check any error maps are present and cleanup
 		cleanupErrorMultipathMaps()
-		log.Debugf("sleeping for 1 second waiting for device %s to appear after rescan", volume.SerialNumber)
-		time.Sleep(time.Second * 1)
+		log.Debugf("sleeping for 5 seconds waiting for device %s to appear after rescan", volume.SerialNumber)
+		time.Sleep(time.Second * 5)
 	}
 	// cleanup paths which maybe part of lsscsi but not in multipath as we haven't found the device yet
 	cleanupStaleScsiPaths(volume)
@@ -864,9 +864,26 @@ func parseHctl(lunStr string) (h string, c string, t string, l string, err error
 	return h, c, t, l, nil
 }
 
+// GetDeviceFromVolume returns Linux device for given volume info
+func GetDeviceFromVolume(vol *model.Volume) (*model.Device, error) {
+	log.Tracef(">>>>> GetDeviceFromVolume for serial %s", vol.SerialNumber)
+	defer log.Trace("<<<<< GetDeviceFromVolume")
+
+	devices, err := GetNimbleDmDevices(false, vol.SerialNumber, vol.LunID)
+	if err != nil {
+		return nil, err
+	}
+	if len(devices) == 0 {
+		return nil, fmt.Errorf("unable to find device matching volume serial number %s", vol.SerialNumber)
+	}
+	return devices[0], nil
+}
+
 //CreateNimbleDevices : attached and creates nimble devices to host
 func CreateNimbleDevices(vols []*model.Volume) (devs []*model.Device, err error) {
-	log.Tracef("CreateNimbleDevices")
+	log.Tracef(">>>>> CreateNimbleDevices")
+	defer log.Trace("<<<<< CreateNimbleDevices")
+
 	var devices []*model.Device
 	for _, vol := range vols {
 		log.Tracef("create request with serialnumber :%s, accessprotocol %s discoveryip %s, iqn %s ", vol.SerialNumber, vol.AccessProtocol, vol.DiscoveryIP, vol.Iqn)
@@ -942,14 +959,17 @@ func offlineScsiDevice(path string) (err error) {
 // DeleteDevice : delete the multipath device
 func DeleteDevice(dev *model.Device) (err error) {
 	log.Tracef("DeleteDevice called with %s", dev.SerialNumber)
-	//validate nimble device
-	if serialNumberMatcher.MatchString(dev.SerialNumber) == false {
-		return fmt.Errorf("device %s is not a nimble device", dev.SerialNumber)
-	}
 	// perform cleanup of the multipath device
 	if dev.SerialNumber == "" {
 		return fmt.Errorf("no serialNumber of device %v present, failing delete", dev)
 	}
+
+	//check if device is mounted or has holders
+	err = checkIfDeviceCanBeDeleted(dev)
+	if err != nil {
+		return err
+	}
+
 	err = deletingDevices.addDevice(dev.SerialNumber)
 	if err != nil {
 		// indicates device deletion is already in progress, don't error out

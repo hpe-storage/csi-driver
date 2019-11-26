@@ -443,6 +443,16 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 		volume.Chap = chapInfo
 	}
 
+	// Cleanup any stale device existing before stage
+	device, err := driver.chapiDriver.GetDevice(volume)
+	if device != nil {
+		device.TargetScope = volume.TargetScope
+		err = driver.chapiDriver.DeleteDevice(device)
+		if err != nil {
+			log.Warnf("Failed to cleanup stale device %s before staging, err %s", device.AltFullPathName, err.Error())
+		}
+	}
+
 	// Create Device
 	devices, err := driver.chapiDriver.CreateDevices([]*model.Volume{volume})
 	if err != nil {
@@ -1625,6 +1635,14 @@ func writeStagedDeviceInfo(targetPath string, stagingDev *StagingDevice) error {
 	if err != nil {
 		return err
 	}
+
+	// Attempt create of staging dir, as CSI attacher can remove the directory
+	// while operation is still pending(during retries)
+	if err = os.MkdirAll(targetPath, 0750); err != nil {
+		log.Errorf("Failed to create staging dir %s err: %v", targetPath, err)
+		return err
+	}
+
 	// Write to file
 	filename := path.Join(targetPath, deviceInfoFileName)
 	err = ioutil.WriteFile(filename, deviceInfo, 0600)

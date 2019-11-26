@@ -181,15 +181,9 @@ func retryCleanupDeviceAndSlaves(dev *model.Device) error {
 	log.Trace(">>>>> retryCleanupDeviceAndSlaves")
 	defer log.Trace("<<<<< retryCleanupDeviceAndSlaves")
 
-	//check if device is mounted or has holders
-	err := checkIfDeviceCanBeDeleted(dev)
-	if err != nil {
-		return err
-	}
-
 	// check if mpathName exists for the device, else populate it
 	if dev.MpathName == "" {
-		err = setAltFullPathName(dev)
+		err := setAltFullPathName(dev)
 		if err != nil {
 			return err
 		}
@@ -329,6 +323,7 @@ func multipathRemoveDmDevice(dev *model.Device) (err error) {
 	if err != nil {
 		return fmt.Errorf("failed to remove multipath device %s. Error: %s ", dev.MpathName, err.Error())
 	}
+
 	log.Debugf("successfully removed the dm device %s", dev.MpathName)
 	return nil
 }
