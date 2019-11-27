@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# hpe-kubectl-diagnostic.sh
+# hpe-logcollector.sh
 #   This file generates all the logs and debug information
 #   invoking hpe-logcollector.sh on each node using kubectl
 #
@@ -48,19 +48,35 @@ fi
 
 display_usage() {
 echo "Diagnostic Script to collect HPE Storage logs using kubectl"
-echo -e "\nUsage: hpe-kubectl-diagnostic.sh [NODE_NAME]"
-echo -e "       where NODE_NAME is an optional parameter <Kubernetes Node Name>"
-echo -e "       needed to collect the hpe diagnostic logs of the Kubernetes Node\n"
+echo -e "\nUsage:"
+echo -e "     hpe-logcollector.sh [-h|--help][-n|--node-name NODE_NAME][-a|--all]"
+echo -e "Where"
+echo -e "-h|--help                  Print the Usage text"
+echo -e "-n|--node-name NODE_NAME   Kubernetes Node Name needed to collect the"
+echo -e "                           hpe diagnostic logs of the Node"
+echo -e "-a|--all                   collect diagnostic logs of all the nodes.If "
+echo -e "                           nothing is specified logs would be collected"
+echo -e "                           from all the nodes\n"
 
 
 }
 
 #Main Function
-# check whether user had supplied -h or --help . If yes display usage
-	if [[ ( $1 == "--help") ||  $1 == "-h" ]]
-	then
-		display_usage
-		exit 0
-	fi
+if ! options=$(getopt -o han: -l help,all,node-name: -- "$@")
+then
+    exit 1
+fi
 
-diagnostic_collection $1
+eval set -- $options
+while [ $# -gt 0 ]
+do
+    case $1 in
+    -h|--help) display_usage; break;;
+    -n|--node-name)  diagnostic_collection $2; shift; break;;
+    -a|--all) shift ; diagnostic_collection ""; break;;
+    (--) shift; diagnostic_collection ""; break;;
+    (-*) echo "$0: error - unrecognized option $1" 1>&2; exit 1;;
+    (*) break;;
+    esac
+    shift
+done

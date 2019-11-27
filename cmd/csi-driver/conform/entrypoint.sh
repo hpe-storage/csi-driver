@@ -27,8 +27,8 @@ if [ "$nodeservice" = true ]; then
     # Copy HPE Log Collector diag script
     echo "copying hpe log collector diag script"
     cp -f "/opt/hpe-storage/bin/hpe-logcollector.sh" \
-        /usr_local/local/bin/hpe-logcollector.sh
-    chmod +x  /usr_local/local/bin/hpe-logcollector.sh
+        /usr/local/bin/hpe-logcollector.sh
+    chmod +x  /usr/local/bin/hpe-logcollector.sh
 fi
 
 echo "starting csi plugin..."
