@@ -33,4 +33,7 @@ ADD [ "csi-driver", "/bin/" ]
 ADD [ "conform/entrypoint.sh", "/entrypoint.sh" ]
 RUN [ "chmod", "+x", "/entrypoint.sh" ]
 
+# add path to hpe scripts
+ENV PATH="/usr_local/local/bin:${PATH}"
+
 ENTRYPOINT [ "/entrypoint.sh" ]

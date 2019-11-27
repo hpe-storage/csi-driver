@@ -246,6 +246,22 @@ hpe-logcollector.sh -h
 Diagnostic LogCollector Script to collect HPE Storage logs
 ```
 
+#### Log Collection using kubectl
+
+Additionally the [hpe-kubectl-diagnostic.sh](https://raw.githubusercontent.com/hpe-storage/csi-driver/master/hpe-kubectl-diagnostic.sh) script can be used to collect the logs from any node which has kubectl access to the cluster.
+
+* curl https://raw.githubusercontent.com/hpe-storage/csi-driver/master/hpe-kubectl-diagnostic.sh
+* chmod 555 hpe-kubectl-diagnostic.sh
+
+```markdown
+./hpe-kubectl-diagnostic.sh -h
+Diagnostic Script to collect HPE Storage logs using kubectl
+
+Usage: hpe-kubectl-diagnostic.sh [NODE_NAME]
+       where NODE_NAME is an optional parameter <Kubernetes Node Name>
+       needed to collect the hpe diagnostic logs of the Kubernetes Node\
+```
+
 ## Support
 
 The HPE CSI Driver is considered beta software. Do not use for production and do not contact HPE for support. Please file any issues, questions or feature requests [here](https://github.com/hpe-storage/csi-driver/issues). You may also join our Slack community to chat with HPE folks close to this project. We hang out in `#NimbleStorage` and `#Kubernetes` at [slack.hpedev.io](https://slack.hpedev.io/).
