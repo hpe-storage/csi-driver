@@ -21,7 +21,6 @@
 
 log_collection() {
 # Initializing the file and directory
-case_number=$1
 timestamp=`date '+%Y%m%d_%H%M%S'`
 hostname=`hostname -s`
 filename="hpe-storage-logs-$hostname-$timestamp.tar.gz"
@@ -73,12 +72,6 @@ kubectl get events -o wide >> $destinationDir/kubectl-get-events 2>&1
 
 #Destination Tar directory
 mkdir -p $directory
-
-#FTP server credentials
-nimble_ftp_site="ftp.nimblestorage.com"
-nimble_ftp_folder="upload"
-nimble_ftp_user="anonymous"
-nimble_ftp_password="foo@bar"
 
 if [ -d $directory ]; then
     #HPE Logs
@@ -133,11 +126,6 @@ if [ -d $directory ]; then
 	#host info output
 	cp $destinationDir/host-info $directory
 
-	# kubectl get all output
-	cp $destinationDir/kubectl-get-all $directory
-	cp $destinationDir/kubectl-get-events $directory
-
-
 	#tar the files
 	tar -cvzf $filename -C $directory . &> /dev/null
 	mv $filename $logDir/  &> /dev/null
@@ -147,9 +135,7 @@ if [ -d $directory ]; then
 	rm -rf $destinationDir
 
 	if [[ -f "$logDir/$filename" ]]; then
-		if [[ -z $case_number ]]; then
-			echo "Diagnostic dump file created at $logDir/$filename"
-		fi
+		echo "Diagnostic dump file created at $logDir/$filename on host $hostname"
 	else
 		echo "Unable to collect the diagnostic information under $logDir"
 		exit 1
@@ -157,46 +143,13 @@ if [ -d $directory ]; then
 else
 		echo "$directory not created , try again"
 		exit 1
-
-fi
-
-# Transfer it to FTP Site
-if [[ ! -z $case_number ]]; then
-	mv $logDir/$filename "$logDir/$case_number-$filename"
-	ftp_send $case_number-$filename
-else
-	echo "Please enter a case number to upload it to Nimble Storage support FTP site($nimble_ftp_site)"
 fi
 
 }
-
-ftp_send() {
-	filename=$1
-	echo "Transfer to the ftp server"
-	ftp -n "$nimble_ftp_site" <<END_SCRIPT
-	quote USER "$nimble_ftp_user"
-	quote PASS "$nimble_ftp_password"
-	cd $nimble_ftp_folder
-	binary
-	put "$logDir/$filename" "$filename"
-	quit
-END_SCRIPT
-
-	ret_code=$?
-
-	if [ $ret_code -ne 0 ]; then
-		echo "FTP of $logDir/$filename to $nimble_ftp_folder did not complete. Ensure ftp is setup"
-		else
-		echo "FTP of $logDir/$filename to $nimble_ftp_folder completed"
-	fi
-}
-
 
 display_usage() {
 echo "Diagnostic LogCollector Script to collect HPE Storage logs"
-echo -e "\nUsage: hpe-logcollector [CASE_NUMBER]"
-echo -e "       where CASE_NUMBER is an optional parameter <HPE Nimble Storage Support Case Number>"
-echo -e "       needed to upload the logs to the HPE Nimble Storage FTP Server\n"
+echo -e "\nUsage: hpe-logcollector"
 }
 
 #Main Function
@@ -207,14 +160,9 @@ echo -e "       needed to upload the logs to the HPE Nimble Storage FTP Server\n
 		exit 0
 	fi
 
-
 echo "======================================"
 echo "Collecting the Diagnostic Information"
 echo "======================================"
-#FTP the file
-if [[ ! -z $1 ]]; then
-	echo "CaseNumber is $1"
-fi
 log_collection $1
 echo "Complete"
 echo "===================================="
