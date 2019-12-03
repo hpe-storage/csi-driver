@@ -12,17 +12,21 @@ do
 done
 
 if [ "$nodeservice" = true ]; then
-    # Copy HPE Storage Node Conformance checks and conf in place
-    cp -f "/opt/hpe-storage/lib/hpe-storage-node.service" \
-      /lib/systemd/system/hpe-storage-node.service
-    cp -f "/opt/hpe-storage/lib/hpe-storage-node.sh" \
-      /usr_local/local/bin/hpe-storage-node.sh
-    chmod +x /usr_local/local/bin/hpe-storage-node.sh
+    if [ "${DISABLE_NODE_CONFORMANCE}" = "true" ]; then
+        echo "node conformance checks are disabled"
+    else
+        # Copy HPE Storage Node Conformance checks and conf in place
+        cp -f "/opt/hpe-storage/lib/hpe-storage-node.service" \
+          /lib/systemd/system/hpe-storage-node.service
+        cp -f "/opt/hpe-storage/lib/hpe-storage-node.sh" \
+          /usr_local/local/bin/hpe-storage-node.sh
+        chmod +x /usr_local/local/bin/hpe-storage-node.sh
 
-    echo "running node conformance checks..."
-    # Reload and run!
-    systemctl daemon-reload
-    systemctl restart hpe-storage-node
+        echo "running node conformance checks..."
+        # Reload and run!
+        systemctl daemon-reload
+        systemctl restart hpe-storage-node
+    fi
 
     # Copy HPE Log Collector diag script
     echo "copying hpe log collector diag script"
