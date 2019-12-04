@@ -11,7 +11,7 @@ type Driver interface {
 	GetHosts() (*model.Hosts, error)
 	GetHostInfo() (*model.Host, error)
 	GetHostInitiators() ([]*model.Initiator, error)
-	GetHostNetworks() ([]*model.Network, error)
+	GetHostNetworks() ([]*model.NetworkInterface, error)
 	GetHostNameAndDomain() ([]string, error)
 	CreateDevices(volumes []*model.Volume) ([]*model.Device, error)
 	GetDevice(volume *model.Volume) (*model.Device, error)

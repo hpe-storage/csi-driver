@@ -86,13 +86,13 @@ func (e VolumeAccessType) String() string {
 
 // Host : provide host information
 type Host struct {
-	UUID           string       `json:"id,omitempty"`
-	Name           string       `json:"name,omitempty"`
-	Domain         string       `json:"domain,omitempty"`
-	NodeID         string       `json:"node_id,omitempty"`
-	AccessProtocol string       `json:"access_protocol,omitempty"`
-	Networks       []*Network   `json:"networks,omitempty"`
-	Initiators     []*Initiator `json:"initiators,omitempty"`
+	UUID              string              `json:"id,omitempty"`
+	Name              string              `json:"name,omitempty"`
+	Domain            string              `json:"domain,omitempty"`
+	NodeID            string              `json:"node_id,omitempty"`
+	AccessProtocol    string              `json:"access_protocol,omitempty"`
+	NetworkInterfaces []*NetworkInterface `json:"networks,omitempty"`
+	Initiators        []*Initiator        `json:"initiators,omitempty"`
 }
 
 //Mount struct ID data type is string
@@ -103,8 +103,8 @@ type Mount struct {
 	Device     *Device  `json:"device,omitempty"`
 }
 
-//Network : network interface info for host
-type Network struct {
+//NetworkInterface : network interface info for host
+type NetworkInterface struct {
 	Name        string `json:"name,omitempty"`
 	AddressV4   string `json:"address_v4,omitempty"`
 	MaskV4      string `json:"mask_v4,omitempty"`
@@ -112,6 +112,7 @@ type Network struct {
 	Mac         string `json:",omitempty"`
 	Mtu         int64  `json:",omitempty"`
 	Up          bool
+	CidrNetwork string
 }
 
 //Initiator : Host initiator
@@ -180,10 +181,11 @@ type Volume struct {
 	AccessProtocol string                 `json:"access_protocol,omitempty"`
 	Iqn            string                 `json:"iqn,omitempty"`
 	DiscoveryIP    string                 `json:"discovery_ip,omitempty"` // this field needs to be moved out ?
+	DiscoveryIPs   []string               `json:"discovery_ips,omitempty"`
 	MountPoint     string                 `json:"Mountpoint,omitempty"`
 	Status         map[string]interface{} `json:"status,omitempty"` // interface so that we can map any number of arguments
 	Chap           *ChapInfo              `json:"chap_info,omitempty"`
-	Networks       []*Network             `json:"networks,omitempty"`
+	Networks       []*NetworkInterface    `json:"networks,omitempty"`
 	ConnectionMode string                 `json:"connection_mode,omitempty"`
 	LunID          string                 `json:"lun_id,omitempty"`
 	TargetScope    string                 `json:"target_scope,omitempty"` //GST="group", VST="volume" or empty(older array fiji etc), and no-op for FC
@@ -279,8 +281,8 @@ type FcHostPort struct {
 
 // Iface represents iface configuring with port binding
 type Iface struct {
-	Name    string
-	Network *Network
+	Name             string
+	NetworkInterface *NetworkInterface
 }
 
 // IscsiTargets : array of pointers to IscsiTarget

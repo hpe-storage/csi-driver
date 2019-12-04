@@ -54,7 +54,7 @@ func GetHostNameAndDomain() ([]string, error) {
 //GetDomainName : of the host
 func getDomainName() (string, error) {
 	var addr string
-	interfaces, err := getInterfacesIPAddr()
+	interfaces, err := getNetworkInterfaces()
 	if err != nil {
 		return "", err
 	}
@@ -110,12 +110,59 @@ func GetIPV4NetworkAddress(ipv4Address, netMask string) (networkAddress string, 
 }
 
 //GetNetworkInterfaces : get the array of network interfaces
-func GetNetworkInterfaces() ([]*model.Network, error) {
-	log.Trace(">>>>> GetNetworkInterfaces")
+func GetNetworkInterfaces() ([]*model.NetworkInterface, error) {
+	log.Trace(">>>>> GetNetworkInterfaces called")
 	defer log.Trace("<<<<< GetNetworkInterfaces")
 
-	interfaces, err := getInterfacesIPAddr()
-	return interfaces, err
+	networkInterfaces, err := getNetworkInterfaces()
+	if len(networkInterfaces) == 0 {
+		return nil, fmt.Errorf("no valid IpV4 networks found")
+	}
+	return networkInterfaces, err
+}
+
+// retrieve network interfaces
+func getNetworkInterfaces() ([]*model.NetworkInterface, error) {
+	log.Trace(">>>>> getNetworkInterfaces called")
+	defer log.Trace("<<<<< getNetworkInterfaces")
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, fmt.Errorf("unable to retrieve network interfaces %s", err.Error())
+	}
+	var nics []*model.NetworkInterface
+	for _, i := range ifaces {
+		addrs, err := i.Addrs()
+		if err != nil {
+			log.Tracef(err.Error())
+			continue
+		}
+		for _, addr := range addrs {
+			networkIp, ok := addr.(*net.IPNet)
+			if ok && !networkIp.IP.IsLoopback() && networkIp.IP.To4() != nil && networkIp.Mask != nil {
+				mask := networkIp.Mask
+				if len(mask) != 4 {
+					// continue with other addresses
+					continue
+				}
+				nic := &model.NetworkInterface{
+					Name:        i.Name,
+					AddressV4:   networkIp.IP.To4().String(),
+					MaskV4:      fmt.Sprintf("%d.%d.%d.%d", mask[0], mask[1], mask[2], mask[3]),
+					Mtu:         int64(i.MTU),
+					Mac:         i.HardwareAddr.String(),
+					CidrNetwork: addr.String(),
+				}
+				if strings.Contains(i.Flags.String(), "up") {
+					nic.Up = true
+				} else {
+					nic.Up = false
+				}
+				nics = append(nics, nic)
+			}
+
+		}
+	}
+	return nics, nil
 }
 
 func getMaskString(intMask int) string {
@@ -138,12 +185,13 @@ func getMaskString(intMask int) string {
 	return maskV4
 }
 
-func getInterfacesIPAddr() ([]*model.Network, error) {
+//TODO: remove this
+func getInterfacesIPAddr() ([]*model.NetworkInterface, error) {
 	log.Trace(">>>>> getInterfacesIpAddr")
 	defer log.Trace("<<<<< getInterfacesIPAddr")
 
-	var nics []*model.Network
-	var nic *model.Network
+	var nics []*model.NetworkInterface
+	var nic *model.NetworkInterface
 	args := []string{"addr"}
 	out, _, err := util.ExecCommandOutput(ipcommand, args)
 	if err != nil {
@@ -165,15 +213,15 @@ func getInterfacesIPAddr() ([]*model.Network, error) {
 				return nics, er
 			}
 			if matchedMap["UP"] == up {
-				nic = &model.Network{Name: matchedMap["Name"], Mtu: mtu, Up: true}
+				nic = &model.NetworkInterface{Name: matchedMap["Name"], Mtu: mtu, Up: true}
 			} else if matchedMap["UP"] == unknown {
 				// ip addr and ip link shows state as UNKNOWN with old kernel versions(/sys/class/net/docker0/operstate)
 				// https://access.redhat.com/solutions/1443363
 				// obtain using ethtool
 				status := getInterfaceStatus(matchedMap["Name"])
-				nic = &model.Network{Name: matchedMap["Name"], Mtu: mtu, Up: status}
+				nic = &model.NetworkInterface{Name: matchedMap["Name"], Mtu: mtu, Up: status}
 			} else {
-				nic = &model.Network{Name: matchedMap["Name"], Mtu: mtu, Up: false}
+				nic = &model.NetworkInterface{Name: matchedMap["Name"], Mtu: mtu, Up: false}
 			}
 		} else {
 			if nic != nil {
@@ -206,7 +254,7 @@ func getInterfaceStatus(name string) bool {
 	return false
 }
 
-func matchIPPattern(line string, nic *model.Network) (*model.Network, error) {
+func matchIPPattern(line string, nic *model.NetworkInterface) (*model.NetworkInterface, error) {
 	log.Tracef(">>>> matchIPPattern called with %s", line)
 	defer log.Trace("<<<<< matchIPPattern")
 

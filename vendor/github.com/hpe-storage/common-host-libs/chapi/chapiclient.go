@@ -215,7 +215,7 @@ func (chapiClient *Client) GetChapInfo() (chapInfo *model.ChapInfo, err error) {
 }
 
 // GetNetworks return list of host network interface details
-func (chapiClient *Client) GetNetworks() (networks []*model.Network, err error) {
+func (chapiClient *Client) GetNetworks() (networks []*model.NetworkInterface, err error) {
 	log.Trace("GetNetworks called")
 
 	// fetch host ID
