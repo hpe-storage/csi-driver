@@ -139,9 +139,9 @@ func (driver *LinuxDriver) GetHostInfo() (*model.Host, error) {
 	}
 
 	host := &model.Host{
-		Name:     hostAndDomain[0],
-		Domain:   hostAndDomain[1],
-		Networks: nics,
+		Name:              hostAndDomain[0],
+		Domain:            hostAndDomain[1],
+		NetworkInterfaces: nics,
 	}
 	return host, nil
 }
@@ -152,7 +152,7 @@ func (driver *LinuxDriver) GetHostInitiators() ([]*model.Initiator, error) {
 }
 
 // GetHostNetworks reports the networks on this host
-func (driver *LinuxDriver) GetHostNetworks() ([]*model.Network, error) {
+func (driver *LinuxDriver) GetHostNetworks() ([]*model.NetworkInterface, error) {
 	return linux.GetNetworkInterfaces()
 }
 

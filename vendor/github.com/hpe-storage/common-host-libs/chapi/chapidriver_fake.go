@@ -35,7 +35,7 @@ func (driver *FakeDriver) GetHostInitiators() ([]*model.Initiator, error) {
 }
 
 // GetHostNetworks reports the networks on this host
-func (driver *FakeDriver) GetHostNetworks() ([]*model.Network, error) {
+func (driver *FakeDriver) GetHostNetworks() ([]*model.NetworkInterface, error) {
 	return nil, nil
 }
 

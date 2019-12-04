@@ -1,0 +1,7 @@
+{
+    "go.inferGopath": false,
+    "go.toolsEnvVars": {"GOOS":"darwin"},
+    "go.gopath":"/Users/eforgette/gocsi",
+    "go.gotoSymbol.includeGoroot": true,
+    "go.gotoSymbol.includeImports": true,
+}
