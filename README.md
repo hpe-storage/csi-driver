@@ -103,24 +103,28 @@ Deployment declarations are stored in [hpe-storage/co-deployments](https://githu
 
 Kubernetes 1.12
 ```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.12.yaml
 ```
 
 Kubernetes 1.13
 ```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.13.yaml
 ```
 
 Kubernetes 1.14
 ```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.14.yaml
 ```
 
 Kubernetes 1.15
 ```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.15.yaml
 ```
