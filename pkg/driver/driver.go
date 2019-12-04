@@ -376,14 +376,14 @@ func (driver *Driver) GetVolumeByName(name string, secrets map[string]string) (*
 	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
+		return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 	}
 
 	// check if the volume exists
 	volume, err = storageProvider.GetVolumeByName(name)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume %s, %s", name, err.Error()))
+		return nil, status.Error(codes.Unavailable, fmt.Sprintf("Error while attempting to get volume %s, %s", name, err.Error()))
 	}
 
 	log.Tracef("Found Volume %+v", volume)
