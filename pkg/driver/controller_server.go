@@ -930,7 +930,10 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return status.Error(codes.Internal,
+		// codes.Internal is treated as Final error and controllerUnpublish returns without another retry.
+		// the list of retry able errors are listed at
+		// https://github.com/kubernetes-csi/external-attacher/blob/ad7d376eb4ac985860e37903590ce6a17b340b06/pkg/attacher/attacher.go#L117
+		return status.Error(codes.Unavailable,
 			fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
 	}
 

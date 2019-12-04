@@ -335,14 +335,14 @@ func (driver *Driver) GetVolumeByID(id string, secrets map[string]string) (*mode
 		storageProvider, err := driver.GetStorageProvider(secrets)
 		if err != nil {
 			log.Error("err: ", err.Error())
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
+			return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 		}
 
 		// check if the volume exists
 		volume, err = storageProvider.GetVolume(id)
 		if err != nil {
 			log.Error("err: ", err.Error())
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume with ID %s, %s", id, err.Error()))
+			return nil, status.Error(codes.Unavailable, fmt.Sprintf("Error while attempting to get volume with ID %s, %s", id, err.Error()))
 		}
 	} else {
 		log.Tracef("Secrets not provided. Checking all known storage providers.")
@@ -352,7 +352,7 @@ func (driver *Driver) GetVolumeByID(id string, secrets map[string]string) (*mode
 			volume, err = storageProvider.GetVolume(id)
 			if err != nil {
 				log.Error("err: ", err.Error())
-				return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get volume with ID %s, %s", id, err.Error()))
+				return nil, status.Error(codes.Unavailable, fmt.Sprintf("Error while attempting to get volume with ID %s, %s", id, err.Error()))
 			}
 		}
 	}
