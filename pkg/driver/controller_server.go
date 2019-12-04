@@ -369,7 +369,7 @@ func (driver *Driver) createVolume(
 	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
+		return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 	}
 
 	// TODO: check for version compatibility for new features
@@ -391,7 +391,7 @@ func (driver *Driver) createVolume(
 	existingVolume, err := storageProvider.GetVolumeByName(name)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, "Failed to check if volume exists")
+		return nil, status.Error(codes.Unavailable, "Failed to check if volume exists")
 	}
 
 	if existingVolume != nil {
@@ -615,7 +615,7 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return status.Error(codes.Internal,
+		return status.Error(codes.Unavailable,
 			fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
 	}
 
@@ -786,7 +786,7 @@ func (driver *Driver) controllerPublishVolume(
 	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal,
+		return nil, status.Error(codes.Unavailable,
 			fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
 	}
 
@@ -794,7 +794,7 @@ func (driver *Driver) controllerPublishVolume(
 	existingNode, err := storageProvider.GetNodeContext(node.UUID)
 	if err != nil {
 		log.Errorf("Error retrieving the node info from the CSP. err: %s", err.Error())
-		return nil, status.Error(codes.Internal,
+		return nil, status.Error(codes.Unavailable,
 			fmt.Sprintf("Error retrieving the node info for ID %s from the CSP, err: %s", node.UUID, err.Error()))
 	}
 	if existingNode != nil {
@@ -804,7 +804,7 @@ func (driver *Driver) controllerPublishVolume(
 		log.Tracef("Notifying CSP about Node with ID %s and UUID %s", node.ID, node.UUID)
 		if err = storageProvider.SetNodeContext(node); err != nil {
 			log.Error("err: ", err.Error())
-			return nil, status.Error(codes.Internal,
+			return nil, status.Error(codes.Unavailable,
 				fmt.Sprintf("Failed to provide node context %v to CSP", node))
 		}
 	}
@@ -930,7 +930,10 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return status.Error(codes.Internal,
+		// codes.Internal is treated as Final error and controllerUnpublish returns without another retry.
+		// the list of retry able errors are listed at
+		// https://github.com/kubernetes-csi/external-attacher/blob/ad7d376eb4ac985860e37903590ce6a17b340b06/pkg/attacher/attacher.go#L117
+		return status.Error(codes.Unavailable,
 			fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
 	}
 
@@ -1034,7 +1037,7 @@ func (driver *Driver) ListVolumes(ctx context.Context, request *csi.ListVolumesR
 		volumes, err := storageProvider.GetVolumes()
 		if err != nil {
 			log.Trace("err: ", err.Error())
-			return nil, status.Error(codes.Internal, "Error while attempting to list volumes")
+			return nil, status.Error(codes.Unavailable, "Error while attempting to list volumes")
 		}
 		for _, volume := range volumes {
 			allVolumes = append(allVolumes, volume)
@@ -1136,7 +1139,7 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 	storageProvider, err := driver.GetStorageProvider(request.Secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
+		return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 	}
 
 	// Check if the source volume exists using Secrets
@@ -1254,7 +1257,7 @@ func (driver *Driver) DeleteSnapshot(ctx context.Context, request *csi.DeleteSna
 	storageProvider, err := driver.GetStorageProvider(request.Secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
+		return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 	}
 
 	// Get Snapshot using secrets
@@ -1428,7 +1431,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 	storageProvider, err := driver.GetStorageProvider(request.Secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Internal,
+		return nil, status.Error(codes.Unavailable,
 			fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
 	}
 
