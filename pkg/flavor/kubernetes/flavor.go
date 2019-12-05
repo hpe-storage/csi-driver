@@ -7,6 +7,7 @@ import (
 	b64 "encoding/base64"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -139,31 +140,46 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 
 	if nodeInfo != nil {
 		log.Infof("Node info %s already known to cluster\n", nodeInfo.ObjectMeta.Name)
+		// make sure the nodeInfo has updated information from the host
+		if !reflect.DeepEqual(nodeInfo.Spec.IQNs, getIqnsFromNode(node)) ||
+			!reflect.DeepEqual(nodeInfo.Spec.WWPNs, getWwpnsFromNode(node)) ||
+			!reflect.DeepEqual(nodeInfo.Spec.Networks, getNetworksFromNode(node)) {
+			nodeInfo.Spec.IQNs = getIqnsFromNode(node)
+			nodeInfo.Spec.Networks = getNetworksFromNode(node)
+			nodeInfo.Spec.WWPNs = getWwpnsFromNode(node)
+			log.Infof("updating Node %s with iqns %v wwpns %v networks %v",
+				nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.Networks, nodeInfo.Spec.WWPNs)
+			updatedNodeInfo, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
+			if err != nil {
+				log.Errorf("Error updating the node %s - %s\n", nodeInfo.Name, err.Error())
+				return "", err
+			}
+			return updatedNodeInfo.Spec.UUID, nil
+		}
 	} else {
-		var iqns []string
-		for i := 0; i < len(node.Iqns); i++ {
-			iqns = append(iqns, *node.Iqns[i])
+		// lookup the HPENodeInfo by name. In case of hard reset, CRDs still exist and we have new nodeID
+		nodeInfo, err := flavor.getNodeInfoByName(node.Name)
+		if nodeInfo != nil {
+			// patch the existing HpeNodeInfo with updated nodeID
+			log.Infof("updating Node %s from old UUID %s to new %s", nodeInfo.Name, nodeInfo.Spec.UUID, node.UUID)
+			nodeInfo.Spec.UUID = node.UUID
+			updatedNodeInfo, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
+			if err != nil {
+				log.Errorf("Error updating the node %s - %s\n", nodeInfo.Name, err.Error())
+				return "", err
+			}
+			return updatedNodeInfo.Spec.UUID, nil
 		}
-
-		var wwpns []string
-		for i := 0; i < len(node.Wwpns); i++ {
-			wwpns = append(wwpns, *node.Wwpns[i])
-		}
-
-		var networks []string
-		for i := 0; i < len(node.Networks); i++ {
-			networks = append(networks, *node.Networks[i])
-		}
-
+		// if we didn't find HPENodeInfo yet, create one.
 		newNodeInfo := &crd_v1.HPENodeInfo{
 			ObjectMeta: meta_v1.ObjectMeta{
 				Name: node.Name,
 			},
 			Spec: crd_v1.HPENodeInfoSpec{
 				UUID:         node.UUID,
-				IQNs:         iqns,
-				Networks:     networks,
-				WWPNs:        wwpns,
+				IQNs:         getIqnsFromNode(node),
+				Networks:     getNetworksFromNode(node),
+				WWPNs:        getWwpnsFromNode(node),
 				ChapUser:     node.ChapUser,
 				ChapPassword: b64.StdEncoding.EncodeToString([]byte(node.ChapPassword)),
 			},
@@ -181,6 +197,30 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 	}
 
 	return node.UUID, nil
+}
+
+func getIqnsFromNode(node *model.Node) []string {
+	var iqns []string
+	for i := 0; i < len(node.Iqns); i++ {
+		iqns = append(iqns, *node.Iqns[i])
+	}
+	return iqns
+}
+
+func getWwpnsFromNode(node *model.Node) []string {
+	var wwpns []string
+	for i := 0; i < len(node.Wwpns); i++ {
+		wwpns = append(wwpns, *node.Wwpns[i])
+	}
+	return wwpns
+}
+
+func getNetworksFromNode(node *model.Node) []string {
+	var networks []string
+	for i := 0; i < len(node.Networks); i++ {
+		networks = append(networks, *node.Networks[i])
+	}
+	return networks
 }
 
 // UnloadNodeInfo remove the HPENodeInfo from the list of CRDs
@@ -400,7 +440,7 @@ func MetaUIDFunc(obj interface{}) ([]string, error) {
 }
 
 func (flavor *Flavor) getNodeInfoByUUID(uuid string) (*crd_v1.HPENodeInfo, error) {
-	log.Infof(">>>>> getNodeInfoByUUID with uuid %s\n", uuid)
+	log.Infof(">>>>> getNodeInfoByUUID with uuid %s", uuid)
 	defer log.Infof("<<<<< getNodeInfoByUUID")
 
 	nodeInfoList, err := flavor.crdClient.StorageV1().HPENodeInfos().List(meta_v1.ListOptions{})
@@ -410,6 +450,24 @@ func (flavor *Flavor) getNodeInfoByUUID(uuid string) (*crd_v1.HPENodeInfo, error
 
 	for _, nodeInfo := range nodeInfoList.Items {
 		if nodeInfo.Spec.UUID == uuid {
+			return &nodeInfo, nil
+		}
+	}
+
+	return nil, nil
+}
+
+func (flavor *Flavor) getNodeInfoByName(name string) (*crd_v1.HPENodeInfo, error) {
+	log.Infof(">>>>> getNodeInfoByName with name %s", name)
+	defer log.Infof("<<<<< getNodeInfoByName")
+
+	nodeInfoList, err := flavor.crdClient.StorageV1().HPENodeInfos().List(meta_v1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	for _, nodeInfo := range nodeInfoList.Items {
+		if nodeInfo.Name == name {
 			return &nodeInfo, nil
 		}
 	}
