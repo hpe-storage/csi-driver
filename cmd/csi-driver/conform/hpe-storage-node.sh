@@ -55,5 +55,12 @@ else
     exit 1
 fi
 
-# load iscsi_tcp modules, its a no-op if its already loaded
+# Load iscsi_tcp modules, its a no-op if its already loaded
 modprobe iscsi_tcp
+
+# Don't let udev automatically scan targets(all luns) on Unit Attention.
+# This will prevent udev scanning devices which we are attempting to remove
+if [ -f /lib/udev/rules.d/90-scsi-ua.rules ]; then
+    sed -i 's/^[^#]*scan-scsi-target/#&/' /lib/udev/rules.d/90-scsi-ua.rules
+    udevadm control --reload-rules
+fi
