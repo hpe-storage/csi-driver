@@ -565,7 +565,7 @@ func getHostInitiators(w http.ResponseWriter, r *http.Request) {
 //@Router /hosts/{id}/network [get]
 func getHostNetworks(w http.ResponseWriter, r *http.Request) {
 	var chapiResp Response
-	var nics []*model.Network
+	var nics []*model.NetworkInterface
 	vars := mux.Vars(r)
 	hostid := vars["id"]
 

@@ -20,27 +20,26 @@
 #
 
 diagnostic_collection() {
-node_name=$1
 if [[ ! -z $node_name ]]; then
 	# verify if this is a valid node name
-	node_from_kubectl=$(kubectl get nodes -n kube-system --field-selector=metadata.name=$node_name -o json -o jsonpath='{.items..metadata.name}')
+	node_from_kubectl=$(kubectl get nodes -n $namespace --field-selector=metadata.name=$node_name -o json -o jsonpath='{.items..metadata.name}')
 	if [[ -z $node_from_kubectl ]]; then
-		echo "Please enter a valid node name"
+		echo "Please enter a valid node name/namespace"
 		exit 0
 	else
-	  pod_name=$(kubectl get pods -n kube-system --selector=app=hpe-csi-node --field-selector=spec.nodeName=$node_from_kubectl -o json -o jsonpath='{.items..metadata.name}')
+	  pod_name=$(kubectl get pods -n $namespace --selector=app=hpe-csi-node --field-selector=spec.nodeName=$node_from_kubectl -o json -o jsonpath='{.items..metadata.name}')
 	  # hpe-csi-node pod may not be running on this node.
 	  if [[ ! -z $pod_name ]]; then
-	     kubectl exec -it $pod_name -c hpe-csi-driver -n kube-system -- hpe-logcollector.sh;
+	     kubectl exec -it $pod_name -c hpe-csi-driver -n $namespace -- hpe-logcollector.sh;
 	  else
-	  	 echo "hpe-csi-node pod is not running on this node. Please specify a node on which hpe-csi-node is running."
+	     echo "hpe-csi-node pod is not running on node=$node_from_kubectl in namepspace=$namespace. Please specify valid node/namespace on which hpe-csi-node is running."
 	  fi
 	fi
 else
 	# collect the diagnostic logs from all the nodes
-	for i in `kubectl get pods -n kube-system --selector=app=hpe-csi-node -o json -o jsonpath='{.items..metadata.name}'` ;
+	for i in `kubectl get pods -n $namespace --selector=app=hpe-csi-node -o json -o jsonpath='{.items..metadata.name}'` ;
 	do
-		kubectl exec -it $i -c hpe-csi-driver -n kube-system -- hpe-logcollector.sh;
+		kubectl exec -it $i -c hpe-csi-driver -n $namespace -- hpe-logcollector.sh;
 	done;
 fi
 
@@ -49,20 +48,22 @@ fi
 display_usage() {
 echo "Diagnostic Script to collect HPE Storage logs using kubectl"
 echo -e "\nUsage:"
-echo -e "     hpe-logcollector.sh [-h|--help][-n|--node-name NODE_NAME][-a|--all]"
+echo -e "     hpe-logcollector.sh [-h|--help][--node-name NODE_NAME][-n|--namespace NAMESPACE][-a|--all]"
 echo -e "Where"
 echo -e "-h|--help                  Print the Usage text"
-echo -e "-n|--node-name NODE_NAME   Kubernetes Node Name needed to collect the"
+echo -e "--node-name NODE_NAME      where NODE_NAME is kubernetes Node Name needed to collect the"
 echo -e "                           hpe diagnostic logs of the Node"
+echo -e "-n|--namespace NAMESPACE   where NAMESPACE is namespace of the pod deployment. default is kube-system"
 echo -e "-a|--all                   collect diagnostic logs of all the nodes.If "
 echo -e "                           nothing is specified logs would be collected"
 echo -e "                           from all the nodes\n"
-
+exit 0
 
 }
-
+namespace="kube-system"
+node_name=""
 #Main Function
-if ! options=$(getopt -o han: -l help,all,node-name: -- "$@")
+if ! options=$(getopt -o han: -l help,all,namespace,node-name: -- "$@")
 then
     exit 1
 fi
@@ -70,13 +71,16 @@ fi
 eval set -- $options
 while [ $# -gt 0 ]
 do
-    case $1 in
+key="$1"
+    case $key in
     -h|--help) display_usage; break;;
-    -n|--node-name)  diagnostic_collection $2; shift; break;;
-    -a|--all) shift ; diagnostic_collection ""; break;;
-    (--) shift; diagnostic_collection ""; break;;
+    -n|--namespace) namespace=$2; shift;;
+    --node-name) node_name=$2; shift;;
+    -a|--all) shift;;
+    (--) shift;;
     (-*) echo "$0: error - unrecognized option $1" 1>&2; exit 1;;
     (*) break;;
     esac
     shift
 done
+diagnostic_collection

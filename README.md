@@ -242,21 +242,26 @@ CSP logs can be accessed as
 
 ### Log Collector
 
-Log collector script [hpe-logcollector.sh](https://raw.githubusercontent.com/hpe-storage/csi-driver/master/hpe-logcollector.sh) can be used to collect the logs from any node which has kubectl access to the cluster.
-
-* curl https://raw.githubusercontent.com/hpe-storage/csi-driver/master/hpe-logcollector.sh
-* chmod 555 hpe-logcollector.sh
+Log collector script `hpe-logcollector.sh`can be used to collect the logs from any node which has kubectl access to the cluster.
 
 ```markdown
- ./hpe-logcollector.sh -h
+ curl -O https://raw.githubusercontent.com/hpe-storage/csi-driver/master/hpe-logcollector.sh
+ chmod 555 hpe-logcollector.sh
+```
+
+Usage
+
+```markdown
+./hpe-logcollector.sh -h
 Diagnostic Script to collect HPE Storage logs using kubectl
 
 Usage:
-     hpe-logcollector.sh [-h|--help][-n|--node-name NODE_NAME][-a|--all]
+     hpe-logcollector.sh [-h|--help][--node-name NODE_NAME][-n|--namespace NAMESPACE][-a|--all]
 Where
 -h|--help                  Print the Usage text
--n|--node-name NODE_NAME   Kubernetes Node Name needed to collect the
+--node-name NODE_NAME      where NODE_NAME is kubernetes Node Name needed to collect the
                            hpe diagnostic logs of the Node
+-n|--namespace NAMESPACE   where NAMESPACE is namespace of the pod deployment. default is kube-system
 -a|--all                   collect diagnostic logs of all the nodes.If
                            nothing is specified logs would be collected
                            from all the nodes

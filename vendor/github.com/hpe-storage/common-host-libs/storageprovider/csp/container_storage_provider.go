@@ -16,6 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
 
+	"github.com/hpe-storage/common-host-libs/concurrent"
 	"github.com/hpe-storage/common-host-libs/connectivity"
 	"github.com/hpe-storage/common-host-libs/jsonutil"
 	log "github.com/hpe-storage/common-host-libs/logger"
@@ -29,6 +30,10 @@ const (
 	arrayIPHeader  = "x-array-ip"
 
 	descriptionKey = "description"
+)
+
+var (
+	loginMutex = concurrent.NewMapMutex()
 )
 
 // DataWrapper is used to represent a generic JSON API payload
@@ -110,6 +115,9 @@ func (provider *ContainerStorageProvider) login() (int, error) {
 		token.ArrayIP = provider.Credentials.Backend
 	}
 
+	loginMutex.Lock(provider.Credentials.Backend)
+	defer loginMutex.Unlock(provider.Credentials.Backend)
+
 	status, err := provider.Client.DoJSON(
 		&connectivity.Request{
 			Action:        "POST",
@@ -129,13 +137,12 @@ func (provider *ContainerStorageProvider) login() (int, error) {
 
 // invoke is used to invoke all methods against the CSP. Error handling should be added here.
 // Currently, it will login again if the server responds with a status code of unauthorized.
-func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) (int, error) {
+func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) (status int, err error) {
 	request.Header = make(map[string]string)
-
 	// Perform login attempt when AuthToken is empty
 	if provider.AuthToken == "" {
 		log.Info("Cached auth-token is empty, attempting login to CSP")
-		status, err := provider.login()
+		status, err = provider.login()
 		if status != http.StatusOK {
 			log.Errorf("Failed login attempt. Status %d. Error: %s", status, err.Error())
 			return status, err
@@ -156,7 +163,10 @@ func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) 
 	// Temporary copy of the Path as it gets modified/changed in the DoJSON() method.
 	// This is required to re-attempt with the original request once login is successful.
 	reqPath := request.Path
-	status, err := provider.Client.DoJSON(request)
+	status, err = provider.Client.DoJSON(request)
+	if status == http.StatusOK {
+		return status, nil
+	}
 	if status == http.StatusUnauthorized {
 		log.Info("Received unauthorization error. Attempting login...")
 		status, err = provider.login()
@@ -474,8 +484,9 @@ func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, e
 		Data: &model.Volume{},
 	}
 	var errorResponse *ErrorsPayload
-
-	status, err := provider.invoke(
+	var status int
+	var err error
+	status, err = provider.invoke(
 		&connectivity.Request{
 			Action:        "GET",
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s", id),
@@ -484,6 +495,11 @@ func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, e
 			ResponseError: &errorResponse,
 		},
 	)
+
+	if status == http.StatusOK {
+		return dataWrapper.Data.(*model.Volume), nil
+	}
+
 	if status == http.StatusNotFound {
 		return nil, nil
 	}
@@ -492,7 +508,7 @@ func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, e
 		return nil, handleError(status, errorResponse)
 	}
 
-	return dataWrapper.Data.(*model.Volume), err
+	return nil, err
 }
 
 // GetVolumeByName will return information about the given volume

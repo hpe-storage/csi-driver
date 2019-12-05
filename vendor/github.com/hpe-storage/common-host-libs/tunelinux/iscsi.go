@@ -138,7 +138,7 @@ func getIfaceRecommendation() (recommendation *Recommendation, err error) {
 
 	for _, iface := range ifaces {
 		// identify mismatch between network subnets of all ifaces
-		networkAddress, err := linux.GetIPV4NetworkAddress(iface.Network.AddressV4, iface.Network.MaskV4)
+		networkAddress, err := linux.GetIPV4NetworkAddress(iface.NetworkInterface.AddressV4, iface.NetworkInterface.MaskV4)
 		if err != nil {
 			return nil, err
 		}
