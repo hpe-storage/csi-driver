@@ -286,15 +286,23 @@ func RetryCreateFileSystem(devPath string, fsType string) (err error) {
 	log.Tracef(">>>>> RetryCreateFileSystem, devPath: %s, fsType: %s", devPath, fsType)
 	defer log.Trace("<<<<< RetryCreateFileSystem")
 
+	return RetryCreateFileSystemWithOptions(devPath, fsType, nil)
+}
+
+// RetryCreateFileSystemWithOptions : retry file system create
+func RetryCreateFileSystemWithOptions(devPath string, fsType string, options []string) (err error) {
+	log.Tracef(">>>>> RetryCreateFileSystemWithOptions, devPath: %s, fsType: %s, options: %v", devPath, fsType, options)
+	defer log.Trace("<<<<< RetryCreateFileSystemWithOptions")
+
 	maxTries := 8 //sleep for try second(s) on each try (eg. 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 ~= 36 seconds)
 	try := 0
 	for {
-		err := CreateFileSystem(devPath, fsType)
-		log.Tracef("RetryCreateFileSystem error=%v", err)
+		err := CreateFileSystemWithOptions(devPath, fsType, options)
+		log.Tracef("RetryCreateFileSystemWithOptions error=%v", err)
 		if err != nil && (strings.Contains(err.Error(), noFileOrDirErr) || strings.Contains(err.Error(), "busy")) {
 			if try < maxTries {
 				try++
-				log.Debugf("RetryCreateFileSystem try=%d", try)
+				log.Debugf("RetryCreateFileSystemWithOptions try=%d", try)
 				time.Sleep(time.Duration(try) * time.Second)
 				continue
 			}
@@ -311,27 +319,37 @@ func RetryCreateFileSystem(devPath string, fsType string) (err error) {
 // CreateFileSystem : creates file system on the device
 func CreateFileSystem(devPath string, fsType string) (err error) {
 	log.Tracef("createFileSystem called with %s %s", fsType, devPath)
-	args := []string{devPath}
-	var output = ""
+	options := []string{devPath}
+	return createFileSystem(fsType, options)
+}
 
+// CreateFileSystemWithOptions : creates file system on the device with creation options
+func CreateFileSystemWithOptions(devPath string, fsType string, options []string) (err error) {
+	log.Tracef("CreateFileSystemWithOptions called with %s %s %v", fsType, devPath, options)
+	options = append(options, devPath)
+	return createFileSystem(fsType, options)
+}
+
+func createFileSystem(fsType string, options []string) (err error) {
+	var output string
 	if fsType == FsType.String(Xfs) {
-		output, _, err = util.ExecCommandOutputWithTimeout(fsxfscommand, args, defaultFSCreateTimeout)
+		output, _, err = util.ExecCommandOutputWithTimeout(fsxfscommand, options, defaultFSCreateTimeout)
 	} else if fsType == FsType.String(Ext3) {
-		output, _, err = util.ExecCommandOutputWithTimeout(fsext3command, args, defaultFSCreateTimeout)
+		output, _, err = util.ExecCommandOutputWithTimeout(fsext3command, options, defaultFSCreateTimeout)
 	} else if fsType == FsType.String(Ext4) {
-		output, _, err = util.ExecCommandOutputWithTimeout(fsext4command, args, defaultFSCreateTimeout)
+		output, _, err = util.ExecCommandOutputWithTimeout(fsext4command, options, defaultFSCreateTimeout)
 	} else if fsType == FsType.String(Ext2) {
-		output, _, err = util.ExecCommandOutputWithTimeout(fsext2command, args, defaultFSCreateTimeout)
+		output, _, err = util.ExecCommandOutputWithTimeout(fsext2command, options, defaultFSCreateTimeout)
 	} else if fsType == FsType.String(Btrfs) {
-		output, _, err = util.ExecCommandOutputWithTimeout(fsbtrfscommand, args, defaultFSCreateTimeout)
+		output, _, err = util.ExecCommandOutputWithTimeout(fsbtrfscommand, options, defaultFSCreateTimeout)
 	} else {
 		return fmt.Errorf("%s filesystem is unsupported", fsType)
 	}
 	if err != nil {
-		return fmt.Errorf("unable to create filesystem: %s with args %s. Error: %s", fsType, args, err.Error())
+		return fmt.Errorf("unable to create filesystem: %s with args %s. Error: %s", fsType, options, err.Error())
 	}
 	if output == "" {
-		return fmt.Errorf("filesystem not created for device %s", devPath)
+		return fmt.Errorf("filesystem not created using %v", options)
 	}
 	return nil
 }
@@ -865,6 +883,34 @@ func SetupFilesystem(device *model.Device, filesystemType string) error {
 
 	log.Tracef("Creating filesystem %s on device path %s", filesystemType, device.AltFullPathName)
 	if err := RetryCreateFileSystem(device.AltFullPathName, filesystemType); err != nil {
+		log.Errorf("Failed to create filesystem %s on device with path %s", filesystemType, device.AltFullPathName)
+		return err
+	}
+	return nil
+}
+
+// SetupFilesystemWithOptions writes the given filesystem on the given device using the given options.
+// If the requested FS already exists on the device, then it returns success.
+func SetupFilesystemWithOptions(device *model.Device, filesystemType string, options []string) error {
+	log.Tracef(">>>>> SetupFilesystemWithOptions, device: %+v, type: %s, options: %v", device, filesystemType, options)
+	defer log.Trace("<<<<< SetupFilesystemWithOptions")
+
+	if filesystemType == "" {
+		return fmt.Errorf("Missing filesystem type")
+	}
+
+	// Check if the device has filesystem already
+	fsType, err := GetFilesystemType(device.AltFullPathName)
+	if err != nil {
+		return err
+	}
+	if fsType != "" {
+		log.Tracef("Filesystem %s already exists on the device %s", fsType, device.AltFullPathName)
+		return nil
+	}
+
+	log.Tracef("Creating filesystem %s on device path %s", filesystemType, device.AltFullPathName)
+	if err := RetryCreateFileSystemWithOptions(device.AltFullPathName, filesystemType, options); err != nil {
 		log.Errorf("Failed to create filesystem %s on device with path %s", filesystemType, device.AltFullPathName)
 		return err
 	}
