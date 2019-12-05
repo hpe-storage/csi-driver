@@ -33,10 +33,11 @@ These parameters are immutable for clones once a volume has been created.
 | --------- | ------ | ----------- |
 | fsOwner | userId:groupId | The user id and group id that should own the root directory of the filesystem. |
 | fsMode | Octal digits | 1 to 4 octal digits that represent the file mode to be applied to the root directory of the filesystem. |
+| fsCreateOptions | Text | A string to be passed to the mkfs command.  These flags are opaque to CSI and are therefore not validated.  To protect the node, only the following characters are allowed:  ```[a-zA-Z0-9=, \-]```. |
 | encrypted | Boolean | Indicates that the volume should be encrypted. |
 | pool | Text | The name of the pool in which to place the volume. |
 
-**Note:** `fsOwner` and `fsMode` is not applicable when using `volumeMode: Block` in the `PersistentVolumeClaim`.
+**Note:** `fsOwner`, `fsMode`, and `fsCreateOptions` are not applicable when using `volumeMode: Block` in the `PersistentVolumeClaim`.
 
 ### Pod inline volume parameters (Local Ephemeral Volumes)
 These parameters are applicable only for Pod inline volumes and to be specified within Pod spec.

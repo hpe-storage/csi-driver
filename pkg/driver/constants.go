@@ -26,9 +26,10 @@ const (
 	mountFlagsSizeMaxAllowed = 4 * 1024 // 4 KiB
 
 	// Filesystem Details
-	fsTypeKey  = "fsType"
-	fsOwnerKey = "fsOwner"
-	fsModeKey  = "fsMode"
+	fsTypeKey          = "fsType"
+	fsOwnerKey         = "fsOwner"
+	fsModeKey          = "fsMode"
+	fsCreateOptionsKey = "fsCreateOptions"
 
 	// Group Target Scope
 	targetScopeGroup = "group"
