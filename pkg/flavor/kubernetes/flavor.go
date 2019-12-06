@@ -141,21 +141,34 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 	if nodeInfo != nil {
 		log.Infof("Node info %s already known to cluster\n", nodeInfo.ObjectMeta.Name)
 		// make sure the nodeInfo has updated information from the host
-		if !reflect.DeepEqual(nodeInfo.Spec.IQNs, getIqnsFromNode(node)) ||
-			!reflect.DeepEqual(nodeInfo.Spec.WWPNs, getWwpnsFromNode(node)) ||
-			!reflect.DeepEqual(nodeInfo.Spec.Networks, getNetworksFromNode(node)) {
-			nodeInfo.Spec.IQNs = getIqnsFromNode(node)
-			nodeInfo.Spec.Networks = getNetworksFromNode(node)
-			nodeInfo.Spec.WWPNs = getWwpnsFromNode(node)
-			log.Infof("updating Node %s with iqns %v wwpns %v networks %v",
-				nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.Networks, nodeInfo.Spec.WWPNs)
-			updatedNodeInfo, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
-			if err != nil {
-				log.Errorf("Error updating the node %s - %s\n", nodeInfo.Name, err.Error())
-				return "", err
-			}
-			return updatedNodeInfo.Spec.UUID, nil
+		updateNodeRequired := false
+		iqnsFromNode := getIqnsFromNode(node)
+		if !reflect.DeepEqual(nodeInfo.Spec.IQNs, iqnsFromNode) {
+			nodeInfo.Spec.IQNs = iqnsFromNode
+			updateNodeRequired = true
 		}
+		networksFromNode := getNetworksFromNode(node)
+		if !reflect.DeepEqual(nodeInfo.Spec.Networks, networksFromNode) {
+			nodeInfo.Spec.Networks = networksFromNode
+			updateNodeRequired = true
+		}
+		wwpnsFromNode := getWwpnsFromNode(node)
+		if !reflect.DeepEqual(nodeInfo.Spec.WWPNs, wwpnsFromNode) {
+			nodeInfo.Spec.WWPNs = wwpnsFromNode
+			updateNodeRequired = true
+		}
+		if !updateNodeRequired {
+			// no update needed to existing CRD
+			return node.UUID, nil
+		}
+		log.Infof("updating Node %s with iqns %v wwpns %v networks %v",
+			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.Networks, nodeInfo.Spec.WWPNs)
+		updatedNodeInfo, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
+		if err != nil {
+			log.Errorf("Error updating the node %s - %s\n", nodeInfo.Name, err.Error())
+			return "", err
+		}
+		return updatedNodeInfo.Spec.UUID, nil
 	} else {
 		// lookup the HPENodeInfo by name. In case of hard reset, CRDs still exist and we have new nodeID
 		nodeInfo, err := flavor.getNodeInfoByName(node.Name)
