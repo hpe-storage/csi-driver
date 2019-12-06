@@ -242,9 +242,16 @@ func (driver *LinuxDriver) MountDevice(device *model.Device, mountPoint string, 
 
 	// Setup FS if requested
 	if fsOpts != nil {
-		// Create filesystem if not present
-		if err := linux.SetupFilesystem(device, fsOpts.Type); err != nil {
-			return nil, fmt.Errorf("Error creating filesystem %s on device with serialNumber %s, %v", fsOpts.Type, device.SerialNumber, err.Error())
+		if fsOpts.GetCreateOpts() != nil {
+			// Create filesystem if not present
+			if err := linux.SetupFilesystemWithOptions(device, fsOpts.Type, fsOpts.GetCreateOpts()); err != nil {
+				return nil, fmt.Errorf("Error creating filesystem %s on device with serialNumber %s, %v", fsOpts.Type, device.SerialNumber, err.Error())
+			}
+		} else {
+			// Create filesystem if not present
+			if err := linux.SetupFilesystem(device, fsOpts.Type); err != nil {
+				return nil, fmt.Errorf("Error creating filesystem %s on device with serialNumber %s, %v", fsOpts.Type, device.SerialNumber, err.Error())
+			}
 		}
 		log.Tracef("Filesystem %+v setup successful,", fsOpts)
 	}

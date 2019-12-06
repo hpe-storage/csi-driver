@@ -2,6 +2,8 @@ package model
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 )
 
 const (
@@ -298,9 +300,23 @@ type Hosts []*Host
 
 // FilesystemOpts to store fsType, fsMode, fsOwner options
 type FilesystemOpts struct {
-	Type  string
-	Mode  string
-	Owner string
+	Type       string
+	Mode       string
+	Owner      string
+	CreateOpts string
+}
+
+// GetCreateOpts returns a clean array that can be passed to the command line
+func (f FilesystemOpts) GetCreateOpts() []string {
+	cleanCharRe := regexp.MustCompile(`[^a-zA-Z0-9=, \-]`)
+	singleSpacesRe := regexp.MustCompile(`\s+`)
+
+	clean := cleanCharRe.ReplaceAllString(strings.Trim(f.CreateOpts, " "), "")
+	cleanSlice := strings.Split(singleSpacesRe.ReplaceAllString(clean, " "), " ")
+	if len(cleanSlice) == 1 && cleanSlice[0] == "" {
+		return nil
+	}
+	return cleanSlice
 }
 
 // PathInfo :

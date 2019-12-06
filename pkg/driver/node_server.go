@@ -51,9 +51,10 @@ func getMountInfo(volumeID string, volCap *csi.VolumeCapability, publishContext 
 
 	// Read filesystem info from the publish context
 	fsOpts := &model.FilesystemOpts{
-		Type:  publishContext[fsTypeKey],
-		Mode:  publishContext[fsModeKey],
-		Owner: publishContext[fsOwnerKey],
+		Type:       publishContext[fsTypeKey],
+		Mode:       publishContext[fsModeKey],
+		Owner:      publishContext[fsOwnerKey],
+		CreateOpts: publishContext[fsCreateOptionsKey],
 	}
 
 	//mountPoint = getDefaultMountPoint(volumeID)

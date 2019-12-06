@@ -862,6 +862,7 @@ func (driver *Driver) controllerPublishVolume(
 		publishContext[fsTypeKey] = volumeContext[fsTypeKey]
 		publishContext[fsOwnerKey] = volumeContext[fsOwnerKey]
 		publishContext[fsModeKey] = volumeContext[fsModeKey]
+		publishContext[fsCreateOptionsKey] = volumeContext[fsCreateOptionsKey]
 	}
 	log.Tracef("Volume %s with ID %s published with the following details: %+v",
 		volume.Name, volume.ID, publishContext)
