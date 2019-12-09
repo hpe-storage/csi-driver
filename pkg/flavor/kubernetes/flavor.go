@@ -163,12 +163,11 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 		}
 		log.Infof("updating Node %s with iqns %v wwpns %v networks %v",
 			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.Networks, nodeInfo.Spec.WWPNs)
-		updatedNodeInfo, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
+		_, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
 		if err != nil {
 			log.Errorf("Error updating the node %s - %s\n", nodeInfo.Name, err.Error())
 			return "", err
 		}
-		return updatedNodeInfo.Spec.UUID, nil
 	} else {
 		// lookup the HPENodeInfo by name. In case of hard reset, CRDs still exist and we have new nodeID
 		nodeInfo, err := flavor.getNodeInfoByName(node.Name)
