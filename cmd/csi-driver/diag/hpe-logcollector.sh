@@ -65,17 +65,13 @@ echo "Command :cat /etc/redhat-release" >> $destinationDir/host-info
 cat /etc/redhat-release >> $destinationDir/host-info 2>&1
 echo "Command : systemctl status hpe-storage-node" >> $destinationDir/hpe-storage-node
 systemctl status hpe-storage-node >> $destinationDir/hpe-storage-node 2>&1
-echo "Command : kubectl get all --all-namespaces -o wide" >> $destinationDir/kubectl-get-all
-kubectl get all --all-namespaces -o wide >> $destinationDir/kubectl-get-all 2>&1
-echo "Command : kubectl get events -o wide" >> $destinationDir/kubectl-get-events
-kubectl get events -o wide >> $destinationDir/kubectl-get-events 2>&1
 
 #Destination Tar directory
 mkdir -p $directory
 
 if [ -d $directory ]; then
     #HPE Logs
-	cp -r /var/log/hpe-* $directory > /dev/null 2>&1
+	cp -r /var/log/hpe-*.log $directory > /dev/null 2>&1
 
 	#copy messages  for RHEL systems
 	cp /var/log/messages* $directory > /dev/null 2>&1
@@ -83,20 +79,10 @@ if [ -d $directory ]; then
 	#copy syslog for Ubuntu systems
 	cp /var/log/syslog* $directory > /dev/null 2>&1
 
-	#Copy flexvolume plugin(dory) log/config files
-	if [[ -f /usr/libexec/kubernetes/kubelet-plugins/volume/exec/hpe.com~nimble/nimble.json ]]; then
-	  cp /usr/libexec/kubernetes/kubelet-plugins/volume/exec/hpe.com~nimble/nimble.json $directory > /dev/null 2>&1
-	fi
-
-	if [[ -f /var/log/dory.log ]]; then
-		cp -r /var/log/dory* $directory > /dev/null 2>&1
-	fi
-
-
 	#Nimble Config files
 	cp /etc/multipath.conf $directory
 	cp /etc/iscsi/iscsid.conf $directory > /dev/null 2>&1
-	kubectl describe configmap nimble-config -n kube-system >> $directory/nimble-config-map 2>&1
+
 
 	#dmsetup table  output
 	cp $destinationDir/dmsetup $directory
