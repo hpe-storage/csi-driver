@@ -6,7 +6,12 @@ endif
 # Use the latest git tag
 TAG = $(shell git tag|tail -n1)
 ifeq ($(TAG),)
-	TAG = v1.0.0
+	BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
+	ifeq ($(BRANCH), master)
+		TAG = edge
+	else
+		TAG = ${BRANCH}
+	endif
 endif
 
 # unless a BUILD_NUMBER is specified
