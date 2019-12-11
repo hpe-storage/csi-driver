@@ -6,7 +6,7 @@ endif
 # Use the latest git tag
 TAG = $(shell git tag|tail -n1)
 ifeq ($(TAG),)
-	TAG = edge
+	TAG = v1.0.0
 endif
 
 # unless a BUILD_NUMBER is specified
