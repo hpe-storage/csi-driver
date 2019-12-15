@@ -45,20 +45,17 @@ The following guidelines applies to what feature gates got introduced as alphas 
 
 Kubernetes 1.12
  * `--allow-privileged` flag must be set to true for both the API server and the kubelet
- * `--feature-gates=CSINodeInfo=true,CSIDriverRegistry=true,VolumeSnapshotDataSource=true` feature gate flags must be set to true for both the API server and the kubelet
+ * `--feature-gates=CSINodeInfo=true,CSIDriverRegistry=true` feature gate flags must be set to true for both the API server and the kubelet
 
 Kubernetes 1.13
  * `--allow-privileged` flag must be set to true for the API server
- * `--feature-gates=VolumeSnapshotDataSource=true` feature gate flag must be set to true for the API server for VolumeSnapshot cloning support
 
 Kubernetes 1.14
  * `--allow-privileged` flag must be set to true for the API server
- * `--feature-gates=VolumeSnapshotDataSource=true` feature gate flag must be set to true for the API server for VolumeSnapshot cloning support
  * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet for resize support
 
 Kubernetes 1.15
  * `--allow-privileged` flag must be set to true for the API server
- * `--feature-gates=VolumeSnapshotDataSource=true` feature gate flag must be set to true for the API server for VolumeSnapshot cloning support
  * `--feature-gates=ExpandCSIVolumes=true,ExpandInUsePersistentVolumes=true` feature gate flags must be set to true for both the API server and kubelet for resize support
  * `--feature-gates=CSIInlineVolume=true` feature gate flag must be set to true for both the API server and kubelet for pod inline volumes (Ephemeral Local Volumes) support
  * `--feature-gates=VolumePVCDataSource=true` feature gate flag must be set to true for both the API server and kubelet for Volume cloning support
@@ -133,6 +130,9 @@ Depending on which version being deployed, different API objects gets created.
 
 ## Using the HPE CSI Driver for Kubernetes
 Getting started with the HPE CSI Driver, setting up `StorageClass` and `VolumeSnapshotClass` API objects differs between CSP implementations. See [USING.md](USING.md) for examples to use the HPE Nimble Storage CSP.
+
+**Note**:Support for `VolumeSnapshotClass` is available from Kubernetes 1.17+
+
 
 ## StorageClass parameters
 The supported `StorageClass` parameters are dictated by the CSP from which the CSI Driver interacts with.
