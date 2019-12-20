@@ -426,11 +426,12 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 	// TODO: Enhance CHAPI to work with a PublishInfo object rather than a volume
 
 	discoveryIps := strings.Split(publishContext[discoveryIPsKey], ",")
+	iqns := strings.Split(publishContext[targetNamesKey], ",")
 
 	volume := &model.Volume{
 		SerialNumber:   publishContext[serialNumberKey],
 		AccessProtocol: publishContext[accessProtocolKey],
-		Iqn:            publishContext[targetNameKey],
+		Iqns:           iqns,
 		TargetScope:    publishContext[targetScopeKey],
 		LunID:          publishContext[lunIDKey],
 		DiscoveryIPs:   discoveryIps,

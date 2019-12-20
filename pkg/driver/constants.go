@@ -37,7 +37,7 @@ const (
 	// Volume Publish params
 	serialNumberKey       = "serialNumber"
 	accessProtocolKey     = "accessProtocol"
-	targetNameKey         = "targetName"
+	targetNamesKey        = "targetNames"
 	targetScopeKey        = "targetScope"
 	lunIDKey              = "lunId"
 	discoveryIPsKey       = "discoveryIps"
