@@ -839,7 +839,7 @@ func (driver *Driver) controllerPublishVolume(
 	publishContext := map[string]string{}
 	publishContext[serialNumberKey] = publishInfo.SerialNumber
 	publishContext[accessProtocolKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
-	publishContext[targetNameKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetName
+	publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
 	publishContext[targetScopeKey] = requestedTargetScope
 	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
