@@ -35,6 +35,13 @@ This guide is primarily written to accommodate installation on upstream Kubernet
       <td>yes</td>
       <td>yes</td>
     </tr>
+    <tr>
+      <td>v1.0.0</td>
+      <td>no</td>
+      <td>no</td>
+      <td>yes</td>
+      <td>yes</td>
+    </tr>
   </tbody>
 </table>
 
@@ -124,6 +131,20 @@ Kubernetes 1.15
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.15.yaml
+```
+
+Kubernetes 1.16
+```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.16.yaml
+```
+
+Kubernetes 1.17
+```
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.17.yaml
 ```
 
 Depending on which version being deployed, different API objects gets created.
