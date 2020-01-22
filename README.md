@@ -10,40 +10,28 @@ This guide is primarily written to accommodate installation on upstream Kubernet
   <thead>
     <tr>
       <th></th>
-      <th colspan=4>Kubernetes Version</th>
+      <th colspan=3>Kubernetes Version</th>
+      <th rowspan=2> Release Notes</th>
     </tr>
     <tr>
       <th>HPE CSI Driver</th>
-      <th><= 1.11</th>
-      <th>1.12+</th>
+      <th><= 1.12</th>
       <th>1.13+</th>
       <th>1.14+</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>v0.3.0-beta</td>
-      <td>no</td>
-      <td>yes</td>
-      <td>no</td>
-      <td>no</td>
-    </tr>
-    <tr>
-      <td>v1.0.0-beta</td>
-      <td>no</td>
-      <td>no</td>
-      <td>yes</td>
-      <td>yes</td>
-    </tr>
-    <tr>
       <td>v1.0.0</td>
       <td>no</td>
-      <td>no</td>
       <td>yes</td>
       <td>yes</td>
+      <td><a href="release-notes/v1.0.0.md">v1.0.0</a></td>
     </tr>
   </tbody>
 </table>
+
+**Note:** Support Matrix for each release can be found at [SUPPORT.md](SUPPORT.md)
 
 ### Requirements
 Different features mature at different rates. Refer to the [official table](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) of feature gates in the Kubernetes docs.
@@ -105,45 +93,36 @@ nimble-secret         Opaque                                5         149m
 #### Deploy the CSI driver and sidecars for the relevant Kubernetes version
 Deployment declarations are stored in [hpe-storage/co-deployments](https://github.com/hpe-storage/co-deployments).
 
-Kubernetes 1.12
+
 ```
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.12.yaml
 ```
+
+**Note**: `nimble-csp.yaml` and `hpe-linux-config.yaml` are common for all kubernetes version.
 
 Kubernetes 1.13
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.13.yaml
 ```
 
 Kubernetes 1.14
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.14.yaml
 ```
 
 Kubernetes 1.15
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.15.yaml
 ```
 
 Kubernetes 1.16
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.16.yaml
 ```
 
 Kubernetes 1.17
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.17.yaml
 ```
 
