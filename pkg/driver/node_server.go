@@ -92,6 +92,29 @@ func (driver *Driver) isMounted(device *model.Device, mountPoint string) (bool, 
 	return false, nil
 }
 
+// removeStaleBindMounts removes the stale bind mount points that are associated with the device
+func (driver *Driver) removeStaleBindMounts(device *model.Device, stagingPath string) error {
+	log.Tracef(">>>>> removeStaleBindMounts, device: %+v, stagingPath: %s", device, stagingPath)
+	defer log.Trace("<<<<< removeStaleBindMounts")
+
+	// Get all mounts for device
+	mounts, err := driver.chapiDriver.GetMountsForDevice(device)
+	if err != nil {
+		return fmt.Errorf("Error retrieving mounts for the device %s", device.AltFullPathName)
+	}
+	for _, mount := range mounts {
+		// Look for stale bind mounts if any and clean up them.
+		if mount.Mountpoint != stagingPath {
+			log.Warnf("Found stale bindMount %v, Attempting to unmount filesystem from target path", mount.Mountpoint)
+			err := driver.chapiDriver.BindUnmount(mount.Mountpoint)
+			if err != nil {
+				return fmt.Errorf("Error unmounting target path %s, err: %s", mount.Mountpoint, err.Error())
+			}
+		}
+	}
+	return nil
+}
+
 // NodeStageVolume ...
 //
 // A Node Plugin MUST implement this RPC call if it has STAGE_UNSTAGE_VOLUME node capability.
@@ -559,6 +582,12 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 
 	// If mounted, then unmount the filesystem
 	if stagingDev.VolumeAccessMode == model.MountType && stagingDev.MountInfo != nil {
+		// Remove the stale bindMounts if any
+		if err := driver.removeStaleBindMounts(stagingDev.Device, stagingTargetPath); err != nil {
+			return status.Error(codes.Internal,
+				fmt.Sprintf("Error while deleting the stale bind mounts for the staged device %v, err: %s", stagingDev, err.Error()))
+		}
+
 		// Unmount the device from the mountpoint
 		_, err := driver.chapiDriver.UnmountDevice(stagingDev.Device, stagingDev.MountInfo.MountPoint)
 		if err != nil {
