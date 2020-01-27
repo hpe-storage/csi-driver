@@ -38,10 +38,6 @@ Different features mature at different rates. Refer to the [official table](http
 
 The following guidelines applies to what feature gates got introduced as alphas for the corresponding version of K8s. For example, `ExpandCSIVolumes` got introduced in 1.14 but is still an alpha in 1.15, hence you need to enable that feature gate in 1.15 as well if you want to use it.
 
-Kubernetes 1.12
- * `--allow-privileged` flag must be set to true for both the API server and the kubelet
- * `--feature-gates=CSINodeInfo=true,CSIDriverRegistry=true` feature gate flags must be set to true for both the API server and the kubelet
-
 Kubernetes 1.13
  * `--allow-privileged` flag must be set to true for the API server
 
@@ -95,35 +91,35 @@ Deployment declarations are stored in [hpe-storage/co-deployments](https://githu
 
 
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-linux-config.yaml
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/nimble-csp.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-linux-config.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/nimble-csp.yaml
 ```
 
 **Note**: `nimble-csp.yaml` and `hpe-linux-config.yaml` are common for all kubernetes version.
 
 Kubernetes 1.13
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.13.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-csi-k8s-1.13.yaml
 ```
 
 Kubernetes 1.14
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.14.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-csi-k8s-1.14.yaml
 ```
 
 Kubernetes 1.15
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.15.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-csi-k8s-1.15.yaml
 ```
 
 Kubernetes 1.16
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.16.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-csi-k8s-1.16.yaml
 ```
 
 Kubernetes 1.17
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/hpe-csi-k8s-1.17.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-csi-k8s-1.17.yaml
 ```
 
 Depending on which version being deployed, different API objects gets created.
@@ -139,24 +135,6 @@ The supported `StorageClass` parameters are dictated by the CSP from which the C
 * [HPE Nimble Storage CSP](examples/kubernetes/hpe-nimble-storage/README.md)
 
 Common CSI Driver parameters regardless of CSP:
-
-Kubernetes 1.12
-
-```markdown
-
-fstype: xfs
-csiProvisionerSecretName: nimble-secret
-csiProvisionerSecretNamespace: kube-system
-csiControllerPublishSecretName: nimble-secret
-csiControllerPublishSecretNamespace: kube-system
-csiNodeStageSecretName: nimble-secret
-csiNodeStageSecretNamespace: kube-system
-csiNodePublishSecretName: nimble-secret
-csiNodePublishSecretNamespace: kube-system
-fsMode: "0644"
-fsOwner: "504:21"
-accessProtocol: "iscsi"
-```
 
 Kubernetes 1.13:
 
