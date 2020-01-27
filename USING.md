@@ -14,29 +14,6 @@ kubectl create -f-
 
 To get started, create a `StorageClass` API object referencing the `nimble-secret` and defining additional (optional) `StorageClass` parameters:
 
-Kubernetes 1.12
-```
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: my-sc-1
-provisioner: csi.hpe.com
-parameters:
-  fstype: xfs
-  csiProvisionerSecretName: nimble-secret
-  csiProvisionerSecretNamespace: kube-system
-  csiControllerPublishSecretName: nimble-secret
-  csiControllerPublishSecretNamespace: kube-system
-  csiNodeStageSecretName: nimble-secret
-  csiNodeStageSecretNamespace: kube-system
-  csiNodePublishSecretName: nimble-secret
-  csiNodePublishSecretNamespace: kube-system
-  description: "Volume provisioned by the HPE CSI Driver"
-  dedupeEnabled: "false"
-  performancePolicy: "SQL Server"
-  limitIops: "76800"
-```
-
 Kubernetes 1.13+
 ```
 apiVersion: storage.k8s.io/v1
@@ -76,7 +53,7 @@ spec:
   storageClassName: my-sc-1
 ```
 
-**Note:** In most enviornments, there is a default `StorageClass` declared on the cluster. In such a scenario, the `.spec.storageClassName` can be omitted. In addition, the default `StorageClass` needs to be annotated with this key: `.metadata.annotations.storageclass.kubernetes.io/is-default-class` set to `"true"`. 
+**Note:** In most enviornments, there is a default `StorageClass` declared on the cluster. In such a scenario, the `.spec.storageClassName` can be omitted. In addition, the default `StorageClass` needs to be annotated with this key: `.metadata.annotations.storageclass.kubernetes.io/is-default-class` set to `"true"`.
 
 After the PVC has been declared, check that a new `PersistentVolume` is created based on your claim:
 
@@ -166,20 +143,7 @@ spec:
 ### Test and verify snapshots
 Create a `VolumeStorageClass` referencing the `nimble-secret` and defining additional snapshot parameters:
 
-Kubernetes 1.12
-```
-apiVersion: snapshot.storage.k8s.io/v1alpha1
-kind: VolumeSnapshotClass
-metadata:
-  name: my-snapclass-1
-snapshotter: csi.hpe.com
-parameters:
-  description: "Snapshot created by the HPE CSI Driver"
-  csiSnapshotterSecretName: nimble-secret
-  csiSnapshotterSecretNamespace: kube-system
-```
-
-Kubernetes 1.13+
+Kubernetes 1.17+
 ```
 apiVersion: snapshot.storage.k8s.io/v1alpha1
 kind: VolumeSnapshotClass
