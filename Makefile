@@ -3,11 +3,7 @@ ifndef REPO_NAME
 	REPO_NAME ?= hpestorage/csi-driver
 endif
 
-# Use the latest git tag
-TAG = $(shell git tag|tail -n1)
-ifeq ($(TAG),)
-	TAG = edge
-endif
+TAG = edge
 
 # unless a BUILD_NUMBER is specified
 ifeq ($(IGNORE_BUILD_NUMBER),true)
