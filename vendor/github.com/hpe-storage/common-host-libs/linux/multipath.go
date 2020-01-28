@@ -15,10 +15,11 @@ import (
 )
 
 var (
-	showPathsFormat  = []string{"show", "paths", "format", "%w %d %t %i %o %T %c %s %m"}
-	showMapsFormat   = []string{"show", "maps", "format", "%w %d %n %s"}
-	orphanPathRegexp = regexp.MustCompile(orphanPathsPattern)
-	multipathMutex   sync.Mutex
+	showPathsFormat      = []string{"show", "paths", "format", "%w %d %t %i %o %T %c %s %m"}
+	showMapsFormat       = []string{"show", "maps", "format", "%w %d %n %s"}
+	orphanPathRegexp     = regexp.MustCompile(getOrphanPathsPattern())
+	multipathMutex       sync.Mutex
+	deviceVendorPatterns = []string{"Nimble", "3PARdata"}
 )
 
 const (
@@ -26,9 +27,14 @@ const (
 	MultipathConf = "/etc/multipath.conf"
 	// MultipathBindings bindings file for multipathd
 	MultipathBindings  = "/etc/multipath/bindings"
-	orphanPathsPattern = ".*(?P<host>\\d+):(?P<channel>\\d+):(?P<target>\\d+):(?P<lun>\\d+).*Nimble.*orphan"
+	orphanPathsPattern = ".*(?P<host>\\d+):(?P<channel>\\d+):(?P<target>\\d+):(?P<lun>\\d+).*(REPLACE_VENDOR).*orphan"
 	maxTries           = 3
 )
+
+func getOrphanPathsPattern() string {
+	vendorPattern := strings.Join(deviceVendorPatterns, "|")
+	return strings.Replace(orphanPathsPattern, "REPLACE_VENDOR", vendorPattern, -1)
+}
 
 // MultipathdShowMaps output
 func MultipathdShowMaps(serialNumber string) (a []string, err error) {
@@ -463,7 +469,7 @@ func multipathGetPathsOfDevice(dev *model.Device, needActivePath bool) (paths []
 			if !needActivePath {
 				log.Tracef("needActive %v dev(%s) dm_st(%s) hcil(%s) for uuid(%s)", needActivePath, entry[1], entry[2], entry[3], entry[0])
 				path := &model.PathInfo{
-					UUID:     entry[0],
+					UUID:     entry[0][1:],
 					Device:   entry[1],
 					DmState:  entry[2],
 					Hcil:     entry[3],
@@ -474,7 +480,7 @@ func multipathGetPathsOfDevice(dev *model.Device, needActivePath bool) (paths []
 			} else if len(entry) >= 5 && entry[2] == model.ActiveState.String() && entry[5] == "ready" {
 				log.Tracef("needActive %v dev(%s) chk_st(%s) dm_st(%s) for uuid(%s)", needActivePath, entry[1], entry[5], entry[2], entry[0])
 				path := &model.PathInfo{
-					UUID:     entry[0],
+					UUID:     entry[0][1:],
 					Device:   entry[1],
 					DmState:  entry[2],
 					Hcil:     entry[3],

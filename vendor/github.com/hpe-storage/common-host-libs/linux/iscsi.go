@@ -21,13 +21,13 @@ import (
 const (
 	iscsicmd                = "iscsiadm"
 	lscmd                   = "ls"
-	iscsiadmPattern         = "(?m)^(?P<address>.*):(?P<port>\\d*),(?P<tag>\\d*) (?P<target>iqn.2007-11.com.nimblestorage:.*)$"
+	iscsiadmPattern         = "(?m)^(?P<address>.*):(?P<port>\\d*),(?P<tag>\\d*) (?P<target>iqn.*(REPLACE_VENDOR):.*)$"
+	byPathTargetPattern     = "^ip-(?P<address>.*):(?P<port>\\d*)-iscsi-(?P<target>iqn.*(REPLACE_VENDOR):.*)-lun"
 	diskbypath              = "/dev/disk/by-path"
 	ifacePath               = "/var/lib/iscsi/ifaces"
 	altIfacePath            = "/etc/iscsi/ifaces"
 	iscsiHostPathFormat     = "/sys/class/iscsi_host/"
 	ifaceNetNamePattern     = "^iface.net_ifacename\\s*=\\s*(?P<network>.*)"
-	byPathTargetPattern     = "^ip-(?P<address>.*):(?P<port>\\d*)-iscsi-(?P<target>iqn.2007-11.com.nimblestorage:.*)-lun"
 	hostDeviceFormat        = "/sys/class/scsi_host/host%s/device/"
 	sessionIDPattern        = "session(?P<sessionid>\\d+)"
 	hostTargetNameFormat    = "/sys/class/scsi_host/host%s/device/session%s/iscsi_session/session%s/targetname"
@@ -52,10 +52,12 @@ const (
 	PingInterval            = 10 * time.Millisecond
 	PingTimeout             = 5 * time.Second
 	DefaultIscsiPort        = 3260
+	iscsiSessionDir         = "/sys/class/iscsi_session"
 )
 
 var (
-	iscsiMutex sync.Mutex
+	iscsiMutex           sync.Mutex
+	targetVendorPatterns = []string{"com.nimblestorage", "com.3pardata"}
 )
 
 //type of Scope (volume, group)
@@ -79,74 +81,128 @@ func (e targetScope) String() string {
 	}
 }
 
-// RescanAndLoginToTarget does a Iscsi login to the target
-// nolint : gocyclo
-func RescanAndLoginToTarget(volume *model.Volume) (err error) {
-	log.Tracef(">>>>> RescanAndLoginToTarget with discovery IP %s IQN %s Lun %s", volume.DiscoveryIP, volume.Iqn, volume.LunID)
-	defer log.Trace("<<<<< RescanAndLoginToTarget")
+// return iscsiadmPattern with vendor replacement eg. (com.nimblestorage|com.3pardata)
+// "(?m)^(?P<address>.*):(?P<port>\\d*),(?P<tag>\\d*) (?P<target>iqn.*(REPLACE_VENDORNAME):.*)$"
+func getIscsiadmPattern() string {
+	vendorPattern := strings.Join(targetVendorPatterns, "|")
+	return strings.Replace(iscsiadmPattern, "REPLACE_VENDOR", vendorPattern, -1)
+}
+
+// return byPathTargetPattern with vendor replacement eg. (com.nimblestorage|com.3pardata)
+// "^ip-(?P<address>.*):(?P<port>\\d*)-iscsi-(?P<target>iqn.*(REPLACE_VENDORNAME):.*)-lun"
+func getByPathTargetPattern() string {
+	vendorPattern := strings.Join(targetVendorPatterns, "|")
+	return strings.Replace(byPathTargetPattern, "REPLACE_VENDOR", vendorPattern, -1)
+}
+
+// getReachableDiscoveryPortals returns list of target portals which are reachable from given input
+// if provided portals are virtual IP's(i.e virtualPortal is true) then only single reachable VIP will be returned
+func getReachableDiscoveryPortals(discoveryIPs []string, virtualPortal bool) (reachablePortals []string, err error) {
+	for _, discoveryIP := range discoveryIPs {
+		// determine if this is reachable
+		isPortalReachable, err := isReachable("", discoveryIP)
+		if err != nil {
+			log.Warnf("unable to determine if target portal %s is reachable, ignoring this for discovery", discoveryIP)
+			continue
+		}
+		if isPortalReachable {
+			reachablePortals = append(reachablePortals, discoveryIP)
+			if virtualPortal {
+				// if virtual portal ip then one reachable entry is sufficient for discovery
+				return reachablePortals, nil
+			}
+		}
+	}
+	return reachablePortals, nil
+}
+
+// areTargetsLoggedIn returns true if all specified targets are logged-in
+func areTargetsLoggedIn(requiredTargets []string) (bool, error) {
+	loggedInTargets, err := GetLoggedInIscsiTargets()
+	if err != nil {
+		return false, fmt.Errorf("unable to determine already logged-in targets, err %s", err.Error())
+	}
+	for _, requiredTarget := range requiredTargets {
+		found := false
+		for _, loggedInTarget := range loggedInTargets {
+			if loggedInTarget == requiredTarget {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func loginToVolume(volume *model.Volume) (err error) {
+	log.Tracef(">>>>> loginToVolume for volume %s, lun %s", volume.SerialNumber, volume.LunID)
+	defer log.Tracef("<<<<< loginToVolume")
+
+	// get candidates for discovery
+	var reachablePortals []string
+	if len(volume.TargetNames()) > 1 {
+		// if multiple targets for single volume, then fetch all reachable discovery portals
+		reachablePortals, _ = getReachableDiscoveryPortals(volume.DiscoveryIPs, false)
+	} else {
+		reachablePortals, _ = getReachableDiscoveryPortals(volume.DiscoveryIPs, true)
+	}
+	if len(reachablePortals) == 0 {
+		return fmt.Errorf("none of the discovery portals provided [%+v] are reachable", volume.DiscoveryIPs)
+	}
+	// perform discovery and login to targets
+	discoveredTargets, err := PerformDiscovery(reachablePortals)
+	if err != nil {
+		return err
+	}
+
 	// Get iscsi ifaces bound to network interfaces
 	ifaces, err := GetIfaces()
 	// treat iface path not found error as no ifaces bound
 	if err != nil && !os.IsNotExist(err) {
-		log.Errorf("Unable to retrieve iSCSI bound ifaces. Error: %s", err.Error())
-		return fmt.Errorf("Unable to retrieve iSCSI bound ifaces. Error: %s", err.Error())
+		log.Errorf("unable to retrieve iSCSI bound ifaces. Error: %s", err.Error())
+		return fmt.Errorf("unable to retrieve iSCSI bound ifaces. Error: %s", err.Error())
 	}
 
-	if strings.EqualFold(volume.TargetScope, GroupScope.String()) {
-		loggedInTargets, err := GetIscsiTargets()
-		if err != nil {
-			log.Errorf("Unable to retrieve iSCSI Targets Error: %s", err.Error())
-			return fmt.Errorf("Unable to retrieve iSCSI Targets Error: %s", err.Error())
+	// login to all targets for given volume
+	for _, target := range volume.TargetNames() {
+		if volume.Chap == nil {
+			err = loginToTarget(discoveredTargets, target, ifaces, "", "", volume.ConnectionMode)
+		} else {
+			err = loginToTarget(discoveredTargets, target, ifaces, volume.Chap.Name, volume.Chap.Password, volume.ConnectionMode)
 		}
-		log.Trace("Logged in Targets :")
-		for _, target := range loggedInTargets {
-			log.Trace(target.Name)
-			if target.Name == volume.Iqn {
-				// best effort to scan new paths only with group scoped targets
-				log.Info("Target already connected targetName:", target.Name)
-				err = RescanIscsi(volume.LunID)
-				if err != nil {
-					log.Warnf(err.Error())
-				}
-				return nil
-			}
+		if err != nil {
+			err = fmt.Errorf("unable to login to target: %s, Error: %s", target, err.Error())
+			log.Error(err.Error())
+			return err
 		}
 	}
-	var targetSet model.IscsiTargets
-	if len(volume.DiscoveryIPs) == 0 && volume.DiscoveryIP == "" {
-		return fmt.Errorf("no discovery ip present to discover iSCSI Targets")
-	}
-	// give preference to slice of discovery IPs over a single discovery IP
-	if len(volume.DiscoveryIPs) > 0 {
-		targetSet, err = PerformDiscovery(volume.DiscoveryIPs)
-		if err != nil {
-			log.Errorf("Unable to Perform Discovery with discoveryIps: %v. Error: %s", volume.DiscoveryIPs, err.Error())
-			return fmt.Errorf("Unable to Perform Discovery with discoveryIps: %v. Error: %s", volume.DiscoveryIPs, err.Error())
-		}
-	} else if volume.DiscoveryIP != "" {
-		targetSet, err = PerformDiscovery([]string{volume.DiscoveryIP})
-		if err != nil {
-			log.Errorf("Unable to Perform Discovery with discoveryIp: %s. Error: %s", volume.DiscoveryIP, err.Error())
-			return fmt.Errorf("Unable to Perform Discovery with discoveryIp: %s. Error: %s", volume.DiscoveryIP, err.Error())
-		}
-	}
+	return nil
+}
 
-	if volume.Chap == nil {
-		err = loginToTarget(targetSet, volume.Iqn, ifaces, "", "", volume.ConnectionMode)
-	} else {
-		err = loginToTarget(targetSet, volume.Iqn, ifaces, volume.Chap.Name, volume.Chap.Password, volume.ConnectionMode)
-	}
+// HandleIscsiDiscovery performs iscsi target discovery and create sessions as required.
+func HandleIscsiDiscovery(volume *model.Volume) (err error) {
+	log.Tracef(">>>>> HandleIscsiDiscovery for volume %s, lun %s", volume.SerialNumber, volume.LunID)
+	defer log.Tracef("<<<<< HandleIscsiDiscovery")
+
+	// determine if all required targets are already logged-in
+	loggedIn, err := areTargetsLoggedIn(volume.TargetNames())
 	if err != nil {
-		err = fmt.Errorf("Unable to login to target: %s, Error: %s", volume.Iqn, err.Error())
-		log.Error(err.Error())
 		return err
 	}
 
-	// If there are no new targets found, then its possible that new LUN's are added
-	// under existing GST target. Perform SCSI rescan to pick new LUN's only for group targetScope.
+	if !loggedIn {
+		loginToVolume(volume)
+	}
+
+	// single-target-single-lun models doesn't require SCSI resan to be performed
 	if !strings.EqualFold(volume.TargetScope, GroupScope.String()) {
 		return nil
 	}
+
+	// perform SCSI rescan to create linux block devices
 	err = RescanIscsi(volume.LunID)
 	if err != nil {
 		log.Errorf("Unable to rescan iscsi hosts, Error: %s", err.Error())
@@ -416,7 +472,73 @@ func GetIfaces() (ifaces []*model.Iface, err error) {
 	return ifaces, nil
 }
 
-// GetIscsiTargets from the host
+// Check for only supported target types
+func isSupportedTarget(targetName string) bool {
+	for _, pattern := range targetVendorPatterns {
+		if strings.Contains(targetName, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// GetLoggedInIscsiTargets returns currently logged-in iscsi targets
+func GetLoggedInIscsiTargets() (targets []string, err error) {
+	log.Trace(">>>>> GetLoggedInIscsiTargets")
+	defer log.Trace("<<<<< GetLoggedInIscsiTargets")
+
+	// verify iscsi session directory exists
+	exists, _, _ := util.FileExists(iscsiSessionDir)
+	if !exists {
+		return nil, nil
+	}
+	sessions, err := ioutil.ReadDir(iscsiSessionDir)
+	if err != nil {
+		return nil, fmt.Errorf("unable to fetch iscsi session entries, err %s", err.Error())
+	}
+	for _, session := range sessions {
+		targetPath := fmt.Sprintf("/sys/class/iscsi_session/%s/targetname", session.Name())
+		exists, _, _ := util.FileExists(targetPath)
+		if exists {
+			targetName, err := ioutil.ReadFile(targetPath)
+			if err != nil {
+				// log and continue with other sessions
+				log.Warnf("unable to read targetname from %s, err %s", targetPath, err.Error())
+				continue
+			}
+			// ReadFile appends \n to the string
+			targetNameStr := strings.TrimSuffix(string(targetName), "\n")
+			if isSupportedTarget(targetNameStr) {
+				targets = append(targets, targetNameStr)
+			}
+		}
+	}
+	if len(targets) > 0 {
+		targets = removeDuplicates(targets)
+	}
+	log.Debugf("found %d logged-in targets", len(targets))
+	return targets, nil
+}
+
+func removeDuplicates(targets []string) []string {
+	// Use map to record duplicates as we find them.
+	encountered := map[string]bool{}
+	var result []string
+
+	for _, target := range targets {
+		if encountered[target] == false {
+			// Record this element as an encountered element.
+			encountered[target] = true
+			// Append to result slice.
+			result = append(result, target)
+		}
+	}
+	// Return the new slice.
+	return result
+}
+
+// GetIscsiTargets gets targets connected on host from /dev/disk/by-path entries
+// NOTE: this will fetch only targets with at-least one device discovered
 func GetIscsiTargets() (a model.IscsiTargets, err error) {
 	log.Trace(">>>>> GetIscsiTargets")
 	defer log.Trace("<<<<< GetIscsiTargets")
@@ -433,7 +555,7 @@ func GetIscsiTargets() (a model.IscsiTargets, err error) {
 		return iscsiTargets, err
 	}
 
-	r := regexp.MustCompile(byPathTargetPattern)
+	r := regexp.MustCompile(getByPathTargetPattern())
 	for _, f := range files {
 		a := r.MatchString(f.Name())
 		if a == true {
@@ -556,7 +678,7 @@ func PerformDiscovery(discoveryIPs []string) (a model.IscsiTargets, err error) {
 
 	var iscsiTargets model.IscsiTargets
 	// parse the lines into output
-	r := regexp.MustCompile(iscsiadmPattern)
+	r := regexp.MustCompile(getIscsiadmPattern())
 
 	listOut := r.FindAllString(out, -1)
 
@@ -678,7 +800,7 @@ func iscsiLogoutOfTarget(target *model.IscsiTarget) (err error) {
 	defer iscsiMutex.Unlock()
 
 	if target == nil || target.Name == "" {
-		return fmt.Errorf("Empty target to logout")
+		return fmt.Errorf("Empty target name provided to logout")
 	}
 	args := []string{"--mode", "node", "-u", "-T", target.Name}
 	out, _, err := util.ExecCommandOutput(iscsicmd, args)

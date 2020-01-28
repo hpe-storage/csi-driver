@@ -114,11 +114,6 @@ func (chapiClient *Client) GetAccessKey() (string, error) {
 	return accessKey, nil
 }
 
-// GetSerialNumber returns the volume serial number as per platform format
-func GetSerialNumber(serialNumber string) string {
-	return serialNumber
-}
-
 // NewChapiClient returns the chapi client that communicates over the required unix socket(per process or common service)
 func NewChapiClient() (*Client, error) {
 	var chapiClient *Client

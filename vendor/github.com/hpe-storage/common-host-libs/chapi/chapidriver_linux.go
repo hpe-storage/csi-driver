@@ -163,7 +163,7 @@ func (driver *LinuxDriver) GetHostNameAndDomain() ([]string, error) {
 
 // CreateDevices will create devices on this host based on the volume details provided
 func (driver *LinuxDriver) CreateDevices(volumes []*model.Volume) ([]*model.Device, error) {
-	return linux.CreateNimbleDevices(volumes)
+	return linux.CreateLinuxDevices(volumes)
 }
 
 func (driver *LinuxDriver) GetDevice(volume *model.Volume) (*model.Device, error) {
@@ -219,7 +219,7 @@ func (driver *LinuxDriver) GetMounts(serialNumber string) ([]*model.Mount, error
 	log.Trace(">>>>> GetMounts, serialNumber: ", serialNumber)
 	defer log.Trace("<<<<< GetMounts")
 
-	devices, err := linux.GetNimbleDmDevices(false, serialNumber, "")
+	devices, err := linux.GetLinuxDmDevices(false, serialNumber, "")
 	if err != nil {
 		return nil, err
 	}

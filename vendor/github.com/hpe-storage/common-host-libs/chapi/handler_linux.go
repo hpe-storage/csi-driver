@@ -137,15 +137,15 @@ func getChapInfo(w http.ResponseWriter, r *http.Request) {
 //@Router /hosts/{id}/devices [get]
 func getDevices(w http.ResponseWriter, r *http.Request) {
 	function := func() (interface{}, error) {
-		return linux.GetNimbleDmDevices(false, "", "")
+		return linux.GetLinuxDmDevices(false, "", "")
 	}
 	handleRequest(function, "getDevices", w, r)
 }
 
-// Create nimble device with attributes passed in the body of the http request
+// Create linux device with attributes passed in the body of the http request
 //@APIVersion 1.0.0
 //@Title createDevices
-//@Description create nimble devices for the VolumeInfos passed
+//@Description create linux devices for the VolumeInfos passed
 //@Accept json
 //@Resource /devices
 //@Success 200 {array} model.Devices
@@ -263,7 +263,7 @@ func deleteDevice(w http.ResponseWriter, r *http.Request) {
 // GetDeviceForSerialNumber get the device for that serialnumber
 //@APIVersion 1.0.0
 //@Title getDeviceForSerialNumber
-//@Description get Nimble Device for host id=id and device serialnumber=serialnumber
+//@Description get linux device for host id=id and device serialnumber=serialnumber
 //@Accept json
 //@Resource /devices
 //@Success 200 {array} model.Device
@@ -280,7 +280,7 @@ func getDeviceForSerialNumber(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	devices, err := linux.GetNimbleDmDevices(false, serialnumber, "")
+	devices, err := linux.GetLinuxDmDevices(false, serialnumber, "")
 	if err != nil {
 		handleError(w, chapiResp, err, http.StatusInternalServerError)
 		return
@@ -300,7 +300,7 @@ func getDeviceForSerialNumber(w http.ResponseWriter, r *http.Request) {
 
 //@APIVersion 1.0.0
 //@Title getPartitionsForDevice
-//@Description get all partitions for a Nimble Device fpr host id=id and device serialnumber=serialnumber
+//@Description get all partitions for a linux device for host id=id and device serialnumber=serialnumber
 //@Accept json
 //@Resource /partitions
 //@Success 200 {array} model.DevicePartitions
@@ -317,7 +317,7 @@ func getPartitionsForDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	devices, err := linux.GetNimbleDmDevices(false, serialnumber, "")
+	devices, err := linux.GetLinuxDmDevices(false, serialnumber, "")
 	if err != nil {
 		handleError(w, chapiResp, err, http.StatusInternalServerError)
 		return
@@ -395,7 +395,7 @@ func getMountForDevice(w http.ResponseWriter, r *http.Request) {
 	mountid := vars["mountid"]
 	serialNumber := vars["serialNumber"]
 
-	devices, err := linux.GetNimbleDmDevices(false, serialNumber, "")
+	devices, err := linux.GetLinuxDmDevices(false, serialNumber, "")
 	if err != nil {
 		handleError(w, chapiResp, err, http.StatusInternalServerError)
 		return
@@ -418,7 +418,7 @@ func getMountForDevice(w http.ResponseWriter, r *http.Request) {
 
 //@APIVersion 1.0.0
 //@Title CreateFileSystem on device
-//@Description create a filesysten for a Nimble Device for host id=id and device serialnumber=serialnumber
+//@Description create a filesysten for a linux device for host id=id and device serialnumber=serialnumber
 //@Accept json
 //@Resource /devices/{serialnumber}/{filesystem}
 //@Success 200 {array} linux.CreateFileSystem
@@ -450,7 +450,7 @@ func createFileSystemOnDevice(w http.ResponseWriter, r *http.Request) {
 
 //@APIVersion 1.0.0
 //@Title  Mount  device to the host
-//@Description Mount an attached Nimble Device with a File System passed in the body on the host
+//@Description Mount an attached linux device with a File System passed in the body on the host
 //@Accept json
 //@Resource /mounts
 //@Success 200 {array} model.Mount
@@ -493,7 +493,7 @@ func mountDevice(w http.ResponseWriter, r *http.Request) {
 
 //@APIVersion 1.0.0
 //@Title  Unmount  device from the host
-//@Description Unmount an attached Nimble Device with a File System from the host
+//@Description Unmount an attached linux device with a File System from the host
 //@Accept json
 //@Resource /mounts
 //@Success 200 {array} model.Mount

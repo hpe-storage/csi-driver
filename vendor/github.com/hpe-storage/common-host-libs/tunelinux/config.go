@@ -266,7 +266,7 @@ func GetRecommendations() (settings []*Recommendation, err error) {
 	var fcRecommendations []*Recommendation
 
 	// Get all nimble devices
-	devices, err := linux.GetNimbleDmDevices(false, "", "")
+	devices, err := linux.GetLinuxDmDevices(false, "", "")
 	if err != nil {
 		log.Error("Unable to get Nimble devices ", err.Error())
 		return nil, err
@@ -322,7 +322,7 @@ func GetRecommendations() (settings []*Recommendation, err error) {
 }
 
 // SetRecommendations set recommendations for all categories except filesystem and fc
-func SetRecommendations() (err error) {
+func SetRecommendations(global bool) (err error) {
 	err = SetMultipathRecommendations()
 	if err != nil {
 		return errors.New("unable to set multipath recommendations, error: " + err.Error())
@@ -331,7 +331,7 @@ func SetRecommendations() (err error) {
 	if err != nil {
 		return errors.New("unable to set device recommendations, error: " + err.Error())
 	}
-	err = SetIscsiRecommendations()
+	err = SetIscsiRecommendations(global)
 	if err != nil {
 		return errors.New("unable to set iscsi recommendations, error: " + err.Error())
 	}

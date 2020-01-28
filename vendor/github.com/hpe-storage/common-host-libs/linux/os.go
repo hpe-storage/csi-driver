@@ -215,7 +215,7 @@ func setOsInfo() (osInfo *OsInfo, err error) {
 	if out != "" {
 		osInfo, err = populateOsInfo(out, isObtainedUsingLsbRelease)
 		if err != nil {
-			log.Debugf("Unable to populate Os Info ", err.Error())
+			log.Debugf("Unable to populate Os Info %s", err.Error())
 			return nil, err
 		}
 	}
