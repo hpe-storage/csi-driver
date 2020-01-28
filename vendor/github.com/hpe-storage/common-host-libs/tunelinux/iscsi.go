@@ -5,7 +5,6 @@ import (
 	"errors"
 	"github.com/hpe-storage/common-host-libs/linux"
 	log "github.com/hpe-storage/common-host-libs/logger"
-	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/util"
 	"io/ioutil"
 	"os"
@@ -306,7 +305,7 @@ func getIscsiFormattedParam(parameter string) (formattedParam string, err error)
 func updateIscsiSessionParameters(remediations []*Recommendation) (err error) {
 	var formattedParam string
 	// Get logged-in iSCSi sessions
-	iscsiTargets, err := linux.GetIscsiTargets()
+	iscsiTargets, err := linux.GetLoggedInIscsiTargets()
 	if err != nil {
 		log.Error("Unable to get logged-in iscsi session to update recommendations, error: ", err.Error())
 		return err
@@ -316,26 +315,26 @@ func updateIscsiSessionParameters(remediations []*Recommendation) (err error) {
 		for _, iscsiTarget := range iscsiTargets {
 			formattedParam, err = getIscsiFormattedParam(remediation.Parameter)
 			if err != nil {
-				log.Error("Unable to get formatted param for ", remediation.Parameter, " target: ", iscsiTarget.Name, "error: ", err.Error())
+				log.Error("Unable to get formatted param for ", remediation.Parameter, " target: ", iscsiTarget, "error: ", err.Error())
 				// continue with other remediations
 				continue
 			}
-			err = SetIscsiSessionParam(*iscsiTarget, formattedParam, remediation.Recommendation)
+			err = SetIscsiSessionParam(iscsiTarget, formattedParam, remediation.Recommendation)
 			if err != nil {
-				log.Error("Unable to update iscsi session param ", remediation.Parameter, " target: ", iscsiTarget.Name, "error: ", err.Error())
+				log.Error("Unable to update iscsi session param ", remediation.Parameter, " target: ", iscsiTarget, "error: ", err.Error())
 				// continue with other remediations
 				continue
 			}
-			log.Info("Successfully updated iscsi session param ", remediation.Parameter, " target: ", iscsiTarget.Name)
+			log.Info("Successfully updated iscsi session param ", remediation.Parameter, " target: ", iscsiTarget)
 		}
 	}
 	return nil
 }
 
 // SetIscsiSessionParam set parameter value for logged-in iscsi session
-func SetIscsiSessionParam(target model.IscsiTarget, parameter string, value string) (err error) {
-	log.Trace("SetIscsiSessionParam called with ", target.Name, " param: ", parameter, " value: ", value)
-	args := []string{"--mode", "node", "--op", "update", "-T", target.Name, "--portal", target.Address, "--name", parameter, "--value", value}
+func SetIscsiSessionParam(target string, parameter string, value string) (err error) {
+	log.Trace("SetIscsiSessionParam called with ", target, " param: ", parameter, " value: ", value)
+	args := []string{"--mode", "node", "--op", "update", "-T", target, "--name", parameter, "--value", value}
 	_, _, err = util.ExecCommandOutput("iscsiadm", args)
 	if err != nil {
 		err = errors.New("unable to set iSCSI param value for " + parameter + " value " + value + "error: " + err.Error())
@@ -345,7 +344,7 @@ func SetIscsiSessionParam(target model.IscsiTarget, parameter string, value stri
 }
 
 // SetIscsiRecommendations set iscsi param recommendations
-func SetIscsiRecommendations() (err error) {
+func SetIscsiRecommendations(global bool) (err error) {
 	log.Trace("SetIscsiRecommendations called")
 	var remediations []*Recommendation
 	// Get iSCSI recommendations
@@ -364,11 +363,14 @@ func SetIscsiRecommendations() (err error) {
 					continue
 				}
 			}
-			// Modify iscsid.conf settings accordingly
-			err = SetIscsiParamRecommendation(recommendation.Parameter, recommendation.Recommendation)
-			if err != nil {
-				// continue with other recommendations
-				continue
+
+			if global {
+				// Modify iscsid.conf settings accordingly only when global param is not set
+				err = SetIscsiParamRecommendation(recommendation.Parameter, recommendation.Recommendation)
+				if err != nil {
+					// continue with other recommendations
+					continue
+				}
 			}
 			// append to remediations list for corrected settings
 			remediations = append(remediations, recommendation)
@@ -405,7 +407,7 @@ func ConfigureIscsi() (err error) {
 	}
 
 	// Set best practice settings
-	err = SetIscsiRecommendations()
+	err = SetIscsiRecommendations(true)
 	if err != nil {
 		return err
 	}

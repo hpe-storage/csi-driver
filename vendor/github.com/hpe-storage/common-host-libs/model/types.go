@@ -141,10 +141,8 @@ type IscsiTarget struct {
 
 //Device struct
 type Device struct {
-	VolumeID string `json:"volume_id,omitempty"`
-	Pathname string `json:"path_name,omitempty"`
-	// TODO: SerialNumber does not prepend a "2" so the client has to do it whenever invoking operations like offline or delete.
-	// We should probably include the "2" here since that's how the device is seen
+	VolumeID        string       `json:"volume_id,omitempty"`
+	Pathname        string       `json:"path_name,omitempty"`
 	SerialNumber    string       `json:"serial_number,omitempty"`
 	Major           string       `json:"major,omitempty"`
 	Minor           string       `json:"minor,omitempty"`
@@ -181,8 +179,9 @@ type Volume struct {
 	Metadata       []*KeyValue            `json:"metadata,omitempty"`
 	SerialNumber   string                 `json:"serial_number,omitempty"`
 	AccessProtocol string                 `json:"access_protocol,omitempty"`
-	Iqn            string                 `json:"iqn,omitempty"`
-	DiscoveryIP    string                 `json:"discovery_ip,omitempty"` // this field needs to be moved out ?
+	Iqn            string                 `json:"iqn,omitempty"` // deprecated
+	Iqns           []string               `json:"iqns,omitempty"`
+	DiscoveryIP    string                 `json:"discovery_ip,omitempty"` // deprecated
 	DiscoveryIPs   []string               `json:"discovery_ips,omitempty"`
 	MountPoint     string                 `json:"Mountpoint,omitempty"`
 	Status         map[string]interface{} `json:"status,omitempty"` // interface so that we can map any number of arguments
@@ -193,6 +192,13 @@ type Volume struct {
 	TargetScope    string                 `json:"target_scope,omitempty"` //GST="group", VST="volume" or empty(older array fiji etc), and no-op for FC
 	IscsiSessions  []*IscsiSession        `json:"iscsi_sessions,omitempty"`
 	FcSessions     []*FcSession           `json:"fc_sessions,omitempty"`
+}
+
+func (v Volume) TargetNames() []string {
+	if v.Iqn != "" {
+		return []string{v.Iqn}
+	}
+	return v.Iqns
 }
 
 // Workaround NOS 5.0.x vs 5.1.x responses with different case
@@ -257,9 +263,9 @@ type AccessInfo struct {
 
 // BlockDeviceAccessInfo contains the common fields for accessing a block device
 type BlockDeviceAccessInfo struct {
-	AccessProtocol string `json:"access_protocol,omitempty"`
-	TargetName     string `json:"target_name,omitempty"`
-	LunID          int32  `json:"lun_id,omitempty"`
+	AccessProtocol string   `json:"access_protocol,omitempty"`
+	TargetNames    []string `json:"target_names,omitempty"`
+	LunID          int32    `json:"lun_id,omitempty"`
 	IscsiAccessInfo
 }
 
@@ -308,11 +314,11 @@ type FilesystemOpts struct {
 
 // GetCreateOpts returns a clean array that can be passed to the command line
 func (f FilesystemOpts) GetCreateOpts() []string {
-	cleanCharRe := regexp.MustCompile(`[^a-zA-Z0-9=, \-]`)
-	singleSpacesRe := regexp.MustCompile(`\s+`)
+	cleanCharRegex := regexp.MustCompile(`[^a-zA-Z0-9=, \-]`)
+	singleSpacesRegex := regexp.MustCompile(`\s+`)
 
-	clean := cleanCharRe.ReplaceAllString(strings.Trim(f.CreateOpts, " "), "")
-	cleanSlice := strings.Split(singleSpacesRe.ReplaceAllString(clean, " "), " ")
+	clean := cleanCharRegex.ReplaceAllString(strings.Trim(f.CreateOpts, " "), "")
+	cleanSlice := strings.Split(singleSpacesRegex.ReplaceAllString(clean, " "), " ")
 	if len(cleanSlice) == 1 && cleanSlice[0] == "" {
 		return nil
 	}

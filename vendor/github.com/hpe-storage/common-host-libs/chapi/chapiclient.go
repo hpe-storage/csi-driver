@@ -430,7 +430,7 @@ func (chapiClient *Client) GetDeviceFromVolume(volume *model.Volume) (device *mo
 	if err != nil {
 		return nil, err
 	}
-	serialNumber := GetSerialNumber(volume.SerialNumber)
+	serialNumber := volume.SerialNumber
 	devicesURI := fmt.Sprintf(DeviceURIfmt, fmt.Sprintf(HostURIfmt, chapiClient.hostID), serialNumber)
 
 	var errResp *ErrorResponse
@@ -455,7 +455,7 @@ func (chapiClient *Client) GetDeviceFromVolume(volume *model.Volume) (device *mo
 	return device, nil
 }
 
-// GetMounts will return all mounted nimble volumes on the host
+// GetMounts will return all mountpoints of a volume with given serial
 func (chapiClient *Client) GetMounts(respMount *[]*model.Mount, serialNumber string) (err error) {
 	log.Trace("GetMounts called")
 	// fetch host ID
@@ -489,14 +489,14 @@ func (chapiClient *Client) UnmountDevice(volume *model.Volume) error {
 	defer log.Trace("<<<<< UnmountDevice")
 
 	var respMount []*model.Mount
-	err := chapiClient.GetMounts(&respMount, GetSerialNumber(volume.SerialNumber))
+	err := chapiClient.GetMounts(&respMount, volume.SerialNumber)
 	if err != nil && !(strings.Contains(err.Error(), "object was not found")) {
 		return err
 	}
 	if respMount != nil {
 		for _, mount := range respMount {
 			log.Tracef("perform an unmount on the host with %#v", mount)
-			if mount.Device.SerialNumber == GetSerialNumber(volume.SerialNumber) {
+			if mount.Device.SerialNumber == volume.SerialNumber {
 				log.Tracef("Device to ummount found :%s", mount.Mountpoint)
 				var respMount model.Mount
 				err = chapiClient.Unmount(mount, &respMount)

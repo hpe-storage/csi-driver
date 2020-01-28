@@ -65,11 +65,6 @@ func NewChapiClientWithTimeout(timeout time.Duration) (*Client, error) {
 	return chapiClient, nil
 }
 
-// GetSerialNumber returns the volume serial number as per platform format
-func GetSerialNumber(serialNumber string) string {
-	return linux.GetLinuxSerialNumber(serialNumber)
-}
-
 // NewChapiClient returns the chapi client that communicates over the required unix socket(per process or common service)
 func NewChapiClient() (*Client, error) {
 	var chapiClient *Client

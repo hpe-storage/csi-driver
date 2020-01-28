@@ -132,7 +132,7 @@ func GetDeviceRecommendations(devices []*model.Device) (settings []*Recommendati
 
 func updateUdevRule() (err error) {
 	// Get all nimble devices
-	devices, err := linux.GetNimbleDmDevices(true, "", "")
+	devices, err := linux.GetLinuxDmDevices(true, "", "")
 	if err != nil {
 		log.Error("Unable to get Nimble devices ", err.Error())
 		return err

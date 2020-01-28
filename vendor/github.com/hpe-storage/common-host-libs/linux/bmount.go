@@ -18,6 +18,7 @@ package linux
 
 import (
 	"fmt"
+	"github.com/hpe-storage/common-host-libs/concurrent"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/util"
 	"strings"
@@ -28,6 +29,10 @@ const (
 	procMounts    = "/proc/mounts"
 	mountCommand  = "mount"
 	umountCommand = "umount"
+)
+
+var (
+	procMountMutex = concurrent.NewMapMutex()
 )
 
 func unmount(mountPoint string) error {
@@ -152,11 +157,18 @@ func GetMountPointFromDevice(devPath string) (string, error) {
 }
 
 func getMountsEntry(path string, dev bool) (string, error) {
-	log.Tracef("getMountsEntry called with path:%v isDev:%v", path, dev)
+	log.Tracef(">>>>> getMountsEntry called with path:%v isDev:%v", path, dev)
+	defer log.Trace("<<<<< getMountsEntry")
+
+	// take a lock on access of /proc/mounts
+	procMountMutex.Lock(procMounts)
+	defer procMountMutex.Unlock(procMounts)
+
 	mountLines, err := util.FileGetStrings(procMounts)
 	if err != nil {
 		return "", err
 	}
+	log.Tracef("number of mounts retrieved %d", len(mountLines))
 
 	var searchIndex, returnIndex int
 	if dev {
