@@ -1,17 +1,45 @@
-FROM debian:stretch
-RUN apt-get update && \
-    apt-get install -y \
-    multipath-tools \
-    e2fsprogs \
-    btrfs-progs \
-    xfsprogs \
-    iproute2 \
-    util-linux \
-    systemd \
-    libisns0 \
-    gawk \
-    nfs-common \
-    dmidecode
+FROM registry.access.redhat.com/ubi7/ubi-minimal:7.7-138
+
+LABEL name="HPE CSI Driver for Kubernetes" \
+      maintainer="HPE Storage" \
+      vendor="HPE" \
+      version="1.1.0" \
+      summary="HPE CSI Driver for Kubernetes" \
+      description="The HPE CSI Driver for Kubernetes enables container orchestrators, such as Kubernetes and OpenShift, to manage the life-cycle of persistent storage." \
+      io.k8s.display-name="HPE CSI Driver for Kubernetes" \
+      io.k8s.description="The HPE CSI Driver for Kubernetes enables container orchestrators, such as Kubernetes and OpenShift, to manage the life-cycle of persistent storage." \
+      io.openshift.tags=hpe,csi,hpe-csi-driver
+
+WORKDIR /root
+COPY /LICENSE /licenses/
+
+RUN mkdir /chroot
+ADD chroot-host-wrapper.sh /chroot
+RUN chmod 777 /chroot/chroot-host-wrapper.sh
+RUN    ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/blockdev \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/iscsiadm \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/lsblk \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/lsscsi \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.ext3 \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.ext4 \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.xfs \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.btrfs \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/xfs_growfs \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/resize2fs \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/btrfs \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/fsck \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/mount \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/multipath \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/multipathd \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/umount \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/ip \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmidecode \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/systemctl \
+     && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmsetup
+
+
+ENV PATH="/chroot:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # add host conformance checks and configuration
 ADD [ "conform/*", "/opt/hpe-storage/lib/" ]

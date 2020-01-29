@@ -16,7 +16,6 @@ else
 	endif
 endif
 
-
 # refers to dockerhub if registry is not specified
 IMAGE = $(REPO_NAME):$(VERSION)
 ifdef CONTAINER_REGISTRY
@@ -91,6 +90,8 @@ image:
 	cp ../cmd/csi-driver/rescan-scsi-bus.sh . && \
 	cp -r ../cmd/csi-driver/conform/ conform/ && \
 	cp -r ../cmd/csi-driver/diag/ diag/ && \
+	cp -r ../cmd/csi-driver/chroot-host-wrapper.sh . && \
+	cp -r ../LICENSE . && \
 	rsync -r --no-perms --no-owner --no-group  $(TUNE_LINUX_CONFIG_PATH)/ tune/ && \
 	docker build -t $(IMAGE) .
 

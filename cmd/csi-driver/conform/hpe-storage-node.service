@@ -9,7 +9,7 @@ After=network.target network-online.target
 # fork the process so systemd waits until package installation is complete, before starting plugin
 Type=forking
 RemainAfterExit=true
-ExecStart=/usr/local/bin/hpe-storage-node.sh
+ExecStart=/etc/hpe-storage/hpe-storage-node.sh
 StandardOutput=journal
 
 [Install]
