@@ -89,7 +89,6 @@ nimble-secret         Opaque                                5         149m
 #### Deploy the CSI driver and sidecars for the relevant Kubernetes version
 Deployment declarations are stored in [hpe-storage/co-deployments](https://github.com/hpe-storage/co-deployments).
 
-
 ```
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-linux-config.yaml
 kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/nimble-csp.yaml
@@ -127,8 +126,19 @@ Depending on which version being deployed, different API objects gets created.
 ## Using the HPE CSI Driver for Kubernetes
 Getting started with the HPE CSI Driver, setting up `StorageClass` and `VolumeSnapshotClass` API objects differs between CSP implementations. See [USING.md](USING.md) for examples to use the HPE Nimble Storage CSP.
 
-**Note**:Support for `VolumeSnapshotClass` is available from Kubernetes 1.17+
+**Note**:Support for `VolumeSnapshotClass` is available from Kubernetes 1.17+. The Snapshot Beta CRDs and the Common Snapshot Controller needs to be created as below
 
+```
+Install Snapshot Beta CRDs
+  kubectl create -f config/crd
+  https://github.com/kubernetes-csi/external-snapshotter/tree/master/config/crd
+  Do this once per cluster
+
+Install Common Snapshot Controller
+  kubectl create -f deploy/kubernetes/snapshot-controller
+  https://github.com/kubernetes-csi/external-snapshotter/tree/master/deploy/kubernetes/snapshot-controller
+  Do this once per cluster
+```
 
 ## StorageClass parameters
 The supported `StorageClass` parameters are dictated by the CSP from which the CSI Driver interacts with.
