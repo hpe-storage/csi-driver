@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi7/ubi-minimal:7.7-138
+FROM registry.access.redhat.com/ubi7/ubi-minimal:7.7-238
 
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \
@@ -16,7 +16,7 @@ COPY /LICENSE /licenses/
 RUN mkdir /chroot
 ADD chroot-host-wrapper.sh /chroot
 RUN chmod 777 /chroot/chroot-host-wrapper.sh
-RUN    ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
+RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/blockdev \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/iscsiadm \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/lsblk \
@@ -36,8 +36,7 @@ RUN    ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/ip \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmidecode \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/systemctl \
-     && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmsetup
-
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmsetup
 
 ENV PATH="/chroot:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
