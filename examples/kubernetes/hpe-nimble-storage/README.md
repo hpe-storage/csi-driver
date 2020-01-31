@@ -77,5 +77,5 @@ Importing volumes to Kubernetes requires the source Nimble volume to be offline.
 | Parameter | String | Description |
 | --------- | ------ | ----------- |
 | description | Text | Text to be added to the snapshot's description on the Nimble array. |
-| writable | Boolean | Indicates if the snapshot are writable on the Nimble array. |
-| online | Boolean | Indicates if the snapshot are set to online on the Nimble array.|
+| writable | Boolean | Indicates if the snapshot is writable on the Nimble array. |
+| online | Boolean | Indicates if the snapshot is set to online on the Nimble array.|

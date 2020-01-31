@@ -128,16 +128,17 @@ Getting started with the HPE CSI Driver, setting up `StorageClass` and `VolumeSn
 
 **Note**:Support for `VolumeSnapshotClass` is available from Kubernetes 1.17+. The Snapshot Beta CRDs and the Common Snapshot Controller needs to be created as below
 
+Install Snapshot Beta CRDs (Do this once per cluster)
 ```
-Install Snapshot Beta CRDs
-  kubectl create -f config/crd
-  https://github.com/kubernetes-csi/external-snapshotter/tree/master/config/crd
-  Do this once per cluster
+kubectl create  -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+kubectl create  -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+kubectl create  -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+```
 
-Install Common Snapshot Controller
-  kubectl create -f deploy/kubernetes/snapshot-controller
-  https://github.com/kubernetes-csi/external-snapshotter/tree/master/deploy/kubernetes/snapshot-controller
-  Do this once per cluster
+Install Common Snapshot Controller (Do this once per cluster)
+```
+kubectl create -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
+kubectl create -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
 ```
 
 ## StorageClass parameters
