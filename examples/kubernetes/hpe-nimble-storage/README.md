@@ -71,3 +71,11 @@ Importing volumes to Kubernetes requires the source Nimble volume to be offline.
 | takeover | Boolean | Indicates the current group will takeover ownership of the Nimble volume and volume collection. This should be performed against a downstream replica. |
 | reverseReplication | Boolean | Reverses the replication direction so that writes to the Nimble volume are replicated back to the group where it was replicated from. |
 | forceImport | Boolean | Forces the import of a volume that is not owned by the group and is not part of a volume collection. If the volume is part of a volume collection, use takeover instead.
+
+## HPE Nimble Storage VolumeSnapshotClass parameters for the HPE CSI Driver
+
+| Parameter | String | Description |
+| --------- | ------ | ----------- |
+| description | Text | Text to be added to the snapshot's description on the Nimble array. |
+| writable | Boolean | Indicates if the snapshot is writable on the Nimble array. |
+| online | Boolean | Indicates if the snapshot is set to online on the Nimble array.|
