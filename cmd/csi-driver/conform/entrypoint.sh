@@ -38,8 +38,21 @@ if [ "$nodeservice" = true ]; then
     if [ ! -f /host/etc/multipath.conf ]; then
         cp /opt/hpe-storage/nimbletune/multipath.conf.upstream /host/etc/multipath.conf
     fi
-    # symlink to host file
+    # symlink to host iscsi/multipath config files
     ln -s /host/etc/multipath.conf /etc/multipath.conf
+    ln -s /host/etc/multipath /etc/multipath
+    ln -s /host/etc/iscsi /etc/iscsi
+    # symlink to host os release files for parsing
+    if [ -f /host/etc/redhat-release ]; then
+        # remove existing file from ubi
+        rm /etc/redhat-release
+        ln -s /host/etc/redhat-release /etc/redhat-release
+    fi
+    if [ -f /host/etc/os-release ]; then
+        # remove existing file from ubi
+        rm /etc/os-release
+        ln -s /host/etc/os-release /etc/os-release
+    fi
 fi
 
 echo "starting csi plugin..."
