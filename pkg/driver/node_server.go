@@ -583,7 +583,7 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 	// If mounted, then unmount the filesystem
 	if stagingDev.VolumeAccessMode == model.MountType && stagingDev.MountInfo != nil {
 		// Remove the stale bindMounts if any
-		if err := driver.removeStaleBindMounts(stagingDev.Device, stagingTargetPath); err != nil {
+		if err := driver.removeStaleBindMounts(stagingDev.Device, stagingDev.MountInfo.MountPoint); err != nil {
 			return status.Error(codes.Internal,
 				fmt.Sprintf("Error while deleting the stale bind mounts for the staged device %v, err: %s", stagingDev, err.Error()))
 		}
