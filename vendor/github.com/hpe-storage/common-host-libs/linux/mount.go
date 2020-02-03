@@ -26,6 +26,7 @@ var (
 	lsof                   = "lsof"
 	blkid                  = "blkid"
 	errCurrentlyMounted    = "is currently mounted"
+	procMounts             = "/proc/mounts"
 )
 
 // FsType indicates the filesystem type of mounted device
@@ -91,14 +92,16 @@ func GetMountPointsForDevices(devices []*model.Device) ([]*model.Mount, error) {
 
 	var mounts []*model.Mount
 	devToMounts := make(map[string][]string)
-	mountLines, err := util.FileGetStrings(procMounts)
+	var args []string
+	out, _, err := util.ExecCommandOutput(mountCommand, args)
 	if err != nil {
 		return nil, err
 	}
+	mountLines := strings.Split(out, "\n")
 	for _, line := range mountLines {
 		entry := strings.Fields(line)
-		if len(entry) > 2 {
-			devToMounts[entry[0]] = append(devToMounts[entry[0]], entry[1])
+		if len(entry) > 3 {
+			devToMounts[entry[0]] = append(devToMounts[entry[0]], entry[2])
 		}
 	}
 

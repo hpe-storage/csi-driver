@@ -18,21 +18,20 @@ package linux
 
 import (
 	"fmt"
-	"github.com/hpe-storage/common-host-libs/concurrent"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/util"
 	"strings"
+	"sync"
 	"time"
 )
 
 const (
-	procMounts    = "/proc/mounts"
 	mountCommand  = "mount"
 	umountCommand = "umount"
 )
 
 var (
-	procMountMutex = concurrent.NewMapMutex()
+	mountMutex sync.Mutex
 )
 
 func unmount(mountPoint string) error {
@@ -160,27 +159,30 @@ func getMountsEntry(path string, dev bool) (string, error) {
 	log.Tracef(">>>>> getMountsEntry called with path:%v isDev:%v", path, dev)
 	defer log.Trace("<<<<< getMountsEntry")
 
-	// take a lock on access of /proc/mounts
-	procMountMutex.Lock(procMounts)
-	defer procMountMutex.Unlock(procMounts)
+	// take a lock on access mounts
+	mountMutex.Lock()
+	defer mountMutex.Unlock()
 
-	mountLines, err := util.FileGetStrings(procMounts)
+	var args []string
+	out, _, err := util.ExecCommandOutput(mountCommand, args)
 	if err != nil {
 		return "", err
 	}
+
+	mountLines := strings.Split(out, "\n")
 	log.Tracef("number of mounts retrieved %d", len(mountLines))
 
 	var searchIndex, returnIndex int
 	if dev {
-		returnIndex = 1
+		returnIndex = 2
 	} else {
-		searchIndex = 1
+		searchIndex = 2
 	}
 
 	for _, line := range mountLines {
 		entry := strings.Fields(line)
 		log.Trace("mounts entry :", entry)
-		if len(entry) > 2 {
+		if len(entry) > 3 {
 			if entry[searchIndex] == path {
 				log.Debugf("%s was found with %s", path, entry[returnIndex])
 				return entry[returnIndex], nil

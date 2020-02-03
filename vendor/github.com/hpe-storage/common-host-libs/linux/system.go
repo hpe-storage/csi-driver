@@ -18,6 +18,7 @@ const (
 	dmesgHypervisorPattern = "(Hypervisor.*)"
 	chasisPattern          = "Chassis:\\s*(?P<chassis>.*)"
 	hostnameCtl            = "hostnamectl"
+	dmiSysfsPath           = "/sys/firmware/dmi/tables/DMI"
 )
 
 func getSystemInfoByParamName(parameter string) (systemInfo string, err error) {
@@ -98,35 +99,27 @@ func GetProductName() (productName string, err error) {
 func IsVirtualMachine() (isVM bool, err error) {
 	var manufacturerName string
 	isVM = false
-	// try obtaining usign hostnamectl first if available on host
-	chassis, err := getSystemChassisInfo()
-	if err == nil {
-		if strings.EqualFold("vm", chassis) {
-			log.Trace("chassis info obtained using hostnamectl, running as a vm")
-			return true, nil
-		}
-		return false, nil
-	}
 	// fall back to get details using dmidecode
 	manufacturerName, err = GetManufacturer()
 	if err != nil {
-		// dmidecode can be missing, perform another best attempt to determine if running as vm using dmesg
-		lines, err2 := util.FileGetStringsWithPattern("/var/log/dmesg", dmesgHypervisorPattern)
+		// dmidecode can be missing, perform another best attempt to determine if running as vm using sysfs
+		lines, err2 := util.FileGetStringsWithPattern(dmiSysfsPath, hypervisorTypePattern)
 		if err2 != nil {
-			log.Error("unable to get system information using dmesg as well ", err2.Error())
+			log.Error("unable to get system information using sysfs as well ", err2.Error())
 			// return original error with dmidecode
 			return false, errors.New("cannot determine if system is of type virtual machine, " + err.Error())
 		}
 		if len(lines) > 0 {
 			isVM = true
 		}
+		log.Trace("DMI-SYSFS: System is running as a virtual machine")
 		return isVM, nil
 	}
 	// check if product name matches any of the hypervisor types(vmware, kvm or hyperV)
 	r := regexp.MustCompile(hypervisorTypePattern)
 	if r.MatchString(manufacturerName) {
 		isVM = true
-		log.Trace("System is running as a virtual machine")
+		log.Trace("DMI: System is running as a virtual machine")
 	}
 	return isVM, nil
 }
