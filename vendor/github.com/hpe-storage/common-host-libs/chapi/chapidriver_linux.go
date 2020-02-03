@@ -290,7 +290,7 @@ func (driver *LinuxDriver) BindMount(mountPoint string, newMountPoint string, rb
 // BindUnmount unmounts the given bind mount
 func (driver *LinuxDriver) BindUnmount(mountPoint string) error {
 	log.Tracef(">>>>> BindUnmount, mountPoint: %s", mountPoint)
-	defer log.Trace("<<<<< BindMount")
+	defer log.Trace("<<<<< BindUnmount")
 
 	// Unmount given bind mount
 	return linux.RetryBindUnmount(mountPoint)
