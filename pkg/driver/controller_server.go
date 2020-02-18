@@ -457,22 +457,6 @@ func (driver *Driver) createVolume(
 				return nil, status.Error(codes.Internal, "Parent volume ID is missing in the snapshot response")
 			}
 
-			// Get the parent volume from the snapshot
-			existingParentVolume, err := storageProvider.GetVolume(existingSnap.VolumeID)
-			if err != nil {
-				log.Error("err: ", err.Error())
-				return nil,
-					status.Error(codes.Internal,
-						fmt.Sprintf("Failed to check if snapshot's parent volume %s with ID %s exist, err: %s",
-							existingSnap.VolumeName, existingSnap.VolumeID, err.Error()))
-			}
-			// The requested size is must be at least equal to the snapshot's parent volume size
-			if size < existingParentVolume.Size {
-				return nil,
-					status.Error(codes.InvalidArgument,
-						fmt.Sprintf("Requested volume size %d cannot be lesser than snapshot's parent volume size %d", size, existingParentVolume.Size))
-			}
-
 			// Create a clone from another volume
 			log.Infof("About to create a new clone '%s' from snapshot %s with options %+v", name, existingSnap.ID, createOptions)
 			volume, err := storageProvider.CloneVolume(name, description, "", existingSnap.ID, size, createOptions)
@@ -506,10 +490,10 @@ func (driver *Driver) createVolume(
 			log.Tracef("Found parent volume: %+v", existingParentVolume)
 
 			// The requested size is must be at least equal to the snapshot's parent volume size
-			if size < existingParentVolume.Size {
+			if size != existingParentVolume.Size {
 				return nil,
 					status.Error(codes.InvalidArgument,
-						fmt.Sprintf("Requested volume size %d cannot be lesser than parent volume size %d", size, existingParentVolume.Size))
+						fmt.Sprintf("Requested clone size %d is not equal to the parent volume size %d", size, existingParentVolume.Size))
 			}
 
 			// Create a clone from another volume
