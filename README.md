@@ -225,7 +225,34 @@ Log files associated with the HPE CSI Driver logs data to the standard output st
 
 ### Log Level
 
-Log levels for both CSI Controller and Node driver can be controlled using `LOG_LEVEL` environment variable. Possible values are `info`, `warn`, `error`, `debug`, and `trace`. Apply the changes using `kubectl apply -f <yaml>` command after adding this to CSI controller and node container spec. For Helm charts this is controlled through `logLevel` variable in `values.yaml`.
+Log levels for both CSI Controller and Node driver can be controlled using `LOG_LEVEL` environment variable. Possible values are `info`, `warn`, `error`, `debug`, and `trace`. Apply the changes using `kubectl apply -f <yaml>` command after adding this to CSI controller and node container spec as below. For Helm charts this is controlled through `logLevel` variable in `values.yaml`.
+
+```
+        - name: hpe-csi-driver
+          image: hpestorage/csi-driver:v1.0.0
+          args :
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--node-service"
+            - "--flavor=kubernetes"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: LOG_LEVEL
+              value: trace
+```
+
+```
+        - name: hpe-csi-driver
+          image: hpestorage/csi-driver:v1.0.0
+          args :
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--flavor=kubernetes"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///var/lib/csi/sockets/pluginproxy/csi.sock
+            - name: LOG_LEVEL
+              value: trace
+```
 
 ### Container Service Provider Logs
 
