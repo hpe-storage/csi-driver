@@ -223,6 +223,10 @@ Log files associated with the HPE CSI Driver logs data to the standard output st
 
 **Note:** The logs for both Node and Controller Drivers are persisted at `/var/log/hpe-csi.log`
 
+### Log Level
+
+Log levels for both CSI Controller and Node driver can be controlled using `LOG_LEVEL` environment variable. Possible values are `info`, `warn`, `error`, `debug`, and `trace`. Apply the changes using `kubectl apply -f <yaml>` command after adding this to CSI controller and node container spec. For Helm charts this is controlled through `logLevel` variable in `values.yaml`.
+
 ### Container Service Provider Logs
 
 CSP logs can be accessed as
