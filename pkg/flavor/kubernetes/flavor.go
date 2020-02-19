@@ -134,29 +134,50 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 
 	nodeInfo, err := flavor.getNodeInfoByUUID(node.UUID)
 	if err != nil {
-		log.Errorf("Error obtaining node info by uuid - %s\n", err.Error())
+		log.Errorf("Error obtaining node info by uuid %s- %s\n", node.UUID, err.Error())
 		return "", err
 	}
 
+	if nodeInfo == nil {
+		nodeInfo, err = flavor.getNodeInfoByName(node.Name)
+		if err != nil {
+			log.Errorf("Error obtaining node info by name %s- %s\n", node.Name, err.Error())
+			return "", err
+		}
+	}
+
 	if nodeInfo != nil {
+		// update nodename for lookup during cleanup(unload)
+		flavor.nodeName = nodeInfo.ObjectMeta.Name
+
 		log.Infof("Node info %s already known to cluster\n", nodeInfo.ObjectMeta.Name)
 		// make sure the nodeInfo has updated information from the host
 		updateNodeRequired := false
+
+		// update node uuid on mismatch
+		if nodeInfo.Spec.UUID != node.UUID {
+			nodeInfo.Spec.UUID = node.UUID
+			updateNodeRequired = true
+		}
+		// update node initiator IQNs on mismatch
 		iqnsFromNode := getIqnsFromNode(node)
 		if !reflect.DeepEqual(nodeInfo.Spec.IQNs, iqnsFromNode) {
 			nodeInfo.Spec.IQNs = iqnsFromNode
 			updateNodeRequired = true
 		}
+		// update node network information on mismatch
 		networksFromNode := getNetworksFromNode(node)
 		if !reflect.DeepEqual(nodeInfo.Spec.Networks, networksFromNode) {
 			nodeInfo.Spec.Networks = networksFromNode
 			updateNodeRequired = true
 		}
+		// update node FC port WWPNs on mismatch
 		wwpnsFromNode := getWwpnsFromNode(node)
 		if !reflect.DeepEqual(nodeInfo.Spec.WWPNs, wwpnsFromNode) {
 			nodeInfo.Spec.WWPNs = wwpnsFromNode
 			updateNodeRequired = true
 		}
+
 		if !updateNodeRequired {
 			// no update needed to existing CRD
 			return node.UUID, nil
@@ -169,19 +190,6 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			return "", err
 		}
 	} else {
-		// lookup the HPENodeInfo by name. In case of hard reset, CRDs still exist and we have new nodeID
-		nodeInfo, err := flavor.getNodeInfoByName(node.Name)
-		if nodeInfo != nil {
-			// patch the existing HpeNodeInfo with updated nodeID
-			log.Infof("updating Node %s from old UUID %s to new %s", nodeInfo.Name, nodeInfo.Spec.UUID, node.UUID)
-			nodeInfo.Spec.UUID = node.UUID
-			updatedNodeInfo, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
-			if err != nil {
-				log.Errorf("Error updating the node %s - %s\n", nodeInfo.Name, err.Error())
-				return "", err
-			}
-			return updatedNodeInfo.Spec.UUID, nil
-		}
 		// if we didn't find HPENodeInfo yet, create one.
 		newNodeInfo := &crd_v1.HPENodeInfo{
 			ObjectMeta: meta_v1.ObjectMeta{
@@ -204,8 +212,9 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			return "", nil
 		}
 
-		log.Infof("Successfully added node info for node %v", nodeInfo)
+		// update nodename for lookup during cleanup(unload)
 		flavor.nodeName = nodeInfo.ObjectMeta.Name
+		log.Infof("Successfully added node info for node %v", nodeInfo)
 	}
 
 	return node.UUID, nil
