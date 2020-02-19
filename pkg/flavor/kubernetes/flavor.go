@@ -171,7 +171,7 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			nodeInfo.Spec.Networks = networksFromNode
 			updateNodeRequired = true
 		}
-		// update node FC port WWPN's on mismatch
+		// update node FC port WWPNs on mismatch
 		wwpnsFromNode := getWwpnsFromNode(node)
 		if !reflect.DeepEqual(nodeInfo.Spec.WWPNs, wwpnsFromNode) {
 			nodeInfo.Spec.WWPNs = wwpnsFromNode
