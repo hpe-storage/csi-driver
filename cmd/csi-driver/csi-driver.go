@@ -148,7 +148,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 		syscall.SIGTERM)
 
 	s := <-stop
-	log.Fatalf("Exiting due to signal [%v] notification for pid [%d]", s.String(), pid)
+	log.Infof("Exiting due to signal [%v] notification for pid [%d]", s.String(), pid)
 	d.Stop(nodeService)
 	log.Infof("Stopped [%d]", pid)
 	return nil
