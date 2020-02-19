@@ -1,4 +1,7 @@
-FROM registry.access.redhat.com/ubi7/ubi-init:7.7-18.1575996389
+FROM registry.access.redhat.com/ubi7/ubi-minimal:7.7-238
+
+RUN microdnf update -y && rm -rf /var/cache/yum
+RUN microdnf install -y systemd
 
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \
