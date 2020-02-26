@@ -590,3 +590,20 @@ func (flavor *Flavor) GetCredentialsFromPodSpec(volumeHandle string, podName str
 	}
 	return nil, fmt.Errorf("Pod %s/%s does not contain the volume %s", namespace, podName, volumeHandle)
 }
+
+// GetFsTypeOfPvName retrieves volume filesystem for a given CSI volname
+func (flavor *Flavor) GetFsTypeOfPvName(name string) (string, error) {
+	log.Infof(">>>>> getFsTypeOfPvName, pv name: %s", name)
+	defer log.Infof("<<<<< getFsTypeOfPvName")
+
+	pv, err := flavor.kubeClient.CoreV1().PersistentVolumes().Get(name, meta_v1.GetOptions{})
+	if err != nil {
+		log.Errorf("Error retrieving the pv %s, err: %v", name, err.Error())
+		return "", err
+	}
+	volAttr := pv.Spec.CSI.VolumeAttributes
+	if fsType, found := volAttr["fsType"]; found {
+		return fsType, nil
+	}
+	return "", fmt.Errorf("unable to retrieve pv %s : not found", name)
+}

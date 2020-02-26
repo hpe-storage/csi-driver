@@ -68,3 +68,6 @@ func (flavor *Flavor) HandleNFSNodePublish(request *csi.NodePublishVolumeRequest
 func (flavor *Flavor) IsNFSVolume(volumeID string) bool {
 	return false
 }
+func (flavor *Flavor) GetFsTypeOfPvName(name string) (string, error) {
+	return "", nil
+}
