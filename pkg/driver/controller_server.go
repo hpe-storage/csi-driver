@@ -471,7 +471,7 @@ func (driver *Driver) createVolume(
 				log.Error("err: ", err.Error())
 				return nil,
 					status.Error(codes.Internal,
-						fmt.Sprintf("Failed to check if filesystme exists on the %s parent volume, err: %s",
+						fmt.Sprintf("Failed to check if filesystem exists on the %s parent volume, err: %s",
 							existingSnap.VolumeName, err.Error()))
 			}
 
