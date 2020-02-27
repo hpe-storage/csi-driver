@@ -465,7 +465,7 @@ func (driver *Driver) createVolume(
 							existingSnap.VolumeName, existingSnap.VolumeID, err.Error()))
 			}
 
-			// Get existing volume device info
+			// Get existing parent volume fsType attribute
 			parentVolFsType, err := driver.flavor.GetVolumePropertyOfPV("fsType", existingParentVolume.Name)
 			if err != nil {
 				log.Error("err: ", err.Error())

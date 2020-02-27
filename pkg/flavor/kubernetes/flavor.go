@@ -606,5 +606,5 @@ func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) 
 	if propertyVal, found := volAttr[propertyName]; found {
 		return propertyVal, nil
 	}
-	return "", fmt.Errorf("unable to retrieve attribute %s of the pv %s : not found", propertyName, pvName)
+	return "", nil
 }
