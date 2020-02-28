@@ -465,6 +465,13 @@ func (driver *Driver) createVolume(
 							existingSnap.VolumeName, existingSnap.VolumeID, err.Error()))
 			}
 
+			if existingParentVolume == nil {
+				return nil,
+					status.Error(codes.NotFound,
+						fmt.Sprintf("Could not find Snapshot's parent volume %s with ID %s",
+							existingSnap.VolumeName, existingSnap.VolumeID))
+
+			}
 			// Get existing parent volume fsType attribute
 			parentVolFsType, err := driver.flavor.GetVolumePropertyOfPV("fsType", existingParentVolume.Name)
 			if err != nil {
