@@ -430,9 +430,7 @@ func (driver *Driver) createVolume(
 
 	// Create volume using pre-populated content if requested
 	if volumeContentSource != nil {
-		log.Tracef("Request with volumeContentSource: %+v", volumeContentSource)
-
-		// Verify source snap if specified
+		log.Tracef("Request with volumeContentSource: %+v", volumeContentSource) // Verify source snap if specified
 		if volumeContentSource.GetSnapshot() != nil {
 			// Check if the driver supports SNAPSHOT service
 			if !driver.IsSupportedControllerCapability(csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT) {
@@ -457,6 +455,39 @@ func (driver *Driver) createVolume(
 				return nil, status.Error(codes.Internal, "Parent volume ID is missing in the snapshot response")
 			}
 
+			// Get the parent volume from the snapshot
+			existingParentVolume, err := storageProvider.GetVolume(existingSnap.VolumeID)
+			if err != nil {
+				log.Error("err: ", err.Error())
+				return nil,
+					status.Error(codes.Internal,
+						fmt.Sprintf("Failed to check if snapshot's parent volume %s with ID %s exist, err: %s",
+							existingSnap.VolumeName, existingSnap.VolumeID, err.Error()))
+			}
+
+			if existingParentVolume == nil {
+				return nil,
+					status.Error(codes.NotFound,
+						fmt.Sprintf("Could not find Snapshot's parent volume %s with ID %s",
+							existingSnap.VolumeName, existingSnap.VolumeID))
+
+			}
+			// Get existing parent volume fsType attribute
+			parentVolFsType, err := driver.flavor.GetVolumePropertyOfPV("fsType", existingParentVolume.Name)
+			if err != nil {
+				log.Error("err: ", err.Error())
+				return nil,
+					status.Error(codes.Internal,
+						fmt.Sprintf("Failed to check if filesystem exists on the %s parent volume, err: %s",
+							existingSnap.VolumeName, err.Error()))
+			}
+
+			// Check if requested filesystem for a clone volume is same as existing snapshot
+			if filesystem != parentVolFsType {
+				return nil,
+					status.Error(codes.InvalidArgument,
+						fmt.Sprintf("Requested volume filesystem %s cannot be different than snapshot's parent volume filesystem %s", filesystem, parentVolFsType))
+			}
 			// Create a clone from another volume
 			log.Infof("About to create a new clone '%s' from snapshot %s with options %+v", name, existingSnap.ID, createOptions)
 			volume, err := storageProvider.CloneVolume(name, description, "", existingSnap.ID, size, createOptions)
