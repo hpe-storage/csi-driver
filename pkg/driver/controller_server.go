@@ -478,12 +478,12 @@ func (driver *Driver) createVolume(
 				log.Error("err: ", err.Error())
 				return nil,
 					status.Error(codes.Internal,
-						fmt.Sprintf("Failed to check if filesystem exists on the %s parent volume, err: %s",
-							existingSnap.VolumeName, err.Error()))
+						fmt.Sprintf("Failed to check if snapshot's parent volume %s with ID %s filesystem exist, err: %s",
+							existingSnap.VolumeName, existingSnap.VolumeID, err.Error()))
 			}
 
 			// Check if requested filesystem for a clone volume is same as existing snapshot
-			if filesystem != parentVolFsType {
+			if parentVolFsType != "" && filesystem != parentVolFsType {
 				return nil,
 					status.Error(codes.InvalidArgument,
 						fmt.Sprintf("Requested volume filesystem %s cannot be different than snapshot's parent volume filesystem %s", filesystem, parentVolFsType))
