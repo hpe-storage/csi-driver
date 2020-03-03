@@ -1502,23 +1502,39 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 	}
 	defer driver.ClearRequest(key)
 
-	// figure out if volumePath is actually a staging path
-	stagedDevice, err := readStagedDeviceInfo(request.GetVolumePath())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Cannot get staging device info from volume path. %s", err.Error()))
-	}
-	if stagedDevice == nil || stagedDevice.Device == nil {
-		return nil, status.Error(codes.Internal,
-			fmt.Sprintf("Invalid staging device info found in the path %s. Staging device cannot be nil",
-				request.GetVolumePath()))
+	accessType := model.MountType
+
+	// VolumeCapability is only available from CSI spec v1.2
+	if request.GetVolumeCapability() != nil {
+		switch request.GetVolumeCapability().GetAccessType().(type) {
+		case *csi.VolumeCapability_Block:
+			accessType = model.BlockType
+		}
+	} else if strings.HasPrefix(request.GetVolumePath(), "/dev/") {
+		// for raw block device volume-path is device path: i.e /dev/dm-1
+		accessType = model.BlockType
 	}
 
-	// Get the device target path
+	var err error
 	targetPath := ""
-	if stagedDevice.VolumeAccessMode == model.BlockType {
-		// Device path
-		targetPath = stagedDevice.Device.AltFullPathName
-	} else { // Mount
+	if accessType == model.BlockType {
+		// for raw block device volume-path is device path: i.e /dev/dm-1
+		targetPath = request.GetVolumePath()
+		// Expand device to underlying volume size
+		log.Infof("About to expand device %s with access type block to underlying volume size",
+			request.VolumePath)
+		err = driver.chapiDriver.ExpandDevice(targetPath, model.BlockType)
+	} else {
+		// figure out if volumePath is actually a staging path
+		stagedDevice, err := readStagedDeviceInfo(request.GetVolumePath())
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Cannot get staging device info from volume path %s", err.Error()))
+		}
+		if stagedDevice == nil || stagedDevice.Device == nil {
+			return nil, status.Error(codes.Internal,
+				fmt.Sprintf("Invalid staging device info found in the path %s. Staging device cannot be nil",
+					request.GetVolumePath()))
+		}
 		if stagedDevice.MountInfo == nil {
 			return nil, status.Error(codes.Internal,
 				fmt.Sprintf("Missing mount info in the staging device %v. Mount info cannot be nil",
@@ -1526,12 +1542,12 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		}
 		// Mount point
 		targetPath = stagedDevice.MountInfo.MountPoint
+		// Expand device to underlying volume size
+		log.Infof("About to expand device %s with access type mount to underlying volume size",
+			request.VolumePath)
+		err = driver.chapiDriver.ExpandDevice(targetPath, model.MountType)
 	}
 
-	// Expand device to underlying volume size
-	log.Infof("About to expand device %s with access type %s to underlying volume size",
-		request.VolumePath, stagedDevice.VolumeAccessMode.String())
-	err = driver.chapiDriver.ExpandDevice(targetPath, stagedDevice.VolumeAccessMode)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Unable to expand device, %s", err.Error()))
