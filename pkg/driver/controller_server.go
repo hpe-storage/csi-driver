@@ -1464,12 +1464,14 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to expand volume to requested size, %s", err.Error()))
 	}
 
-	// Set node expansion required to 'true' if EXPAND_VOLUME node capability is supported by the driver.
-	nodeExpansionRequired := false
-	if driver.IsSupportedNodeCapability(csi.NodeServiceCapability_RPC_EXPAND_VOLUME) {
-		log.Tracef("Node expansion required for the volume %s", request.VolumeId)
-		nodeExpansionRequired = true
-		// CO calls NodeExpandVolume() whenever the volume is published on a node.
+	// Set node expansion required to 'true' for mount type as fs resize is always required in that case
+	nodeExpansionRequired := true
+	if request.GetVolumeCapability() != nil {
+		switch request.GetVolumeCapability().GetAccessType().(type) {
+		case *csi.VolumeCapability_Block:
+			log.Info("node expansion is not required for raw block volumes")
+			nodeExpansionRequired = false
+		}
 	}
 
 	return &csi.ControllerExpandVolumeResponse{

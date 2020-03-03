@@ -1502,9 +1502,22 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 	}
 	defer driver.ClearRequest(key)
 
+	accessType := model.MountType
+
+	// VolumeCapability is only available from CSI spec v1.2
+	if request.GetVolumeCapability() != nil {
+		switch request.GetVolumeCapability().GetAccessType().(type) {
+		case *csi.VolumeCapability_Block:
+			accessType = model.BlockType
+		}
+	} else if strings.HasPrefix(request.GetVolumePath(), "/dev/") {
+		// for raw block device volume-path is device path: i.e /dev/dm-1
+		accessType = model.BlockType
+	}
+
 	var err error
 	targetPath := ""
-	if strings.Contains(request.GetVolumePath(), "/dev/dm") {
+	if accessType == model.BlockType {
 		// for raw block device volume-path is device path: i.e /dev/dm-1
 		targetPath = request.GetVolumePath()
 		// Expand device to underlying volume size
