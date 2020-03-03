@@ -1469,8 +1469,10 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 	if request.GetVolumeCapability() != nil {
 		switch request.GetVolumeCapability().GetAccessType().(type) {
 		case *csi.VolumeCapability_Block:
-			log.Info("node expansion is not required for raw block volumes")
-			nodeExpansionRequired = false
+			if !existingVolume.Published {
+				log.Info("node expansion is not required for raw block volumes when not published")
+				nodeExpansionRequired = false
+			}
 		}
 	}
 
