@@ -4,6 +4,7 @@
 package driver
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -251,14 +252,15 @@ func (driver *Driver) AddStorageProvider(credentials *storageprovider.Credential
 		return err
 	}
 
-	driver.storageProviders[credentials.Backend] = csp
+	driver.storageProviders[driver.GenerateStorageProviderCacheKey(credentials)] = csp
 	return nil
 }
 
 // RemoveStorageProvider removes a storage provider from the driver
-func (driver *Driver) RemoveStorageProvider(ipAddress string) {
-	if _, ok := driver.storageProviders[ipAddress]; ok {
-		delete(driver.storageProviders, ipAddress)
+func (driver *Driver) RemoveStorageProvider(credentials *storageprovider.Credentials) {
+	cacheKey := driver.GenerateStorageProviderCacheKey(credentials)
+	if _, ok := driver.storageProviders[cacheKey]; ok {
+		delete(driver.storageProviders, cacheKey)
 	}
 }
 
@@ -275,7 +277,8 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 		return nil, err
 	}
 
-	if csp, ok := driver.storageProviders[credentials.Backend]; ok {
+	cacheKey := driver.GenerateStorageProviderCacheKey(credentials)
+	if csp, ok := driver.storageProviders[cacheKey]; ok {
 		// TODO: verify other properties (username, password) of the CSP have not changed that would result in an update
 		log.Tracef("Storage provider already exists. Returning it.")
 		return csp, nil
@@ -286,7 +289,13 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 		return nil, err
 	}
 
-	return driver.storageProviders[credentials.Backend], nil
+	return driver.storageProviders[cacheKey], nil
+}
+
+// GenerateStorageProviderCacheKey generates unique hash for the credential pair {Backend, Username}
+func (driver *Driver) GenerateStorageProviderCacheKey(credentials *storageprovider.Credentials) string {
+	result := sha256.Sum256([]byte(fmt.Sprintf("%s%s", credentials.Backend, credentials.Username)))
+	return fmt.Sprintf("%x", result)
 }
 
 // IsSupportedPluginVolumeExpansionCapability returns true if the given volume expansion capability is supported else returns false
