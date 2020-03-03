@@ -936,12 +936,6 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 		return nil
 	}
 
-	// Decode and get node details
-	node, err := driver.flavor.GetNodeInfo(nodeID)
-	if err != nil {
-		return status.Error(codes.Aborted, err.Error())
-	}
-
 	// Get Storage Provider
 	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
@@ -960,13 +954,15 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 		return err
 	}
 
+	// pass the nodeID to the container storage provider and do not do a look up of the node object as
+	// node object may have been deleted as part of UnloadNodeInfo when the node went down
 	if !existingVolume.Published {
-		log.Infof("Volume %s is already unpublished from node %s", existingVolume.Name, node.Name)
+		log.Infof("Volume %s is already unpublished from node with ID %s", existingVolume.Name, nodeID)
 		return nil
 	}
 
 	// Remove ACL from the volume based on the requested Node ID
-	err = storageProvider.UnpublishVolume(existingVolume.ID, node.UUID)
+	err = storageProvider.UnpublishVolume(existingVolume.ID, nodeID)
 	if err != nil {
 		log.Trace("err: ", err.Error())
 		return status.Error(codes.Aborted,
