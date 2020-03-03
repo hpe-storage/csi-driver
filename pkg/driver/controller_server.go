@@ -483,7 +483,7 @@ func (driver *Driver) createVolume(
 			}
 
 			// Check if requested filesystem for a clone volume is same as existing snapshot
-			if filesystem != parentVolFsType {
+			if parentVolFsType != "" && filesystem != parentVolFsType {
 				return nil,
 					status.Error(codes.InvalidArgument,
 						fmt.Sprintf("Requested volume filesystem %s cannot be different than snapshot's parent volume filesystem %s", filesystem, parentVolFsType))
