@@ -253,6 +253,7 @@ func (driver *Driver) AddStorageProvider(credentials *storageprovider.Credential
 	}
 
 	driver.storageProviders[driver.GenerateStorageProviderCacheKey(credentials)] = csp
+	log.Tracef("Number of cached/known storage providers: %d", len(driver.storageProviders))
 	return nil
 }
 
