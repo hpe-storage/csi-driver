@@ -6,8 +6,6 @@ import (
 	"testing"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/kubernetes-csi/csi-test/pkg/sanity"
-
 	"github.com/hpe-storage/common-host-libs/chapi"
 	"github.com/hpe-storage/common-host-libs/concurrent"
 	log "github.com/hpe-storage/common-host-libs/logger"
@@ -15,6 +13,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/storageprovider/fake"
 	"github.com/hpe-storage/csi-driver/pkg/flavor"
 	"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
+	"github.com/kubernetes-csi/csi-test/pkg/sanity"
 )
 
 func TestPluginSuite(t *testing.T) {
@@ -103,4 +102,65 @@ func fakeDriver(endpoint string) *Driver {
 	})
 
 	return driver
+}
+
+func TestGenerateStorageProviderCacheKey(t *testing.T) {
+	driver := &Driver{
+		name:    "fake-test-driver",
+		version: "0.1",
+	}
+
+	cred1 := &storageprovider.Credentials{
+		Username: "admin",
+		Password: "password",
+		Backend:  "1.1.1.1",
+	}
+	cred2 := &storageprovider.Credentials{
+		Username: "user",
+		Password: "password",
+		Backend:  "1.1.1.1",
+	}
+	cred3 := &storageprovider.Credentials{
+		Username: "test",
+		Password: "password",
+		Backend:  "1.1.1.1",
+	}
+	cred4 := &storageprovider.Credentials{
+		Username: "test",
+		Password: "password",
+		Backend:  "2.2.2.2",
+	}
+	cred5 := &storageprovider.Credentials{
+		Username: "user",
+		Password: "password",
+		Backend:  "2.2.2.2",
+	}
+
+	type args struct {
+		credential *storageprovider.Credentials
+	}
+
+	tests := []struct {
+		name     string
+		args     args
+		expected string
+		fails    bool
+	}{
+		{"Test for user1", args{cred1}, "6903fab9e2797c294e1c4a0b87a5f296acb887f946d471ee90d0f6caeecd42ea", false},
+		{"Test for user1", args{cred1}, "6903fab9e2797c294e1c4a0b87a5f296acb887f946d471ee90d0f6caeecd42", true},
+		{"Test for user2", args{cred2}, "7768c1adea41b7cacff35a4648d98a47372c1b14c7843712b5414092290dd26b", false},
+		{"Test for user3", args{cred3}, "eebff4d52bb48b871bf5b63b15d3deee6efb9997a067a4aac39ff0601cb41c39", false},
+		{"Test for user4", args{cred4}, "cc3302d1062f0561eddba8f91606dab0688ac676ffc8fefcc0c827b206803b81", false},
+		{"Test for user5", args{cred5}, "03fa2eb6d209f927fa680ec64275a8242c74a82d3d44aea7610fc5358732b6b5", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := driver.GenerateStorageProviderCacheKey(tt.args.credential); got != tt.expected {
+				if tt.fails == false {
+					t.Errorf("GenerateStorageProviderCacheKey() = %v, want %v", got, tt.expected)
+				}
+			}
+		})
+	}
 }
