@@ -35,6 +35,7 @@ parameters:
   dedupeEnabled: "false"
   performancePolicy: "SQL Server"
   limitIops: "76800"
+  accessProtocol: "iscsi"
 ```
 
 Create a `PersistentVolumeClaim`. This makes sure a volume is created and provisioned on your behalf, make sure to reference the correct `.spec.storageClassName`:
@@ -207,6 +208,7 @@ parameters:
   performancePolicy: "SQL Server"
   limitIops: "76800"
   allowVolumeExpansion: true
+  accessProtocol: "iscsi"
 ```
 
 A volume provisioned by the above `StorageClass` may now be resized by editing the `.spec.resources.requests.storage` attribute of the `PersistentVolumeClaim`.
@@ -234,6 +236,7 @@ parameters:
   dedupeEnabled: "false"
   performancePolicy: "SQL Server"
   limitIops: "76800"
+  accessProtocol: "iscsi"
   allowOverrides: description,limitIops,performancePolicy
 ```
 
