@@ -411,14 +411,6 @@ func (driver *Driver) createVolume(
 					name, existingVolume.Size, size))
 		}
 
-		// Check if the source content is being requested.
-		if volumeContentSource != nil {
-			log.Tracef("Requested volumeContentSource, %+v", volumeContentSource)
-			return nil, status.Error(
-				codes.AlreadyExists,
-				fmt.Sprintf("Volume %s already exists, but the source content is being requested", name))
-		}
-
 		// Return existing volume with volume context info
 		log.Tracef("Returning the existing volume '%s' with size %d", existingVolume.Name, existingVolume.Size)
 		return &csi.Volume{
