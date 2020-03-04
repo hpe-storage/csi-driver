@@ -71,7 +71,12 @@ func fakeDriver(endpoint string) *Driver {
 		requestCacheMutex: concurrent.NewMapMutex(),
 	}
 
-	driver.storageProviders["fake"] = fake.NewFakeStorageProvider()
+	credential := &storageprovider.Credentials{
+		Username: "fake",
+		Backend:  "fake",
+	}
+	cacheKey := driver.GenerateStorageProviderCacheKey(credential)
+	driver.storageProviders[cacheKey] = fake.NewFakeStorageProvider()
 
 	driver.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
