@@ -22,7 +22,7 @@
 log_collection() {
 # Initializing the file and directory
 timestamp=`date '+%Y%m%d_%H%M%S'`
-hostname=`hostname -s`
+hostname=$(cat /etc/hostname)
 filename="hpe-storage-logs-$hostname-$timestamp.tar.gz"
 
 destinationDir="/var/log/tmp"
