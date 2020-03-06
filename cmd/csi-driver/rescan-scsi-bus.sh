@@ -2,9 +2,10 @@
 # Skript to rescan SCSI bus, using the
 # scsi add-single-device mechanism
 # (c) 1998--2010 Kurt Garloff <kurt@garloff.de>, GNU GPL v2 or v3
-# (c) 2006--2013 Hannes Reinecke, GNU GPL v2 or later
+# (c) 2006--2015 Hannes Reinecke, GNU GPL v2 or later
 # $Id: rescan-scsi-bus.sh,v 1.57 2012/03/31 14:08:48 garloff Exp $
 
+VERSION="20160201"
 SCAN_WILD_CARD=4294967295
 
 setcolor ()
@@ -56,7 +57,7 @@ white_out ()
 # Return hosts. sysfs must be mounted
 findhosts_26 ()
 {
-  hosts=`find /sys/class/scsi_host/host* -maxdepth 4 -type d -o -type l 2> /dev/null | gawk -F'/' '{print $5}' | sed -e 's~host~~' | sort -nu`
+  hosts=`find /sys/class/scsi_host/host* -maxdepth 4 -type d -o -type l 2> /dev/null | awk -F'/' '{print $5}' | sed -e 's~host~~' | sort -nu`
   scsi_host_data=`echo "$hosts" | sed -e 's~^~/sys/class/scsi_host/host~'`
   for hostdir in $scsi_host_data; do
     hostno=${hostdir#/sys/class/scsi_host/host}
@@ -91,8 +92,8 @@ findhosts ()
       num=$name
       driverinfo=$driver
       if test -r $hostdir/status; then
-	num=$(printf '%d\n' `sed -n 's/SCSI host number://p' $hostdir/status`)
-	driverinfo="$driver:$name"
+        num=$(printf '%d\n' `sed -n 's/SCSI host number://p' $hostdir/status`)
+        driverinfo="$driver:$name"
       fi
       hosts="$hosts $num"
       echo "Host adapter $num ($driverinfo) found."
@@ -105,22 +106,22 @@ printtype ()
   local type=$1
 
   case "$type" in
-    0) echo "Direct-Access    " ;;
+    0) echo "Direct-Access" ;;
     1) echo "Sequential-Access" ;;
-    2) echo "Printer          " ;;
-    3) echo "Processor        " ;;
-    4) echo "WORM             " ;;
-    5) echo "CD-ROM           " ;;
-    6) echo "Scanner          " ;;
-    7) echo "Optical Device   " ;;
-    8) echo "Medium Changer   " ;;
-    9) echo "Communications   " ;;
-    10) echo "Unknown          " ;;
-    11) echo "Unknown          " ;;
-    12) echo "RAID             " ;;
-    13) echo "Enclosure        " ;;
+    2) echo "Printer" ;;
+    3) echo "Processor" ;;
+    4) echo "WORM" ;;
+    5) echo "CD-ROM" ;;
+    6) echo "Scanner" ;;
+    7) echo "Optical-Device" ;;
+    8) echo "Medium-Changer" ;;
+    9) echo "Communications" ;;
+    10) echo "Unknown" ;;
+    11) echo "Unknown" ;;
+    12) echo "RAID" ;;
+    13) echo "Enclosure" ;;
     14) echo "Direct-Access-RBC" ;;
-    *) echo "Unknown          " ;;
+    *) echo "Unknown" ;;
   esac
 }
 
@@ -147,19 +148,19 @@ procscsiscsi ()
     if [ -d  "$SCSIPATH" ] ; then
       SCSISTR="Host: scsi${host} Channel: $CHANNEL Id: $ID Lun: $LUN"
       if [ "$LN" -gt 0 ] ; then
-	IVEND=$(cat ${SCSIPATH}/device/vendor)
-	IPROD=$(cat ${SCSIPATH}/device/model)
-	IPREV=$(cat ${SCSIPATH}/device/rev)
-	SCSIDEV=$(printf '  Vendor: %-08s Model: %-16s Rev: %-4s' "$IVEND" "$IPROD" "$IPREV")
-	SCSISTR="$SCSISTR
+        IVEND=$(cat ${SCSIPATH}/device/vendor)
+        IPROD=$(cat ${SCSIPATH}/device/model)
+        IPREV=$(cat ${SCSIPATH}/device/rev)
+        SCSIDEV=$(printf '  Vendor: %-08s Model: %-16s Rev: %-4s' "$IVEND" "$IPROD" "$IPREV")
+        SCSISTR="$SCSISTR
 $SCSIDEV"
       fi
       if [ "$LN" -gt 1 ] ; then
-	ILVL=$(cat ${SCSIPATH}/device/scsi_level)
-	type=$(cat ${SCSIPATH}/device/type)
-	ITYPE=$(printtype $type)
-	SCSITMP=$(printf '  Type:   %-16s                ANSI SCSI revision: %02d' "$ITYPE" "$((ILVL - 1))")
-	SCSISTR="$SCSISTR
+        ILVL=$(cat ${SCSIPATH}/device/scsi_level)
+        type=$(cat ${SCSIPATH}/device/type)
+        ITYPE=$(printtype $type)
+        SCSITMP=$(printf '  Type:   %-17s                ANSI SCSI revision: %02d' "$ITYPE" "$((ILVL - 1))")
+        SCSISTR="$SCSISTR
 $SCSITMP"
       fi
     else
@@ -182,7 +183,7 @@ sgdevice26 ()
     for SGDEV in /sys/class/scsi_generic/sg*; do
       DEV=`readlink $SGDEV/device`
       if test "${DEV##*/}" = "$host:$channel:$id:$lun"; then
-	SGDEV=`basename $SGDEV`; return
+        SGDEV=`basename $SGDEV`; return
       fi
     done
     SGDEV=""
@@ -231,23 +232,27 @@ testonline ()
 {
   : testonline
   RC=0
+  # Set default values
+  IPTYPE=31
+  IPQUAL=3
   if test ! -x /usr/bin/sg_turs; then return 0; fi
   sgdevice
   if test -z "$SGDEV"; then return 0; fi
-  sg_turs /dev/$SGDEV &>/dev/null
+  sg_turs /dev/$SGDEV >/dev/null 2>&1
   RC=$?
-  # Handle in progress of becoming ready and unit attention -- wait at max 11s
-  declare -i ctr=0
-  if test $RC = 2 -o $RC = 6; then
-    RMB=`sg_inq /dev/$SGDEV | grep 'RMB=' | sed 's/^.*RMB=\(.\).*$/\1/'`
-    print_and_scroll_back "$host:$channel:$id:$lun $SGDEV ($RMB) "
-  fi
-  while test $RC = 2 -o $RC = 6 && test $ctr -le 8; do
+
+  # Handle in progress of becoming ready and unit attention
+  while test $RC = 2 -o $RC = 6 && test $ctr -le 30; do
     if test $RC = 2 -a "$RMB" != "1"; then echo -n "."; let LN+=1; sleep 1
-    else usleep 20000; fi
+    else sleep 0.02; fi
     let ctr+=1
-    sg_turs /dev/$SGDEV &>/dev/null
+    sg_turs /dev/$SGDEV >/dev/null 2>&1
     RC=$?
+    # Check for removable device; TEST UNIT READY obviously will
+    # fail for a removable device with no medium
+    RMB=`sg_inq /dev/$SGDEV 2>/dev/null | grep 'RMB=' | sed 's/^.*RMB=\(.\).*$/\1/'`
+    print_and_scroll_back "$host:$channel:$id:$lun $SGDEV ($RMB) "
+    test $RC = 2 -a "$RMB" = "1" && break
   done
   if test $ctr != 0; then white_out; fi
   # echo -e "\e[A\e[A\e[A${yellow}Test existence of $SGDEV = $RC ${norm} \n\n\n"
@@ -256,6 +261,10 @@ testonline ()
   RC=0
   # OK, device online, compare INQUIRY string
   INQ=`sg_inq $sg_len_arg /dev/$SGDEV 2>/dev/null`
+  if [ -z "$INQ" ] ; then
+    echo -e "\e[A\e[A\e[A\e[A${red}$SGDEV changed: ${bold}INQUIRY failed${norm}    \n\n\n"
+    return 2
+  fi
   IVEND=`echo "$INQ" | grep 'Vendor identification:' | sed 's/^[^:]*: \(.*\)$/\1/'`
   IPROD=`echo "$INQ" | grep 'Product identification:' | sed 's/^[^:]*: \(.*\)$/\1/'`
   IPREV=`echo "$INQ" | grep 'Product revision level:' | sed 's/^[^:]*: \(.*\)$/\1/'`
@@ -263,6 +272,8 @@ testonline ()
   IPTYPE=`echo "$INQ" | sed -n 's/.* Device_type=\([0-9]*\) .*/\1/p'`
   IPQUAL=`echo "$INQ" | sed -n 's/ *PQual=\([0-9]*\)  Device.*/\1/p'`
   if [ "$IPQUAL" != 0 ] ; then
+    [ -z "$IPQUAL" ] && IPQUAL=3
+    [ -z "$IPTYPE" ] && IPTYPE=31
     echo -e "\e[A\e[A\e[A\e[A${red}$SGDEV changed: ${bold}LU not available (PQual $IPQUAL)${norm}    \n\n\n"
     return 2
   fi
@@ -277,10 +288,8 @@ testonline ()
     echo -e "\e[A\e[A\e[A\e[A${red}$SGDEV changed: ${bold}\nfrom:${SCSISTR#* } \nto: $STR ${norm} \n\n\n"
     return 1
   fi
-  TMPSTR=`echo "$SCSISTR" | sed -n 's/.*Type: *\(.*\) *ANSI.*/\1/p'`
-  NTMPSTR="$(sed -e 's/[[:space:]]*$//' -e 's/^[[:space:]]*//' <<<${TMPSTR})"
-  NTYPE="$(sed -e 's/[[:space:]]*$//' -e 's/^[[:space:]]*//' <<<${TYPE})"
-  if [ "$NTMPSTR" != "$NTYPE" ] ; then
+  TMPSTR=`echo "$SCSISTR" | sed -n 's/.*Type: *\(.*\) *ANSI.*/\1/p' | sed 's/ *$//g'`
+  if [ "$TMPSTR" != "$TYPE" ] ; then
     echo -e "\e[A\e[A\e[A\e[A${red}$SGDEV changed: ${bold}\nfrom:${TMPSTR} \nto: $TYPE ${norm} \n\n\n"
     return 1
   fi
@@ -315,7 +324,7 @@ chanlist ()
     chan=${cil%%:*}
     for tmpchan in $channelsearch ; do
       if test "$chan" -eq $tmpchan ; then
-	chan=
+        chan=
       fi
     done
     if test -n "$chan" ; then
@@ -341,8 +350,8 @@ idlist ()
     newid=$id
     for tmpid in $idsearch ; do
       if test $id -eq $tmpid ; then
-	newid=
-	break
+        newid=
+        break
       fi
     done
     if test -n "$newid" ; then
@@ -387,16 +396,24 @@ getluns()
 # Wait for udev to settle (create device nodes etc.)
 udevadm_settle()
 {
+  local tmo=60
   if test -x /sbin/udevadm; then
     print_and_scroll_back " Calling udevadm settle (can take a while) "
-    /sbin/udevadm settle
+    # Loop for up to 60 seconds if sd devices still are settling..
+    # This allows us to continue if udev events are stuck on multipaths in recovery mode
+    while [ $tmo -gt 0 ] ; do
+      if ! /sbin/udevadm settle --timeout=1 | egrep -q sd[a-z]+ ; then
+        break;
+      fi
+      let tmo=$tmo-1
+    done
     white_out
   elif test -x /sbin/udevsettle; then
     print_and_scroll_back " Calling udevsettle (can take a while) "
     /sbin/udevsettle
     white_out
   else
-    usleep 20000
+    sleep 0.02
   fi
 }
 
@@ -458,13 +475,13 @@ dolunscan()
           incrrmvd "$host:$channel:$id:$lun"
         fi
         echo 1 > /sys/class/scsi_device/${host}:${channel}:${id}:${lun}/device/delete
-	usleep 20000
+        sleep 0.02
       else
         echo "scsi remove-single-device $devnr" > /proc/scsi/scsi
-	if test $RC -eq 1 -o $lun -eq 0 ; then
+        if test $RC -eq 1 -o $lun -eq 0 ; then
           # Try readding, should fail if device is gone
           echo "scsi add-single-device $devnr" > /proc/scsi/scsi
-	fi
+        fi
       fi
     fi
     if test $RC = 0 -o "$forcerescan" ; then
@@ -536,7 +553,7 @@ doreportlun()
       # Find alternative LUN to send getluns to
       for dev in /sys/class/scsi_device/${host}:${channel}:${id}:*; do
         [ -d "$dev" ] || continue
-	lun=${dev##*:}
+        lun=${dev##*:}
         break
       done
     fi
@@ -545,8 +562,8 @@ doreportlun()
   REPLUNSTAT=$?
   lunremove=
   #echo "getluns reports " $targetluns
-  olddev=`find /sys/class/scsi_device/ -name $host:$channel:$id:* 2>/dev/null`
-  oldluns=`echo "$olddev" | gawk -F'/' '{print $5}' | gawk -F':' '{print $4}'`
+  olddev=`find /sys/class/scsi_device/ -name $host:$channel:$id:* 2>/dev/null | sort -t: -k4 -n`
+  oldluns=`echo "$olddev" | awk -F'/' '{print $5}' | awk -F':' '{print $4}'`
   oldtargets="$targetluns"
   # OK -- if we don't have a LUN to send a REPORT_LUNS to, we could
   # fall back to wildcard scanning. Same thing if the device does not
@@ -560,7 +577,7 @@ doreportlun()
     else
       echo "scsi add-single-device $host $channel $id $SCAN_WILD_CARD" > /proc/scsi/scsi
     fi
-    targetluns=`find /sys/class/scsi_device/ -name $host:$channel:$id:* 2>/dev/null | gawk -F'/' '{print $5}' | gawk -F':' '{print $4}' | sort -n`
+    targetluns=`find /sys/class/scsi_device/ -name $host:$channel:$id:* 2>/dev/null | awk -F'/' '{print $5}' | awk -F':' '{print $4}' | sort -n`
     let found+=`echo "$targetluns" | wc -l`
     let found-=`echo "$olddev" | wc -l`
   fi
@@ -574,10 +591,10 @@ doreportlun()
     # OK, is existing $lun (still) in reported list
     for tmplun in $targetluns; do
       if test $tmplun -eq $lun ; then
-	inlist=1
-	dolunscan $lun0added
+        inlist=1
+        dolunscan $lun0added
       else
-	newsearch="$newsearch $tmplun"
+        newsearch="$newsearch $tmplun"
       fi
     done
     # OK, we have now done a lunscan on $lun and
@@ -607,9 +624,9 @@ dosearch ()
     fi
     for id in $idsearch; do
       if test -z "$lunsearch" ; then
-	doreportlun
+        doreportlun
       else
-	for lun in $lunsearch; do
+        for lun in $lunsearch; do
           dolunscan
         done
       fi
@@ -672,16 +689,7 @@ searchexisting()
     else
       match=1
     fi
-
-    test $match -eq 0 && continue
-
-    if [ -z "$lunsearch" ] ; then
-      doreportlun
-    else
-      for lun in $lunsearch ; do
-        dolunscan
-      done
-    fi
+    test $match -eq 1 && doreportlun
   done
 }
 
@@ -694,10 +702,15 @@ findremapped()
   local id_serial=
   local id_serial_old=
   local sysfs_devpath=
+  local mpath_uuid=
+  local remapped=
   mpaths=""
-  local tmpfile="/tmp/rescan-scsi-bus-`date +s`"
+  local tmpfile=$(mktemp /tmp/rescan-scsi-bus.XXXXXXXX 2> /dev/null)
 
-  test -f $tmpfile && rm $tmpfile
+  if [ -z "$tmpfile" ] ; then
+    tmpfile="/tmp/rescan-scsi-bus.$$"
+    rm -f $tmpfile
+  fi
 
   # Get all of the ID_SERIAL attributes, after finding their sd node
   for hctl in $devs ; do
@@ -712,28 +725,41 @@ findremapped()
   # Trigger udev to update the info
   echo -n "Triggering udev to update device information... "
   /sbin/udevadm trigger
-  udevadm_settle &>/dev/null
+  udevadm_settle 2>&1 /dev/null
   echo "Done"
 
   # See what changed and reload the respective multipath device if applicable
   while read hctl sddev id_serial_old ; do
+    remapped=0
     id_serial=`udevadm info -q all -n $sddev | grep "ID_SERIAL=" | cut -d"=" -f2`
     [ -z "$id_serial" ] && id_serial="none"
     if [ "$id_serial_old" != "$id_serial" ] ; then
-      if [ "$id_serial" = "1" ] ; then
-        continue # the lun was unmapped and is getting the blank scsi id (1)
-      fi
-      printf "${yellow}REMAPPED: $norm"
-      host=`echo $hctl | cut -d":" -f1`
-      channel=`echo $hctl | cut -d":" -f2`
-      id=`echo $hctl | cut -d":" -f3`
-      lun=`echo $hctl | cut -d":" -f4`
-      procscsiscsi
-      echo "$SCSISTR"
-      incrchgd "$hctl"
+      remapped=1
     fi
+    # If udev events updated the disks already, but the multipath device isn't update
+    # check for old devices to make sure we found remapped luns
+    if [ -n "$mp_enable" ] && [ $remapped -eq 0 ]; then
+      findmultipath $sddev $id_serial
+      if [ $? -eq 1 ] ; then
+        remapped=1
+      fi
+    fi
+
+    # if uuid is 1, it's unmapped, so we don't want to treat it as a remap
+    # if remapped flag is 0, just skip the rest of the logic
+    if [ "$id_serial" = "1" ] || [ $remapped -eq 0 ] ; then
+      continue
+    fi
+    printf "${yellow}REMAPPED: $norm"
+    host=`echo $hctl | cut -d":" -f1`
+    channel=`echo $hctl | cut -d":" -f2`
+    id=`echo $hctl | cut -d":" -f3`
+    lun=`echo $hctl | cut -d":" -f4`
+    procscsiscsi
+    echo "$SCSISTR"
+    incrchgd "$hctl"
   done < $tmpfile
-  rm $tmpfile &>/dev/null
+  rm -f $tmpfile
 
   if test -n "$mp_enable" -a -n "$mpaths" ; then
     echo "Updating multipath device mappings"
@@ -757,8 +783,10 @@ incrchgd()
 {
   local hctl="$1"
   if test -n "$hctl" ; then
-    let updated+=1
-    CHGDEVS="$CHGDEVS\t[$hctl]\n"
+    if ! echo $CHGDEVS | grep -q "\[$hctl\]"; then
+      let updated+=1
+      CHGDEVS="$CHGDEVS\t[$hctl]\n"
+    fi
   else
     return
   fi
@@ -804,11 +832,27 @@ findsddev()
   return 0
 }
 
+addmpathtolist()
+{
+  local mp="$1"
+  local mp2=
+
+  for mp2 in $mpaths ; do
+    # The multipath device is already in the list
+    if [ "$mp2" = "$mp" ] ; then
+      return
+    fi
+  done
+  mpaths="$mpaths $mp"
+}
+
 findmultipath()
 {
   local dev="$1"
+  local find_mismatch="$2"
   local mp=
   local mp2=
+  local found_dup=0
 
   # Need a sdev, and executable multipath and dmsetup command here
   if [ -z "$dev" ] ; then
@@ -817,68 +861,107 @@ findmultipath()
 
   local maj_min=`cat /sys/block/$dev/dev`
   for mp in $($DMSETUP ls --target=multipath | cut -f 1) ; do
+    [ "$mp" = "No" ] && break;
     if $($DMSETUP status $mp | grep -q " $maj_min ") ; then
-      for mp2 in $mpaths ; do
-        # mp device is already there, return
-        if [ "$mp2" = "$mp" ] ; then
-          return
+      # With two arguments, look up current uuid from sysfs
+      # if it doesn't match what was passed, this multipath
+      # device is not updated, so this is a remapped LUN
+      if [ -n "$find_mismatch" ] ; then
+        mp2=`$MULTIPATH -l $mp | egrep -o dm-[0-9]+`
+        mp2=`cat /sys/block/$mp2/dm/uuid | cut -f2 -d-`
+        if [ "$find_mismatch" != "$mp2" ] ; then
+          addmpathtolist $mp
+          found_dup=1
         fi
-      done
-      mpaths="$mpaths $mp"
+        continue
+      fi
+      # Normal mode: Find the first multipath with the sdev
+      # and add it to the list
+      addmpathtolist $mp
       return
     fi
   done
+
+  # Return 1 to signal that a duplicate was found to the calling function
+  if [ $found_dup -eq 1 ] ; then
+    return 1
+  else
+    return 0
+  fi
 }
 
 reloadmpaths()
 {
   local mpath
+  if [ ! -x "$MULTIPATH" ] ; then
+    echo "no -x multipath"
+    return
+  fi
 
+  # Pass 1 as the argument to reload all mpaths
   if [ "$1" = "1" ] ; then
     echo "Reloading all multipath devices"
-    $MULTIPATH -r &>/dev/null
+    $MULTIPATH -r > /dev/null 2>&1
     return
   fi
 
   # Reload the multipath devices
   for mpath in $mpaths ; do
-    echo "Reloading multipath device $mpath"
-    $MULTIPATH -r $mpath &>/dev/null
+    echo -n "Reloading multipath device $mpath... "
+    $MULTIPATH -r $mpath > /dev/null 2>&1
+    if test "$?" = "0" ; then
+      echo "Done"
+    else
+      echo "Fail"
+    fi
+  done
+}
+
+resizempaths()
+{
+  local mpath
+
+  for mpath in $mpaths ; do
+    echo -n "Resizing multipath map $mpath ..."
+    multipathd -k"resize map $mpath"
+    let updated+=1
   done
 }
 
 flushmpaths()
 {
   local mpath
-  # Mode: flush only failed
+  local remove=""
+  local i
+  local flush_retries=5
+
   if test -n "$1" ; then
     for mpath in $($DMSETUP ls --target=multipath | cut -f 1) ; do
-      num=$($DMSETUP status $mpath | gawk 'BEGIN{RS=" ";active=0}/[0-9]+:[0-9]+/{dev=1}/A/{if (dev == 1) active++; dev=0} END{ print active }')
+      [ "$mpath" = "No" ] && break
+      num=$($DMSETUP status $mpath | awk 'BEGIN{RS=" ";active=0}/[0-9]+:[0-9]+/{dev=1}/A/{if (dev == 1) active++; dev=0} END{ print active }')
       if [ $num -eq 0 ] ; then
-        echo -n "Flushing multipath device $mpath...  "
-        $DMSETUP message $mpath 0 fail_if_no_path &>/dev/null
-        $MULTIPATH -f $mpath &>/dev/null
-        $DMSETUP status $mpath &>/dev/null
-        if test "$?" = "1" ; then
-          echo "Done"
-        else
-          echo "Fail"
-        fi
+        remove="$remove $mpath"
       fi
     done
-    return
+  else
+    remove="$mpaths"
   fi
-  # Flush all the devs specified in $mpaths
-  for mpath in $mpaths ; do
-    echo -n "Flushing multipath device $mpath...  "
-    $DMSETUP message $mpath 0 fail_if_no_path &>/dev/null
-    $MULTIPATH -f $mpath &>/dev/null
-    $DMSETUP status $mpath &>/dev/null
-    if test "$?" = "1" ; then
-      echo "Done"
-    else
-      echo "Fail"
-    fi
+
+  for mpath in $remove ; do
+    i=0
+    echo -n "Flushing multipath device $mpath... "
+    while [ $i -lt $flush_retries ] ; do
+      $DMSETUP message $mpath 0 fail_if_no_path > /dev/null 2>&1
+      $MULTIPATH -f $mpath > /dev/null 2>&1
+      if test "$?" = "0" ; then
+        echo "Done ($i retries)"
+        break
+      elif test $i -eq $flush_retries ; then
+        echo "Fail"
+      fi
+      sleep 0.02
+      let i=$i+1
+    done
   done
 }
 
@@ -891,6 +974,10 @@ findresized()
   local new_size=
   local sysfs_path=
   local sddev=
+  local i=
+  local m=
+  local mpathsize=
+  declare -a mpathsizes
 
   for hctl in $devs ; do
     sysfs_path="/sys/class/scsi_device/$hctl/device"
@@ -916,7 +1003,18 @@ findresized()
   done
 
   if test -n "$mp_enable" -a -n "$mpaths" ; then
-    reloadmpaths
+    i=0
+    for m in $mpaths ; do
+      mpathsizes[$i]="`$MULTIPATH -l $m | egrep -o [0-9]+.[0-9]+[KMGT]`"
+      let i=$i+1
+    done
+    resizempaths
+    i=0
+    for m in $mpaths ; do
+      mpathsize="`$MULTIPATH -l $m | egrep -o [0-9\.]+[KMGT]`"
+      echo "$m ${mpathsizes[$i]} => $mpathsize"
+      let i=$i+1
+    done
   fi
 }
 
@@ -929,42 +1027,54 @@ if test @$1 = @--help -o @$1 = @-h -o @$1 = @-?; then
     echo "Usage: rescan-scsi-bus.sh [options] [host [host ...]]"
     echo "Options:"
     echo " -a      scan all targets, not just currently existing [default: disabled]"
+    echo " -c      enables scanning of channels 0 1   [default: 0 / all detected ones]"
     echo " -d      enable debug                       [default: 0]"
+    echo " -f      flush failed multipath devices     [default: disabled]"
+    echo " -h      help: print this usage message then exit"
+    echo " -i      issue a FibreChannel LIP reset     [default: disabled]"
+    echo " -I SECS issue a FibreChannel LIP reset and wait for SECS seconds [default: disabled]"
     echo " -l      activates scanning for LUNs 0--7   [default: 0]"
     echo " -L NUM  activates scanning for LUNs 0--NUM [default: 0]"
-    echo " -w      scan for target device IDs 0--15   [default: 0--7]"
-    echo " -c      enables scanning of channels 0 1   [default: 0 / all detected ones]"
     echo " -m      update multipath devices           [default: disabled]"
     echo " -r      enables removing of devices        [default: disabled]"
-    echo " -f      flush failed multipath devices     [default: disabled]"
-    echo " -i      issue a FibreChannel LIP reset     [default: disabled]"
-    echo " -u      look for existing disks that have been remapped"
     echo " -s      look for resized disks and reload associated multipath devices, if applicable"
+    echo " -u      look for existing disks that have been remapped"
+    echo " -V      print version date then exit"
+    echo " -w      scan for target device IDs 0--15   [default: 0--7]"
     echo "--alltargets:    same as -a"
-    echo "--remove:        same as -r"
-    echo "--flush:         same as -f"
-    echo "--issue-lip:     same as -i"
-    echo "--wide:          same as -w"
-    echo "--multipath:     same as -m"
-    echo "--forceremove:   Remove stale devices (DANGEROUS)"
-    echo "--forcerescan:   Remove and readd existing devices (DANGEROUS)"
-    echo "--nooptscan:     don't stop looking for LUNs if 0 is not found"
-    echo "--color:         use coloured prefixes OLD/NEW/DEL"
-    echo "--hosts=LIST:    Scan only host(s) in LIST"
-    echo "--channels=LIST: Scan only channel(s) in LIST"
-    echo "--ids=LIST:      Scan only target ID(s) in LIST"
-    echo "--luns=LIST:     Scan only lun(s) in LIST"
-    echo "--sync/nosync:   Issue a sync / no sync [default: sync if remove]"
     echo "--attachpq3:     Tell kernel to attach sg to LUN 0 that reports PQ=3"
-    echo "--reportlun2:    Tell kernel to try REPORT_LUN even on SCSI2 devices"
+    echo "--channels=LIST: Scan only channel(s) in LIST"
+    echo "--color:         use coloured prefixes OLD/NEW/DEL"
+    echo "--flush:         same as -f"
+    echo "--forceremove:   Remove and readd every device (DANGEROUS)"
+    echo "--forcerescan:   Rescan existing devices"
+    echo "--help:          print this usage message then exit"
+    echo "--hosts=LIST:    Scan only host(s) in LIST"
+    echo "--ids=LIST:      Scan only target ID(s) in LIST"
+    echo "--issue-lip:     same as -i"
+    echo "--issue-lip-wait=SECS:     same as -I"
     echo "--largelun:      Tell kernel to support LUNs > 7 even on SCSI2 devs"
-    echo "--sparselun:     Tell kernel to support sparse LUN numbering"
-    echo "--update:        same as -u"
+    echo "--luns=LIST:     Scan only lun(s) in LIST"
+    echo "--multipath:     same as -m"
+    echo "--nooptscan:     don't stop looking for LUNs is 0 is not found"
+    echo "--remove:        same as -r"
+    echo "--reportlun2:    Tell kernel to try REPORT_LUN even on SCSI2 devices"
     echo "--resize:        same as -s"
-    echo " Host numbers may thus be specified either directly on cmd line (deprecated) or"
-    echo " or with the --hosts=LIST parameter (recommended)."
+    echo "--sparselun:     Tell kernel to support sparse LUN numbering"
+    echo "--sync/nosync:   Issue a sync / no sync [default: sync if remove]"
+    echo "--update:        same as -u"
+    echo "--version:       same as -V"
+    echo "--wide:          same as -w"
+    echo ""
+    echo "Host numbers may thus be specified either directly on cmd line (deprecated)"
+    echo "or with the --hosts=LIST parameter (recommended)."
     echo "LIST: A[-B][,C[-D]]... is a comma separated list of single values and ranges"
-    echo " (No spaces allowed.)"
+    echo "(No spaces allowed.)"
+    exit 0
+fi
+
+if test @$1 = @--version -o @$1 = @-V ; then
+    echo ${VERSION}
     exit 0
 fi
 
@@ -974,7 +1084,7 @@ if test ! -d /sys/class/scsi_host/ -a ! -d /proc/scsi/; then
 fi
 
 # Make sure sg is there
-modprobe sg &>/dev/null
+modprobe sg >/dev/null 2>&1
 
 if test -x /usr/bin/sg_inq; then
   sg_version=$(sg_inq -V 2>&1 | cut -d " " -f 3)
@@ -1011,6 +1121,7 @@ optscan=1
 sync=1
 existing_targets=1
 mp_enable=
+lipreset=-1
 declare -i scan_flags=0
 
 # Scan options
@@ -1027,8 +1138,9 @@ while test ! -z "$opt" -a -z "${opt##-*}"; do
     w) opt_idsearch=`seq 0 15` ;;
     c) opt_channelsearch="0 1" ;;
     r) remove=1 ;;
-    s) resize=1 ;;
-    i) lipreset=1 ;;
+    s) resize=1; mp_enable=1 ;;
+    i) lipreset=0 ;;
+    I) shift; lipreset=$opt ;;
     u) update=1 ;;
     -alltargets)  existing_targets=;;
     -flush)       flush=1 ;;
@@ -1041,7 +1153,8 @@ while test ! -z "$opt" -a -z "${opt##-*}"; do
     -luns=*)  arg=${opt#-luns=};        lunsearch=`expandlist $arg` ;;
     -color) setcolor ;;
     -nooptscan) optscan=0 ;;
-    -issue-lip) lipreset=1 ;;
+    -issue-lip) lipreset=0 ;;
+    -issue-lip-wait) lipreset=${opt#-issue-lip-wait=};;
     -sync) sync=2 ;;
     -nosync) sync=0 ;;
     -multipath) mp_enable=1 ;;
@@ -1097,7 +1210,7 @@ declare -i updated=0
 declare -i rmvd=0
 
 if [ -n "$flush" ] ; then
-  if [ -x $MULTIPATH ] ; then
+  if [ -x "$MULTIPATH" ] ; then
     flushmpaths 1
   fi
 fi
@@ -1106,6 +1219,9 @@ fi
 if [ $update -eq 1 ] ; then
   echo "Searching for remapped LUNs"
   findremapped
+  # If you've changed the mapping, there's a chance it's a different size
+  mpaths=""
+  findresized
 # Search for resized LUNs
 elif [ $resize -eq 1 ] ; then
   echo "Searching for resized LUNs"
@@ -1116,9 +1232,11 @@ else
   echo -n "Scanning host $host "
   if test -e /sys/class/fc_host/host$host ; then
     # It's pointless to do a target scan on FC
-    if test -n "$lipreset" ; then
-      echo 1 > /sys/class/fc_host/host$host/issue_lip 2> /dev/null;
+    issue_lip=/sys/class/fc_host/host$host/issue_lip
+    if test -e $issue_lip -a $lipreset -ge 0 ; then
+      echo 1 > $issue_lip 2> /dev/null;
       udevadm_settle
+      [ $lipreset -gt 0 ] && sleep $lipreset
     fi
     channelsearch=
     idsearch=
@@ -1154,16 +1272,17 @@ let rmvd_found=$rmvd+$found
 if test -n "$mp_enable" -a $rmvd_found -gt 0 ; then
   echo "Attempting to update multipath devices..."
   if test $rmvd -gt 0 ; then
-    /sbin/udevadm trigger
     udevadm_settle
     echo "Removing multipath mappings for removed devices if all paths are now failed... "
     flushmpaths 1
   fi
   if test $found -gt 0 ; then
-    /sbin/udevadm trigger
+    /sbin/udevadm trigger --sysname-match=sd*
     udevadm_settle
-    echo "Trying to discover new multipath mappings for newly discovered devices... "
-    $MULTIPATH | grep "create:" 2> /dev/null
+    if [ -x "$MULTIPATH" ] ; then
+      echo "Trying to discover new multipath mappings for newly discovered devices... "
+      $MULTIPATH | grep "create:" 2> /dev/null
+    fi
   fi
 fi
 
@@ -1171,7 +1290,7 @@ echo "$found new or changed device(s) found.          "
 if test ! -z "$FOUNDDEVS" ; then
   printf "$FOUNDDEVS"
 fi
-echo "$updated remapped or resized device(s) found.		"
+echo "$updated remapped or resized device(s) found."
 if test ! -z "$CHGDEVS" ; then
   printf "$CHGDEVS"
 fi
