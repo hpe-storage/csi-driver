@@ -942,6 +942,12 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 	// Get Volume
 	existingVolume, err := driver.GetVolumeByID(volumeID, secrets)
 	if err != nil {
+		// Check if codes.NotFound is returned from storage provider, which means the volume is already removed from the backend.
+		// Let volumeattachment detach to go through by returning a success for unpublish
+		if status.Code(err) == codes.NotFound {
+			log.Debugf("Could not find volume with ID %s", volumeID)
+			return nil
+		}
 		log.Errorf("Failed to get volume %s, err: %s", volumeID, err.Error())
 		return err
 	}
