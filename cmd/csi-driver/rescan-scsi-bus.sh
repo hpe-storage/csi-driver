@@ -920,10 +920,28 @@ reloadmpaths()
 resizempaths()
 {
   local mpath
+  local retry=0
+  local max_retries=5
 
   for mpath in $mpaths ; do
+    retry=0
     echo -n "Resizing multipath map $mpath ..."
-    multipathd -k"resize map $mpath"
+    while true; do
+      result=$(multipathd -k"resize map $mpath")
+      # check if we hit timeout and retry
+      if [[ ! "$result" =~ "timeout" ]]; then
+        echo "$result"
+        break
+      fi
+      echo -n "$result "
+      sleep 1
+      let retry+=1
+      if [[ $retry -gt $max_retries ]]; then
+        # failed to resize volume exit with error
+        echo "Failed due to timeout"
+        exit 2
+      fi
+    done
     let updated+=1
   done
 }
