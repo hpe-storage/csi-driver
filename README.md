@@ -29,6 +29,15 @@ This guide is primarily written to accommodate installation on upstream Kubernet
       <td><a href="release-notes/v1.0.0.md">v1.0.0</a></td>
     </tr>
   </tbody>
+  <tbody>
+    <tr>
+      <td>v1.1.0</td>
+      <td>no</td>
+      <td>yes</td>
+      <td>yes</td>
+      <td><a href="release-notes/v1.1.0.md">v1.1.0</a></td>
+    </tr>
+  </tbody>
 </table>
 
 **Note:** Support Matrix for each release can be found at [SUPPORT.md](SUPPORT.md)
@@ -87,38 +96,38 @@ nimble-secret         Opaque                                5         149m
 ```
 
 #### Deploy the CSI driver and sidecars for the relevant Kubernetes version
-Deployment declarations are stored in [hpe-storage/co-deployments](https://github.com/hpe-storage/co-deployments).
+Helm and Helm Operator Deployment declarations are available at [hpe-storage/co-deployments](https://github.com/hpe-storage/co-deployments). YAML deployment instructions are as follows:
 
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-linux-config.yaml
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/nimble-csp.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.1.0/hpe-linux-config.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.1.0/nimble-csp.yaml
 ```
 
 **Note**: `nimble-csp.yaml` and `hpe-linux-config.yaml` are common for all kubernetes version.
 
 Kubernetes 1.13
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-csi-k8s-1.13.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.1.0/hpe-csi-k8s-1.13.yaml
 ```
 
 Kubernetes 1.14
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-csi-k8s-1.14.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.1.0/hpe-csi-k8s-1.14.yaml
 ```
 
 Kubernetes 1.15
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-csi-k8s-1.15.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.1.0/hpe-csi-k8s-1.15.yaml
 ```
 
 Kubernetes 1.16
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-csi-k8s-1.16.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.1.0/hpe-csi-k8s-1.16.yaml
 ```
 
 Kubernetes 1.17
 ```
-kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.0.0/hpe-csi-k8s-1.17.yaml
+kubectl create -f https://raw.githubusercontent.com/hpe-storage/co-deployments/master/yaml/csi-driver/v1.1.0/hpe-csi-k8s-1.17.yaml
 ```
 
 Depending on which version being deployed, different API objects gets created.
@@ -229,7 +238,7 @@ Log levels for both CSI Controller and Node driver can be controlled using `LOG_
 
 ```
         - name: hpe-csi-driver
-          image: hpestorage/csi-driver:v1.0.0
+          image: hpestorage/csi-driver:v1.1.0
           args :
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--node-service"
@@ -243,7 +252,7 @@ Log levels for both CSI Controller and Node driver can be controlled using `LOG_
 
 ```
         - name: hpe-csi-driver
-          image: hpestorage/csi-driver:v1.0.0
+          image: hpestorage/csi-driver:v1.1.0
           args :
             - "--endpoint=$(CSI_ENDPOINT)"
             - "--flavor=kubernetes"
