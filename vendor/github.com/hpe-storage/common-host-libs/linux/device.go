@@ -1081,10 +1081,13 @@ func RescanForCapacityUpdates(devicePath string) error {
 		// multipathd takes either mpathx(without prefix) or /dev/dm-x as input
 		devicePath = strings.TrimPrefix(devicePath, "/dev/mapper/")
 		// reload multipath map to apply new size
-		args = []string{"reload", "map", devicePath}
-		_, _, err = util.ExecCommandOutput("multipathd", args)
+		args = []string{"resize", "map", devicePath}
+		out, _, err := util.ExecCommandOutput("multipathd", args)
 		if err != nil {
 			return err
+		}
+		if !strings.Contains(out, "ok") {
+			return fmt.Errorf("failed to rescan device %s on resize, err: %s", devicePath, out)
 		}
 	}
 	return nil
