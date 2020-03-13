@@ -1422,11 +1422,23 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 	}
 	log.Tracef("Found Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
 
-	if existingVolume.Size == request.CapacityRange.GetLimitBytes() {
-		// volume is already at max limit size per request, so no action required.
+	// Set node expansion required to 'true' for mount type as fs resize is always required in that case
+	nodeExpansionRequired := true
+	if request.GetVolumeCapability() != nil {
+		switch request.GetVolumeCapability().GetAccessType().(type) {
+		case *csi.VolumeCapability_Block:
+			if !existingVolume.Published {
+				log.Info("node expansion is not required for raw block volumes when not published")
+				nodeExpansionRequired = false
+			}
+		}
+	}
+
+	if existingVolume.Size == request.CapacityRange.GetLimitBytes() || existingVolume.Size == request.CapacityRange.GetRequiredBytes() {
+		// volume is already at requested size, so no action required.
 		return &csi.ControllerExpandVolumeResponse{
 			CapacityBytes:         existingVolume.Size,
-			NodeExpansionRequired: false, /* No NodeExpand() to be called */
+			NodeExpansionRequired: nodeExpansionRequired,
 		}, nil
 	}
 
@@ -1456,18 +1468,6 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 	}
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to expand volume to requested size, %s", err.Error()))
-	}
-
-	// Set node expansion required to 'true' for mount type as fs resize is always required in that case
-	nodeExpansionRequired := true
-	if request.GetVolumeCapability() != nil {
-		switch request.GetVolumeCapability().GetAccessType().(type) {
-		case *csi.VolumeCapability_Block:
-			if !existingVolume.Published {
-				log.Info("node expansion is not required for raw block volumes when not published")
-				nodeExpansionRequired = false
-			}
-		}
 	}
 
 	return &csi.ControllerExpandVolumeResponse{
