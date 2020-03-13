@@ -19,7 +19,7 @@
     </tr>
     <tr>
       <th>Redhat Openshift Version</th>
-      <td colspan=4>4.2, 4.3</td>
+      <td colspan=4>4.2, 4.3 (RHCOS and RHEL worker nodes)</td>
     </tr>
     <tr>
       <th>Protocol</th>
