@@ -36,11 +36,6 @@ var (
 	loginMutex = concurrent.NewMapMutex()
 )
 
-// DataWrapper is used to represent a generic JSON API payload
-type DataWrapper struct {
-	Data interface{} `json:"data"`
-}
-
 // ErrorsPayload is a serializer struct for representing a valid JSON API errors payload.
 type ErrorsPayload struct {
 	Errors []*ErrorObject `json:"errors"`
@@ -98,9 +93,7 @@ func NewContainerStorageProvider(credentials *storageprovider.Credentials) (*Con
 
 // login performs initial login to the CSP as well as periodic login if a session has expired
 func (provider *ContainerStorageProvider) login() (int, error) {
-	dataWrapper := &DataWrapper{
-		Data: &model.Token{},
-	}
+	response := &model.Token{}
 	var errorResponse *ErrorsPayload
 
 	// Storage-Provider
@@ -122,15 +115,15 @@ func (provider *ContainerStorageProvider) login() (int, error) {
 		&connectivity.Request{
 			Action:        "POST",
 			Path:          "/containers/v1/tokens",
-			Payload:       &DataWrapper{Data: token},
-			Response:      &dataWrapper,
+			Payload:       token,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
 	if errorResponse != nil {
 		return status, handleError(status, errorResponse)
 	}
-	provider.AuthToken = dataWrapper.Data.(*model.Token).SessionToken
+	provider.AuthToken = response.SessionToken
 
 	return status, err
 }
@@ -196,7 +189,7 @@ func (provider *ContainerStorageProvider) SetNodeContext(node *model.Node) error
 		&connectivity.Request{
 			Action:        "POST",
 			Path:          "/containers/v1/hosts",
-			Payload:       &DataWrapper{Data: node},
+			Payload:       &node,
 			Response:      nil,
 			ResponseError: &errorResponse,
 		},
@@ -243,9 +236,7 @@ func (provider *ContainerStorageProvider) CreateVolume(name, description string,
 	log.Tracef(">>>>> CreateVolume, name: %v, size: %v, opts: %v", name, size, opts)
 	defer log.Trace("<<<<< CreateVolume")
 
-	dataWrapper := &DataWrapper{
-		Data: &model.Volume{},
-	}
+	response := &model.Volume{}
 	var errorResponse *ErrorsPayload
 
 	volume := &model.Volume{
@@ -260,8 +251,8 @@ func (provider *ContainerStorageProvider) CreateVolume(name, description string,
 		&connectivity.Request{
 			Action:        "POST",
 			Path:          "/containers/v1/volumes",
-			Payload:       &DataWrapper{Data: volume},
-			Response:      &dataWrapper,
+			Payload:       &volume,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
@@ -269,7 +260,7 @@ func (provider *ContainerStorageProvider) CreateVolume(name, description string,
 		return nil, handleError(status, errorResponse)
 	}
 
-	return dataWrapper.Data.(*model.Volume), err
+	return response, err
 }
 
 // CloneVolume clones a volume on the CSP
@@ -344,9 +335,7 @@ func (provider *ContainerStorageProvider) CloneVolume(name, description, sourceI
 	}
 	log.Tracef("Clone requested with volume config: %+v", volume)
 
-	dataWrapper := &DataWrapper{
-		Data: &model.Volume{},
-	}
+	response := &model.Volume{}
 	var errorResponse *ErrorsPayload
 
 	// Clone the volume on the array
@@ -354,8 +343,8 @@ func (provider *ContainerStorageProvider) CloneVolume(name, description, sourceI
 		&connectivity.Request{
 			Action:        "POST",
 			Path:          "/containers/v1/volumes",
-			Payload:       &DataWrapper{Data: volume},
-			Response:      &dataWrapper,
+			Payload:       &volume,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
@@ -369,7 +358,7 @@ func (provider *ContainerStorageProvider) CloneVolume(name, description, sourceI
 		return nil, handleError(status, errorResponse)
 	}
 
-	return dataWrapper.Data.(*model.Volume), err
+	return response, err
 }
 
 // DeleteVolume will remove a volume from the CSP
@@ -399,10 +388,7 @@ func (provider *ContainerStorageProvider) DeleteVolume(id string, force bool) er
 
 // PublishVolume will make a volume visible (add an ACL) to the given host
 func (provider *ContainerStorageProvider) PublishVolume(id, hostUUID, accessProtocol string) (*model.PublishInfo, error) {
-	dataResponse := &DataWrapper{
-		Data: &model.PublishInfo{},
-	}
-
+	response := &model.PublishInfo{}
 	var errorResponse *ErrorsPayload
 
 	publishOptions := &model.PublishOptions{
@@ -414,8 +400,8 @@ func (provider *ContainerStorageProvider) PublishVolume(id, hostUUID, accessProt
 		&connectivity.Request{
 			Action:        "PUT",
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s/actions/publish", id),
-			Payload:       &DataWrapper{Data: publishOptions},
-			Response:      &dataResponse,
+			Payload:       &publishOptions,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
@@ -423,7 +409,7 @@ func (provider *ContainerStorageProvider) PublishVolume(id, hostUUID, accessProt
 		return nil, handleError(status, errorResponse)
 	}
 
-	return dataResponse.Data.(*model.PublishInfo), err
+	return response, err
 }
 
 // UnpublishVolume will make a volume invisible (remove an ACL) from the given host
@@ -434,7 +420,7 @@ func (provider *ContainerStorageProvider) UnpublishVolume(id, hostUUID string) e
 		&connectivity.Request{
 			Action:        "PUT",
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s/actions/unpublish", id),
-			Payload:       &DataWrapper{Data: &model.PublishOptions{HostUUID: hostUUID}},
+			Payload:       &model.PublishOptions{HostUUID: hostUUID},
 			Response:      nil,
 			ResponseError: &errorResponse,
 		},
@@ -451,9 +437,7 @@ func (provider *ContainerStorageProvider) ExpandVolume(id string, requestBytes i
 	log.Tracef(">>>>> ExpandVolume, id: %s, requestBytes: %d", id, requestBytes)
 	defer log.Traceln("<<<<< ExpandVolume")
 
-	dataWrapper := &DataWrapper{
-		Data: &model.Volume{},
-	}
+	response := &model.Volume{}
 	var errorResponse *ErrorsPayload
 
 	volume := &model.Volume{
@@ -466,8 +450,8 @@ func (provider *ContainerStorageProvider) ExpandVolume(id string, requestBytes i
 		&connectivity.Request{
 			Action:        "PUT",
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s", id),
-			Payload:       &DataWrapper{Data: volume},
-			Response:      &dataWrapper,
+			Payload:       &volume,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
@@ -475,14 +459,12 @@ func (provider *ContainerStorageProvider) ExpandVolume(id string, requestBytes i
 		return nil, handleError(status, errorResponse)
 	}
 
-	return dataWrapper.Data.(*model.Volume), err
+	return response, err
 }
 
 // GetVolume will return information about the given volume
 func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, error) {
-	dataWrapper := &DataWrapper{
-		Data: &model.Volume{},
-	}
+	response := &model.Volume{}
 	var errorResponse *ErrorsPayload
 	var status int
 	var err error
@@ -491,13 +473,13 @@ func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, e
 			Action:        "GET",
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s", id),
 			Payload:       nil,
-			Response:      &dataWrapper,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
 
 	if status == http.StatusOK {
-		return dataWrapper.Data.(*model.Volume), nil
+		return response, nil
 	}
 
 	if status == http.StatusNotFound {
@@ -513,9 +495,7 @@ func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, e
 
 // GetVolumeByName will return information about the given volume
 func (provider *ContainerStorageProvider) GetVolumeByName(name string) (*model.Volume, error) {
-	dataWrapper := &DataWrapper{
-		Data: make([]*model.Volume, 0),
-	}
+	response := make([]*model.Volume, 0)
 	var errorResponse *ErrorsPayload
 
 	status, err := provider.invoke(
@@ -523,7 +503,7 @@ func (provider *ContainerStorageProvider) GetVolumeByName(name string) (*model.V
 			Action:        "GET",
 			Path:          fmt.Sprintf("/containers/v1/volumes?name=%s", name),
 			Payload:       nil,
-			Response:      &dataWrapper,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
@@ -536,7 +516,7 @@ func (provider *ContainerStorageProvider) GetVolumeByName(name string) (*model.V
 	}
 
 	// there should only be one volume
-	values := reflect.ValueOf(dataWrapper.Data)
+	values := reflect.ValueOf(response)
 	if values.Len() == 0 {
 		log.Errorf("Could not find volume %s in json response", name)
 		return nil, fmt.Errorf("Could not find volume named %s in json response", name)
@@ -554,9 +534,7 @@ func (provider *ContainerStorageProvider) GetVolumeByName(name string) (*model.V
 
 // GetVolumes returns all of the volumes from the CSP
 func (provider *ContainerStorageProvider) GetVolumes() ([]*model.Volume, error) {
-	dataWrapper := &DataWrapper{
-		Data: make([]*model.Volume, 0),
-	}
+	response := make([]*model.Volume, 0)
 	var errorResponse *ErrorsPayload
 
 	status, err := provider.invoke(
@@ -564,7 +542,7 @@ func (provider *ContainerStorageProvider) GetVolumes() ([]*model.Volume, error) 
 			Action:        "GET",
 			Path:          "/containers/v1/volumes",
 			Payload:       nil,
-			Response:      &dataWrapper,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
@@ -573,7 +551,7 @@ func (provider *ContainerStorageProvider) GetVolumes() ([]*model.Volume, error) 
 	}
 
 	// unmarshal each volume... TODO: do this via reflection for all object types
-	values := reflect.ValueOf(dataWrapper.Data)
+	values := reflect.ValueOf(response)
 	log.Tracef("Found %d volumes", values.Len())
 	volumes := make([]*model.Volume, values.Len())
 	for i := 0; i < values.Len(); i++ {
@@ -590,9 +568,7 @@ func (provider *ContainerStorageProvider) GetVolumes() ([]*model.Volume, error) 
 
 // GetSnapshots returns all of the snapshots for the given source volume from the CSP
 func (provider *ContainerStorageProvider) GetSnapshots(volumeID string) ([]*model.Snapshot, error) {
-	dataWrapper := &DataWrapper{
-		Data: make([]*model.Snapshot, 0),
-	}
+	response := make([]*model.Snapshot, 0)
 	var errorResponse *ErrorsPayload
 
 	var path string
@@ -607,7 +583,7 @@ func (provider *ContainerStorageProvider) GetSnapshots(volumeID string) ([]*mode
 			Action:        "GET",
 			Path:          path,
 			Payload:       nil,
-			Response:      &dataWrapper,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
@@ -616,7 +592,7 @@ func (provider *ContainerStorageProvider) GetSnapshots(volumeID string) ([]*mode
 	}
 
 	// unmarshal each snapshot... TODO: do this via reflection for all object types
-	values := reflect.ValueOf(dataWrapper.Data)
+	values := reflect.ValueOf(response)
 	log.Tracef("Found %d snapshots", values.Len())
 	snapshots := make([]*model.Snapshot, values.Len())
 	for i := 0; i < values.Len(); i++ {
@@ -635,9 +611,7 @@ func (provider *ContainerStorageProvider) GetSnapshot(id string) (*model.Snapsho
 	log.Trace(">>>>> GetSnapshot, id:", id)
 	defer log.Trace("<<<<< GetSnapshot")
 
-	dataWrapper := &DataWrapper{
-		Data: &model.Snapshot{},
-	}
+	response := &model.Snapshot{}
 	var errorResponse *ErrorsPayload
 
 	status, err := provider.invoke(
@@ -645,7 +619,7 @@ func (provider *ContainerStorageProvider) GetSnapshot(id string) (*model.Snapsho
 			Action:        "GET",
 			Path:          fmt.Sprintf("/containers/v1/snapshots/%s", id),
 			Payload:       nil,
-			Response:      &dataWrapper,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
@@ -657,16 +631,14 @@ func (provider *ContainerStorageProvider) GetSnapshot(id string) (*model.Snapsho
 		return nil, handleError(status, errorResponse)
 	}
 
-	return dataWrapper.Data.(*model.Snapshot), err
+	return response, err
 }
 
 // GetSnapshotByName will return information about the given snapshot
 func (provider *ContainerStorageProvider) GetSnapshotByName(name string, volumeID string) (*model.Snapshot, error) {
 
 	// Get all snapshots for the given snapshot name and source volume ID
-	dataWrapper := &DataWrapper{
-		Data: make([]*model.Snapshot, 0),
-	}
+	response := make([]*model.Snapshot, 0)
 	var errorResponse *ErrorsPayload
 
 	status, err := provider.invoke(
@@ -674,7 +646,7 @@ func (provider *ContainerStorageProvider) GetSnapshotByName(name string, volumeI
 			Action:        "GET",
 			Path:          fmt.Sprintf("/containers/v1/snapshots?name=%s&volume_id=%s", name, volumeID),
 			Payload:       nil,
-			Response:      &dataWrapper,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
@@ -692,7 +664,7 @@ func (provider *ContainerStorageProvider) GetSnapshotByName(name string, volumeI
 	}
 
 	// There should only be one snapshot
-	values := reflect.ValueOf(dataWrapper.Data)
+	values := reflect.ValueOf(response)
 	if values.Len() == 0 {
 		log.Errorf("Could not find snapshot %s in json response", name)
 		return nil, fmt.Errorf("Could not find snapshot named %s in json response", name)
@@ -712,9 +684,7 @@ func (provider *ContainerStorageProvider) CreateSnapshot(name, description, sour
 	log.Tracef(">>>>> CreateSnapshot, name: %v, description: %v, sourceVolumeID: %v", name, description, sourceVolumeID)
 	defer log.Traceln("<<<<< CreateSnapshot")
 
-	dataWrapper := &DataWrapper{
-		Data: &model.Snapshot{},
-	}
+	response := &model.Snapshot{}
 	var errorResponse *ErrorsPayload
 
 	snapshot := &model.Snapshot{
@@ -729,8 +699,8 @@ func (provider *ContainerStorageProvider) CreateSnapshot(name, description, sour
 		&connectivity.Request{
 			Action:        "POST",
 			Path:          "/containers/v1/snapshots",
-			Payload:       &DataWrapper{Data: snapshot},
-			Response:      &dataWrapper,
+			Payload:       &snapshot,
+			Response:      &response,
 			ResponseError: &errorResponse,
 		},
 	)
@@ -746,7 +716,7 @@ func (provider *ContainerStorageProvider) CreateSnapshot(name, description, sour
 		return nil, err
 	}
 
-	return dataWrapper.Data.(*model.Snapshot), err
+	return response, err
 }
 
 // DeleteSnapshot will remove a snapshot from the CSP
