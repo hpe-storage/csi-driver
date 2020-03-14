@@ -29,7 +29,7 @@ import (
 
 // Quantity is a fixed-point representation of a number.
 // It provides convenient marshaling/unmarshaling in JSON and YAML,
-// in addition to String() and Int64() accessors.
+// in addition to String() and AsInt64() accessors.
 //
 // The serialization format is:
 //
@@ -632,6 +632,11 @@ func (q Quantity) MarshalJSON() ([]byte, error) {
 	result = append(result, suffix...)
 	result = append(result, '"')
 	return result, nil
+}
+
+// ToUnstructured implements the value.UnstructuredConverter interface.
+func (q Quantity) ToUnstructured() interface{} {
+	return q.String()
 }
 
 // UnmarshalJSON implements the json.Unmarshaller interface.
