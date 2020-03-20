@@ -15,7 +15,7 @@
     <tbody>
     <tr>
       <th>Kubernetes Version</th>
-      <td colspan=4>1.13+, 1.14+, 1.15+, 1.17+</td>
+      <td colspan=4>1.13+, 1.14+, 1.15+, 1.16+, 1.17+</td>
     </tr>
     <tr>
       <th>Redhat Openshift Version</th>
