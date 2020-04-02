@@ -72,7 +72,7 @@ const (
 	csiEphemeralPodUID       = "csi.storage.k8s.io/pod.uid"
 
 	// Prefix used by CSI ephemeral inline volume names
-	ephemeralVolNamePrefix = "ephemeral-"
+	ephemeralKey = "ephemeral"
 
 	// Ephemeral volume size specified in the POD spec
 	sizeKey = "size"
