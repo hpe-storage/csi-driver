@@ -106,8 +106,8 @@ func NewKubernetesFlavor(nodeService bool) (*Flavor, error) {
 
 // ConfigureAnnotations takes the PVC annotations and overrides any parameters in the CSI create volume request
 func (flavor *Flavor) ConfigureAnnotations(name string, parameters map[string]string) (map[string]string, error) {
-	log.Infof(">>>>> ConfigureAnnotations called with PVC Name %s", name)
-	defer log.Infof("<<<<< ConfigureAnnotations")
+	log.Tracef(">>>>> ConfigureAnnotations called with PVC Name %s", name)
+	defer log.Trace("<<<<< ConfigureAnnotations")
 
 	pvc, err := flavor.getClaimFromClaimName(name)
 	if err != nil {
@@ -129,8 +129,8 @@ func (flavor *Flavor) ConfigureAnnotations(name string, parameters map[string]st
 
 // LoadNodeInfo will load a node as an HPENodeInfo CRD object
 func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
-	log.Infof(">>>>> LoadNodeInfo called with node %v", node)
-	defer log.Infof("<<<<< LoadNodeInfo")
+	log.Tracef(">>>>> LoadNodeInfo called with node %v", node)
+	defer log.Trace("<<<<< LoadNodeInfo")
 
 	nodeInfo, err := flavor.getNodeInfoByUUID(node.UUID)
 	if err != nil {
@@ -246,8 +246,8 @@ func getNetworksFromNode(node *model.Node) []string {
 
 // UnloadNodeInfo remove the HPENodeInfo from the list of CRDs
 func (flavor *Flavor) UnloadNodeInfo() {
-	log.Infof(">>>>>> UnloadNodeInfo with name %s", flavor.nodeName)
-	defer log.Infof("<<<<<< UnloadNodeInfo")
+	log.Tracef(">>>>>> UnloadNodeInfo with name %s", flavor.nodeName)
+	defer log.Trace("<<<<<< UnloadNodeInfo")
 
 	err := flavor.crdClient.StorageV1().HPENodeInfos().Delete(flavor.nodeName, &meta_v1.DeleteOptions{})
 	if err != nil {
@@ -257,17 +257,17 @@ func (flavor *Flavor) UnloadNodeInfo() {
 
 // GetNodeInfo retrieves the Node identified by nodeID from the list of CRDs
 func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
-	log.Infof(">>>>>> GetNodeInfo from node ID %s", nodeID)
-	defer log.Infof("<<<<<< GetNodeInfo")
+	log.Tracef(">>>>>> GetNodeInfo from node ID %s", nodeID)
+	defer log.Trace("<<<<<< GetNodeInfo")
 
 	nodeInfoList, err := flavor.crdClient.StorageV1().HPENodeInfos().List(meta_v1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
-	log.Infof("Found the following HPE Node Info objects: %v", nodeInfoList)
+	log.Tracef("Found the following HPE Node Info objects: %v", nodeInfoList)
 
 	for _, nodeInfo := range nodeInfoList.Items {
-		log.Infof("Processing node info %v", nodeInfo)
+		log.Tracef("Processing node info %v", nodeInfo)
 
 		if nodeInfo.Spec.UUID == nodeID {
 			iqns := make([]*string, len(nodeInfo.Spec.IQNs))
@@ -329,8 +329,8 @@ func (flavor *Flavor) watchAllClaims(options meta_v1.ListOptions) (watch.Interfa
 
 // get the pv corresponding to this pvc and substitute with pv (docker/csi volume name)
 func (flavor *Flavor) getVolumeNameFromClaimName(name string) (string, error) {
-	log.Infof(">>>>> getVolumeNameFromClaimName called with PVC Name %s", name)
-	defer log.Infof("<<<<< getVolumeNameFromClaimName")
+	log.Tracef(">>>>> getVolumeNameFromClaimName called with PVC Name %s", name)
+	defer log.Trace("<<<<< getVolumeNameFromClaimName")
 
 	claim, err := flavor.getClaimFromClaimName(name)
 	if err != nil {
@@ -343,8 +343,8 @@ func (flavor *Flavor) getVolumeNameFromClaimName(name string) (string, error) {
 }
 
 func (flavor *Flavor) getClaimFromClaimName(name string) (*v1.PersistentVolumeClaim, error) {
-	log.Infof(">>>>> getClaimFromClaimName called with %s", name)
-	defer log.Infof("<<<<< getClaimFromClaimName")
+	log.Tracef(">>>>> getClaimFromClaimName called with %s", name)
+	defer log.Trace("<<<<< getClaimFromClaimName")
 
 	if flavor.claimIndexer == nil {
 		return nil, fmt.Errorf("requested pvc %s was not found because claimIndexer was nil", name)
@@ -366,8 +366,8 @@ func (flavor *Flavor) getClaimFromClaimName(name string) (*v1.PersistentVolumeCl
 }
 
 func (flavor *Flavor) getClassOverrideOptions(optionsMap map[string]string) []string {
-	log.Info(">>>> getClassOverrideOptions")
-	defer log.Info("<<<<< getClassOverrideOptions")
+	log.Trace(">>>> getClassOverrideOptions")
+	defer log.Trace("<<<<< getClassOverrideOptions")
 
 	var overridekeys []string
 	if val, ok := optionsMap[allowOverrides]; ok {
@@ -390,8 +390,8 @@ func (flavor *Flavor) getClassOverrideOptions(optionsMap map[string]string) []st
 }
 
 func (flavor *Flavor) getClaimOverrideOptions(claim *v1.PersistentVolumeClaim, overrides []string, optionsMap map[string]string, provisioner string) (map[string]string, error) {
-	log.Infof(">>>>> getClaimOverrideOptions for %s", provisioner)
-	defer log.Infof("<<<<< getClaimOverrideOptions")
+	log.Tracef(">>>>> getClaimOverrideOptions for %s", provisioner)
+	defer log.Trace("<<<<< getClaimOverrideOptions")
 
 	provisionerName := provisioner
 	for _, override := range overrides {
@@ -430,8 +430,8 @@ func (flavor *Flavor) getClaimOverrideOptions(claim *v1.PersistentVolumeClaim, o
 }
 
 func (flavor *Flavor) getPVFromPVCAnnotation(claim *v1.PersistentVolumeClaim, provisioner string) (string, error) {
-	log.Infof(">>>>> getPVFromPVCAnnotation for %s", provisioner)
-	defer log.Infof("<<<<< getPVFromPVCAnnotation")
+	log.Tracef(">>>>> getPVFromPVCAnnotation for %s", provisioner)
+	defer log.Trace("<<<<< getPVFromPVCAnnotation")
 
 	// check to see if we have the cloneOfPVC annotation
 	pvcToClone, foundClonePVC := claim.Annotations[fmt.Sprintf("%s%s", provisioner, cloneOfPVC)]
@@ -461,8 +461,8 @@ func MetaUIDFunc(obj interface{}) ([]string, error) {
 }
 
 func (flavor *Flavor) getNodeInfoByUUID(uuid string) (*crd_v1.HPENodeInfo, error) {
-	log.Infof(">>>>> getNodeInfoByUUID with uuid %s", uuid)
-	defer log.Infof("<<<<< getNodeInfoByUUID")
+	log.Tracef(">>>>> getNodeInfoByUUID with uuid %s", uuid)
+	defer log.Trace("<<<<< getNodeInfoByUUID")
 
 	nodeInfoList, err := flavor.crdClient.StorageV1().HPENodeInfos().List(meta_v1.ListOptions{})
 	if err != nil {
@@ -479,8 +479,8 @@ func (flavor *Flavor) getNodeInfoByUUID(uuid string) (*crd_v1.HPENodeInfo, error
 }
 
 func (flavor *Flavor) getNodeInfoByName(name string) (*crd_v1.HPENodeInfo, error) {
-	log.Infof(">>>>> getNodeInfoByName with name %s", name)
-	defer log.Infof("<<<<< getNodeInfoByName")
+	log.Tracef(">>>>> getNodeInfoByName with name %s", name)
+	defer log.Trace("<<<<< getNodeInfoByName")
 
 	nodeInfoList, err := flavor.crdClient.StorageV1().HPENodeInfos().List(meta_v1.ListOptions{})
 	if err != nil {
@@ -498,8 +498,8 @@ func (flavor *Flavor) getNodeInfoByName(name string) (*crd_v1.HPENodeInfo, error
 
 // GetCredentialsFromSecret retrieves the secrets map for the given secret name and namespace if exists, else returns nil
 func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (map[string]string, error) {
-	log.Infof(">>>>> GetCredentialsFromSecret, name: %s, namespace: %s", name, namespace)
-	defer log.Infof("<<<<< GetCredentialsFromSecret")
+	log.Tracef(">>>>> GetCredentialsFromSecret, name: %s, namespace: %s", name, namespace)
+	defer log.Trace("<<<<< GetCredentialsFromSecret")
 
 	secret, err := flavor.kubeClient.CoreV1().Secrets(namespace).Get(name, meta_v1.GetOptions{})
 	if err != nil {
@@ -514,8 +514,8 @@ func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (m
 }
 
 func (flavor *Flavor) getPodByName(name string, namespace string) (*v1.Pod, error) {
-	log.Infof(">>>>> getPodByName, name: %s, namespace: %s", name, namespace)
-	defer log.Infof("<<<<< getPodByName")
+	log.Tracef(">>>>> getPodByName, name: %s, namespace: %s", name, namespace)
+	defer log.Trace("<<<<< getPodByName")
 
 	pod, err := flavor.kubeClient.CoreV1().Pods(namespace).Get(name, meta_v1.GetOptions{})
 	if err != nil {
@@ -527,8 +527,8 @@ func (flavor *Flavor) getPodByName(name string, namespace string) (*v1.Pod, erro
 
 // getCredentialsFromPod retrieves the secrets map from the Pod for the given secret name if exists, else returns nil
 func (flavor *Flavor) getCredentialsFromPod(pod *v1.Pod, secretName string) (map[string]string, error) {
-	log.Infof(">>>>> getCredentialsFromPod, secretName: %s, podNamespace: %s", secretName, pod.Namespace)
-	defer log.Infof("<<<<< getCredentialsFromPod")
+	log.Tracef(">>>>> getCredentialsFromPod, secretName: %s, podNamespace: %s", secretName, pod.Namespace)
+	defer log.Trace("<<<<< getCredentialsFromPod")
 
 	secret := make(map[string]string)
 	secrets, err := flavor.kubeClient.CoreV1().Secrets(pod.Namespace).Get(secretName, meta_v1.GetOptions{})
@@ -567,7 +567,7 @@ func (flavor *Flavor) GetCredentialsFromPodSpec(volumeHandle string, podName str
 		// Compute the volumeHandle for each CSI volume and match with the given volumeHandle
 		handle := makeVolumeHandle(string(pod.GetUID()), vol.Name)
 		if handle == volumeHandle {
-			log.Infof("Matched ephemeral volume %s attached to the POD [%s/%s]", vol.Name, namespace, podName)
+			log.Tracef("Matched ephemeral volume %s attached to the POD [%s/%s]", vol.Name, namespace, podName)
 			csiSource := vol.VolumeSource.CSI
 			if csiSource == nil {
 				return nil, fmt.Errorf("CSI volume source is nil")
@@ -575,7 +575,7 @@ func (flavor *Flavor) GetCredentialsFromPodSpec(volumeHandle string, podName str
 
 			// No secrets are configured
 			if csiSource.NodePublishSecretRef == nil {
-				log.Trace("No secrets are configured")
+				log.Error("No secrets are configured")
 				return nil, fmt.Errorf("Missing 'NodePublishSecretRef' in the POD spec")
 			}
 
@@ -591,10 +591,10 @@ func (flavor *Flavor) GetCredentialsFromPodSpec(volumeHandle string, podName str
 	return nil, fmt.Errorf("Pod %s/%s does not contain the volume %s", namespace, podName, volumeHandle)
 }
 
-// GetFsTypeOfPvName retrieves volume filesystem for a given CSI volname
+// GetVolumePropertyOfPV retrieves volume filesystem for a given CSI volname
 func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) (string, error) {
-	log.Infof(">>>>> GetVolumePropertyOfPV, pvName: %s, propertyName: %s", pvName, propertyName)
-	defer log.Infof("<<<<< GetVolumePropertyOfPV")
+	log.Tracef(">>>>> GetVolumePropertyOfPV, pvName: %s, propertyName: %s", pvName, propertyName)
+	defer log.Trace("<<<<< GetVolumePropertyOfPV")
 
 	pv, err := flavor.kubeClient.CoreV1().PersistentVolumes().Get(pvName, meta_v1.GetOptions{})
 	if err != nil {
