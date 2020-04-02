@@ -680,7 +680,7 @@ func (driver *Driver) getEphemeralVolCredentials(volumeHandle string, stagingDev
 // MULTI_NODE		OK (idempotent)		ALREADY_EXISTS		OK						OK
 // Non MULTI_NODE	OK (idempotent)		ALREADY_EXISTS		FAILED_PRECONDITION		FAILED_PRECONDITION
 func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	log.Trace(">>>>> NodePublishVolume, VolumeId: %s, stagingPath: %s, targetStagingPath: %s",
+	log.Tracef(">>>>> NodePublishVolume, VolumeId: %s, stagingPath: %s, targetStagingPath: %s",
 		request.VolumeId, request.TargetPath, request.StagingTargetPath)
 	defer log.Trace("<<<<< NodePublishVolume")
 
@@ -1284,7 +1284,7 @@ func (driver *Driver) isVolumePublished(
 // This operation MUST be idempotent. If this RPC failed, or the CO does not know if it failed or not, it can choose to call NodeUnpublishVolume
 // again.
 func (driver *Driver) NodeUnpublishVolume(ctx context.Context, request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	log.Trace(">>>>> NodeUnpublishVolume, VolumeId: %s, TargetPath: %s", request.VolumeId, request.TargetPath)
+	log.Tracef(">>>>> NodeUnpublishVolume, VolumeId: %s, TargetPath: %s", request.VolumeId, request.TargetPath)
 	defer log.Trace("<<<<< NodeUnpublishVolume")
 
 	if request.VolumeId == "" {
@@ -1435,7 +1435,7 @@ func (driver *Driver) nodeUnpublishEphemeralVolume(volumeHandle string, targetPa
 	if volume == nil {
 		// Volume not found, so return success
 		log.Infof("Ephemeral volume %s with ID %s not found on the backend, return success",
-			volumeHandle, stagingDev.VolumeID, stagingDev.Device.VolumeID)
+			volumeHandle, stagingDev.VolumeID)
 		return nil
 	}
 	ephemeralVolName := volume.Name
