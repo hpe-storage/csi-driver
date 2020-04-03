@@ -20,4 +20,5 @@ spec:
        fsType: ext3
        volumeAttributes:
          csi.storage.k8s.io/ephemeral: "true"
+         accessProtocol: "iscsi"
          size: "5Gi"
