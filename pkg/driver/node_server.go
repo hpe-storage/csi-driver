@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,10 @@ var (
 	ephemeralPublishLock   sync.Mutex
 	ephemeralUnpublishLock sync.Mutex
 )
+
+// Maximum default number of volumes that controller can publish to the node.
+const defaultMaxVolPerNode = 100
+const maxVolumePerNodeKey = "MAX_VOLUMES_PER_NODE"
 
 // Helper utility to construct default mountpoint path
 func getDefaultMountPoint(id string) string {
@@ -1608,10 +1613,39 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+	// Get max volume per node from environment variable
+	nodeMaxVolumesLimit := driver.nodeGetIntEnv(maxVolumePerNodeKey)
+
+	// Maximum number of volumes that controller can publish to the node.
+  	// If value is not set or zero CO SHALL decide how many volumes of
+  	// this type can be published by the controller to the node. The
+  	// plugin MUST NOT set negative values here.
+ 	// This field is OPTIONAL.
+	if nodeMaxVolumesLimit <= 0 {
+		nodeMaxVolumesLimit = defaultMaxVolPerNode
+	}
 
 	return &csi.NodeGetInfoResponse{
-		NodeId: nodeID,
+		NodeId:            nodeID,
+		MaxVolumesPerNode: nodeMaxVolumesLimit,
 	}, nil
+}
+
+// Get cluster node environment variable, convert it to int64
+func (driver *Driver) nodeGetIntEnv(envKey string) int64 {
+	// Read max_volume_per_node from env
+	envVal := os.Getenv(envKey)
+	// Check if env variable is set by user
+	if envVal == "" {
+		return 0
+	}
+	val, err := strconv.ParseInt(envVal, 10, 64)
+	if err != nil {
+		log.Warnf("Failed to read cluster node %s setting. Error: %s", envKey, err.Error())
+		return 0
+
+	}
+	return val
 }
 
 // nolint: gocyclo
