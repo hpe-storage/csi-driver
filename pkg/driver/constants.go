@@ -83,4 +83,8 @@ const (
 	nfsResourcesKey = "nfsResources"
 	// indicates if this is an underlying NFS PVC(not exposed to user)
 	nfsPVCKey = "nfsPVC"
+
+	// Maximum default number of volumes that controller can publish to the node.
+	defaultMaxVolPerNode = 100
+	maxVolumesPerNodeKey = "MAX_VOLUMES_PER_NODE"
 )

@@ -35,10 +35,6 @@ var (
 	ephemeralUnpublishLock sync.Mutex
 )
 
-// Maximum default number of volumes that controller can publish to the node.
-const defaultMaxVolPerNode = 100
-const maxVolumePerNodeKey = "MAX_VOLUMES_PER_NODE"
-
 // Helper utility to construct default mountpoint path
 func getDefaultMountPoint(id string) string {
 	return fmt.Sprintf("%s/%s", defaultMountDir, id)
@@ -1614,13 +1610,13 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	// Get max volume per node from environment variable
-	nodeMaxVolumesLimit := driver.nodeGetIntEnv(maxVolumePerNodeKey)
+	nodeMaxVolumesLimit := driver.nodeGetIntEnv(maxVolumesPerNodeKey)
 
 	// Maximum number of volumes that controller can publish to the node.
-  	// If value is not set or zero CO SHALL decide how many volumes of
-  	// this type can be published by the controller to the node. The
-  	// plugin MUST NOT set negative values here.
- 	// This field is OPTIONAL.
+	// If value is not set or zero CO SHALL decide how many volumes of
+	// this type can be published by the controller to the node. The
+	// plugin MUST NOT set negative values here.
+	// This field is OPTIONAL.
 	if nodeMaxVolumesLimit <= 0 {
 		nodeMaxVolumesLimit = defaultMaxVolPerNode
 	}
@@ -1643,7 +1639,6 @@ func (driver *Driver) nodeGetIntEnv(envKey string) int64 {
 	if err != nil {
 		log.Warnf("Failed to read cluster node %s setting. Error: %s", envKey, err.Error())
 		return 0
-
 	}
 	return val
 }
