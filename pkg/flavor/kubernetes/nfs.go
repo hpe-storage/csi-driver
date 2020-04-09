@@ -23,7 +23,7 @@ import (
 const (
 	nfsPrefix    = "hpe-nfs-"
 	nfsNamespace = "hpe-nfs"
-	nfsImage     = "nimblestorage/nfs-ganesha:2.5.0"
+	nfsImage     = "hpestorage/nfs-provisioner:2.8.3-4"
 
 	deletionInterval           = 30 // 60s with sleep interval of 2s
 	deletionDelay              = 2 * time.Second
