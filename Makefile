@@ -3,7 +3,7 @@ ifndef REPO_NAME
 	REPO_NAME ?= hpestorage/csi-driver
 endif
 
-TAG = v1.1.0
+TAG = edge
 
 # unless a BUILD_NUMBER is specified
 ifeq ($(IGNORE_BUILD_NUMBER),true)
