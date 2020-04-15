@@ -52,7 +52,7 @@ These parameters are applicable only for Pod inline volumes and to be specified 
 **Note:** The `NodePublishSecretRef` and (`inline-volume-secret-name`, `inline-volume-secret-namespace`) are mutually exclusive. One of them must be specified for ephemeral inline volume.
 
 ### Cloning parameters
-Cloning supports two modes of cloning. Either use `cloneOf` and reference a PVC in the current namespace or use `importVolAsClone` and reference a Nimble volume name to clone and import to Kubernetes.
+Cloning supports two modes of cloning. Either use `cloneOf` and reference a PV of an existing PVC or use `importVolAsClone` and reference a Nimble volume name to clone and import to Kubernetes.
 
 | Parameter | String | Description |
 | --------- | ------ | ----------- |

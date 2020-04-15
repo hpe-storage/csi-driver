@@ -411,43 +411,11 @@ func (flavor *Flavor) getClaimOverrideOptions(claim *v1.PersistentVolumeClaim, o
 		}
 	}
 
-	// check to see if there is cloneOfPVC annotation present
-	volumeName, err := flavor.getPVFromPVCAnnotation(claim, provisioner)
-	if err != nil {
-		return nil, err
-	}
-
-	// update the options map with the pv name if there is one
-	if volumeName != "" {
-		optionsMap[cloneOf] = volumeName
-	}
-
 	// make sure cloneOfPVC is removed from the options (all cases)
 	if _, found := optionsMap[cloneOfPVC]; found {
 		delete(optionsMap, cloneOfPVC)
 	}
 	return optionsMap, nil
-}
-
-func (flavor *Flavor) getPVFromPVCAnnotation(claim *v1.PersistentVolumeClaim, provisioner string) (string, error) {
-	log.Tracef(">>>>> getPVFromPVCAnnotation for %s", provisioner)
-	defer log.Trace("<<<<< getPVFromPVCAnnotation")
-
-	// check to see if we have the cloneOfPVC annotation
-	pvcToClone, foundClonePVC := claim.Annotations[fmt.Sprintf("%s%s", provisioner, cloneOfPVC)]
-	if !foundClonePVC {
-		return "", nil
-	}
-
-	pvName, err := flavor.getVolumeNameFromClaimName(pvcToClone)
-	log.Infof("pvc %s maps to pv %s", pvcToClone, pvName)
-	if err != nil {
-		return "", fmt.Errorf("unable to retrieve pvc %s : %s", pvcToClone, err.Error())
-	}
-	if pvName == "" {
-		return "", fmt.Errorf("unable to retrieve pvc %s : not found", pvcToClone)
-	}
-	return pvName, nil
 }
 
 // MetaUIDFunc is an IndexFunc used to cache PVCs by their UID
