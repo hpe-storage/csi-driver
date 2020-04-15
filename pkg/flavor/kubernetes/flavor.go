@@ -32,7 +32,6 @@ import (
 const (
 	allowOverrides = "allowOverrides"
 	cloneOf        = "cloneOf"
-	cloneOfPVC     = "cloneOfPVC"
 )
 
 var (
@@ -411,10 +410,6 @@ func (flavor *Flavor) getClaimOverrideOptions(claim *v1.PersistentVolumeClaim, o
 		}
 	}
 
-	// make sure cloneOfPVC is removed from the options (all cases)
-	if _, found := optionsMap[cloneOfPVC]; found {
-		delete(optionsMap, cloneOfPVC)
-	}
 	return optionsMap, nil
 }
 
