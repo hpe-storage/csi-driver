@@ -491,11 +491,12 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec) *apps_v1.
 			Annotations: map[string]string{"tags": name},
 		},
 		Spec: core_v1.PodSpec{
-			Containers:    []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)},
-			RestartPolicy: core_v1.RestartPolicyAlways,
-			Volumes:       volumes,
-			HostIPC:       false,
-			HostNetwork:   false,
+			Containers:        []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)},
+			RestartPolicy:     core_v1.RestartPolicyAlways,
+			Volumes:           volumes,
+			HostIPC:           false,
+			HostNetwork:       false,
+			PriorityClassName: "system-cluster-critical",
 		},
 	}
 
@@ -520,6 +521,14 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec) *apps_v1.
 	return d
 }
 
+func getEnv(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if len(value) == 0 {
+		return defaultValue
+	}
+	return value
+}
+
 // nolint
 func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Container {
 	log.Tracef(">>>>> makeContainer with name %s, volume %s", name, nfsSpec.volumeClaim)
@@ -539,11 +548,7 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 		Env: []core_v1.EnvVar{
 			{
 				Name:  "GANESHA_OPTIONS",
-				Value: "-N NIV_DEBUG",
-			},
-			{
-				Name:  "GANESHA_CONFIGFILE",
-				Value: "/etc/ganesha.conf",
+				Value: getEnv("GANESHA_OPTIONS", "-N NIV_CRIT"),
 			},
 		},
 		Ports: []core_v1.ContainerPort{
