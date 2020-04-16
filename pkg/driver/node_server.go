@@ -1609,6 +1609,7 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
 	// Get max volume per node from environment variable
 	nodeMaxVolumesLimit := driver.nodeGetIntEnv(maxVolumesPerNodeKey)
 
@@ -1620,6 +1621,20 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	if nodeMaxVolumesLimit <= 0 {
 		nodeMaxVolumesLimit = defaultMaxVolPerNode
 	}
+
+	// Create a anonymous wrapper function over nodeGetInfo. This function is called
+	// periodically.
+	getNodeInfoFunc := func() {
+		nodeID, err = driver.nodeGetInfo()
+		if err != nil {
+			log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+		}
+		return
+	}
+	// Initialize polling with anonymous wrapper function.
+	poll := driver.InitTask(getNodeInfoFunc, PollingFrequencyInMin)
+	// Start polling in a separate thread.
+	go poll.Start()
 
 	return &csi.NodeGetInfoResponse{
 		NodeId:            nodeID,
