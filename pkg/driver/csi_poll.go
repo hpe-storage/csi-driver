@@ -34,7 +34,7 @@ func (driver *Driver) InitTask(job func(), delay time.Duration) *DriverTask {
 	// Initialization
 	task := &DriverTask{
 		taskStop:    make(chan struct{}),
-		taskTick:    time.NewTicker(time.Microsecond * delay),
+		taskTick:    time.NewTicker(time.Minute * delay),
 		taskExecute: job,
 	}
 	task.wg.Add(1)
@@ -76,7 +76,7 @@ func (t *DriverTask) Start() {
 			t.wg.Done()
 			return
 		case <-t.taskTick.C:
-			log.Infof("Start %s task, pid %d.", t.taskExecute, pid)
+			log.Infof("Start task, pid %d.", pid)
 			t.taskExecute()
 			log.Infof("Completed %d pid task", pid)
 		}
