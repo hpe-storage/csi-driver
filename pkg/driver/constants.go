@@ -88,5 +88,5 @@ const (
 	defaultMaxVolPerNode = 100
 	maxVolumesPerNodeKey = "MAX_VOLUMES_PER_NODE"
 	// GetNodeInfo polling frequency
-	PollingFrequencyInMin = 1
+	PollingFrequencyInMin = 30
 )
