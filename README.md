@@ -1,7 +1,12 @@
 # HPE CSI Driver for Kubernetes
 A Container Storage Interface ([CSI](https://github.com/container-storage-interface/spec)) Driver for Kubernetes. The HPE CSI Driver for Kubernetes allows you to use a [Container Storage Provider](https://github.com/hpe-storage/container-storage-provider) to perform data management operations on storage resources.
 
-## Kubernetes Compatibility
+## Deploying and using the CSI driver on Kubernetes
+All documentation for installing and using the HPE CSI Driver for Kubernetes is available on the [HPE Storage Container Orchestrator Documentation](https://scod.hpedev.io/csi_driver) (SCOD) portal.
+
+## Kubernetes compatibility
+
+The CSI driver is designed to be used with Kubernetes. It has not been tested with any other container orchestrator (CO).
 
 <table>
   <thead>
@@ -39,19 +44,16 @@ A Container Storage Interface ([CSI](https://github.com/container-storage-interf
 
 **Note:** Support matrix for each release can be found on SCOD: [compatability and support](https://scod.hpedev.io/csi_driver/index.html#compatibility_and_support)
 
-## Deploying and using the CSI driver on Kubernetes
-All documentation for installing and using the HPE CSI Driver for Kubernetes is available on the [HPE Storage Container Orchestrator Documentation](https://scod.hpedev.io/csi_driver) (SCOD) portal.
-
 ## Building the HPE CSI Driver
 
 Instructions on how to build the HPE CSI Driver can be found in [BUILDING.md](BUILDING.md)
 
-## CSI examples
+## CSI test objects
 Example Kubernetes object definitions used to build test cases for the CSI driver is a available in [examples](examples).
 
 ## Support
 
-The HPE CSI Driver 1.0 is fully supported and is Generally Available. Other features like volume expansion, raw block volumes, CSI snapshots are considered beta (Do not use these features for production and do not contact HPE for support). Refer to the [official table](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) of feature gates in the Kubernetes docs to find availability of beta features. Please file any issues, questions or feature requests [here](https://github.com/hpe-storage/csi-driver/issues). You may also join our Slack community to chat with HPE folks close to this project. We hang out in `#NimbleStorage` and `#Kubernetes` at [slack.hpedev.io](https://slack.hpedev.io/).
+The HPE CSI Driver 1.0 is fully supported and is Generally Available. Other features like volume expansion, raw block volumes, CSI snapshots are considered beta (Do not use these features for production and do not contact HPE for support). Refer to the [official table](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/) of feature gates in the Kubernetes docs to find availability of beta features. Please file any issues, questions or feature requests [here](https://github.com/hpe-storage/csi-driver/issues). You may also join our Slack community to chat with HPE folks close to this project. We hang out in `#NimbleStorage`, `#3par-primera` and `#Kubernetes`. Sign up at [slack.hpedev.io](https://slack.hpedev.io/) and login at [hpedev.slack.com](https://hpedev.slack.com/)
 
 ## Contributing
 
