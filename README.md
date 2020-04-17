@@ -1,8 +1,8 @@
 # HPE CSI Driver for Kubernetes
-A Container Storage Interface ([CSI](https://github.com/container-storage-interface/spec)) Driver for Kubernetes. The HPE CSI Driver for Kubernetes allows you to use a [Container Storage Provider](https://github.com/hpe-storage/container-storage-provider) to perform data management operations on storage resources.
+A Container Storage Interface ([CSI](https://github.com/container-storage-interface/spec)) Driver for Kubernetes. The HPE CSI Driver for Kubernetes allows you to use a [Container Storage Provider](https://github.com/hpe-storage/container-storage-provider) to perform data management operations on storage resource.
 
 ## Deploying and using the CSI driver on Kubernetes
-All documentation for installing and using the HPE CSI Driver for Kubernetes is available on the [HPE Storage Container Orchestrator Documentation](https://scod.hpedev.io/csi_driver) (SCOD) portal.
+All documentation for installing and using the HPE CSI Driver for Kubernetes with a HPE storage backend is available on the [HPE Storage Container Orchestrator Documentation](https://scod.hpedev.io/csi_driver) (SCOD) portal. It's also available through a [Helm chart](https://hub.helm.sh/charts/hpe-storage/hpe-csi-driver) and [Operator](https://operatorhub.io/operator/hpe-csi-driver-operator).
 
 ## Kubernetes compatibility
 
