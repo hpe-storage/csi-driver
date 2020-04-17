@@ -46,14 +46,13 @@ func (driver *Driver) InitTask(job func(), delay time.Duration) *DriverTask {
 		syscall.SIGABRT,
 		syscall.SIGTERM,
 		syscall.SIGHUP,
-		syscall.SIGTERM,
 		syscall.SIGKILL,
 	)
 	// Create a thread to monitor the os signals.
 	go func() {
 		select {
 		case sig := <-sigc:
-			log.Info("Received %s os signal. Exiting...\n", sig)
+			log.Infof("Received %s os signal. Exiting...\n", sig)
 			// Call stop() for gracefull exit of poll routine.
 			task.stop()
 			task.wg.Wait()
