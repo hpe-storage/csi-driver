@@ -71,13 +71,13 @@ func (t *CSIWatch) AddWatchList(files []string) error {
 	log.Trace(">>>>> AddWatchList")
 	defer log.Trace("<<<<< AddWatchList")
 	if len(files) == 0 {
-		return fmt.Errorf("Error empty watch list, there should be at least one file to watch")
+		return fmt.Errorf("Empty watch list is not supported, there should be at least one file to watch")
 	}
 	for _, fPath := range files {
 
 		err := t.watchList.Add(fPath)
 		if err != nil {
-			log.Warnf("Failed add [%s] file to watch list, err :", fPath, err.Error())
+			log.Warnf("Failed to add [%s] file to watch list, err :", fPath, err.Error())
 		} else {
 			log.Tracef("Successfully added [%s] file to watch list", fPath)
 		}
