@@ -34,6 +34,7 @@ var (
 	ephemeralPublishLock   sync.Mutex
 	ephemeralUnpublishLock sync.Mutex
 )
+var isWatcherEnable bool = false
 
 // Helper utility to construct default mountpoint path
 func getDefaultMountPoint(id string) string {
@@ -1622,20 +1623,28 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		nodeMaxVolumesLimit = defaultMaxVolPerNode
 	}
 
-	// Create a anonymous wrapper function over nodeGetInfo. This function is called
-	// periodically.
-	getNodeInfoFunc := func() {
-		nodeID, err = driver.nodeGetInfo()
-		if err != nil {
-			log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+	// Enable watcher only once. GetNodeInfo rpc may be called multiple times by external
+	// provisioner.
+	if !isWatcherEnable {
+		// Create a anonymous wrapper function over nodeGetInfo. This is os event driven
+		// fn execution.
+		getNodeInfoFunc := func() {
+			nodeID, err := driver.nodeGetInfo()
+			if err != nil {
+				log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+			}
+			return
 		}
-		return
+		// Register anonymous wrapper function(watcher).
+		csiWatch, _ := driver.InitializeWatcher(getNodeInfoFunc)
+		// Add list of files /and directories to watch. The list contains
+		// iSCSI , FC and CHAP Info and Networking config directories
+		list := []string{"/etc/sysconfig/network-scripts/", "/etc/sysconfig/network/", "/etc/iscsi/", "/root/vidhut/test", "/sys/class/fc_host/"}
+		csiWatch.AddWatchList(list)
+		// Start event the watcher in a separate thread.
+		go csiWatch.StartWatcher()
+		isWatcherEnable = true
 	}
-	// Initialize polling with anonymous wrapper function.
-	poll := driver.InitTask(getNodeInfoFunc, PollingFrequencyInMin)
-	// Start polling in a separate thread.
-	go poll.Start()
-
 	return &csi.NodeGetInfoResponse{
 		NodeId:            nodeID,
 		MaxVolumesPerNode: nodeMaxVolumesLimit,
