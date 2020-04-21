@@ -31,7 +31,6 @@ import (
 
 const (
 	allowOverrides = "allowOverrides"
-	cloneOf        = "cloneOf"
 )
 
 var (
