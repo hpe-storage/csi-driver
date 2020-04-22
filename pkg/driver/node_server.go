@@ -34,7 +34,7 @@ var (
 	ephemeralPublishLock   sync.Mutex
 	ephemeralUnpublishLock sync.Mutex
 )
-var isWatcherEnable bool = false
+var isWatcherEnabled bool = false
 
 // Helper utility to construct default mountpoint path
 func getDefaultMountPoint(id string) string {
@@ -1625,7 +1625,7 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 
 	// Enable watcher only once. GetNodeInfo rpc may be called multiple times by external
 	// provisioner.
-	if !isWatcherEnable {
+	if !isWatcherEnabled {
 		// Create a anonymous wrapper function over nodeGetInfo. This is os event driven
 		// fn execution.
 		getNodeInfoFunc := func() {
@@ -1636,14 +1636,16 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 			return
 		}
 		// Register anonymous wrapper function(watcher).
-		csiWatch, _ := driver.InitializeWatcher(getNodeInfoFunc)
+		watcher, _ := util.InitializeWatcher(getNodeInfoFunc)
 		// Add list of files /and directories to watch. The list contains
 		// iSCSI , FC and CHAP Info and Networking config directories
-		list := []string{"/etc/sysconfig/network-scripts/", "/etc/sysconfig/network/", "/etc/iscsi/", "/sys/class/fc_host/"}
-		csiWatch.AddWatchList(list)
+		list := []string{"/etc/sysconfig/network-scripts/",
+			"/etc/sysconfig/network/", "/etc/iscsi/initiatorName", "/etc/network",
+		}
+		watcher.AddWatchList(list)
 		// Start event the watcher in a separate thread.
-		go csiWatch.StartWatcher()
-		isWatcherEnable = true
+		go watcher.StartWatcher()
+		isWatcherEnabled = true
 	}
 	return &csi.NodeGetInfoResponse{
 		NodeId:            nodeID,
