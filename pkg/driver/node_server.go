@@ -1639,10 +1639,7 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		watcher, _ := util.InitializeWatcher(getNodeInfoFunc)
 		// Add list of files /and directories to watch. The list contains
 		// iSCSI , FC and CHAP Info and Networking config directories
-		list := []string{"/etc/sysconfig/network-scripts/",
-			"/etc/sysconfig/network/", "/etc/iscsi/initiatorname.iscsi", "/etc/networks",
-			"/etc/iscsi/iscsid.conf"
-		}
+		list := []string{"/etc/sysconfig/network-scripts/","/etc/sysconfig/network/", "/etc/iscsi/initiatorname.iscsi", "/etc/networks","/etc/iscsi/iscsid.conf"}
 		watcher.AddWatchList(list)
 		// Start event the watcher in a separate thread.
 		go watcher.StartWatcher()
