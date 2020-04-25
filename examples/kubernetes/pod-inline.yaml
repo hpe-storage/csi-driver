@@ -16,7 +16,7 @@ spec:
       csi:
        driver: csi.hpe.com
        nodePublishSecretRef:
-         name: nimble-secret
+         name: hpe-secret
        fsType: ext3
        volumeAttributes:
          csi.storage.k8s.io/ephemeral: "true"
