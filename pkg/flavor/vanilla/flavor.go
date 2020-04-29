@@ -53,7 +53,7 @@ func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (m
 	return nil, nil
 }
 
-func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string) (nfsVolume *csi.Volume, rollback bool, err error) {
+func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
 	return nil, false, fmt.Errorf("NFS provisioned volume is not supported for non-k8s environments")
 }
 

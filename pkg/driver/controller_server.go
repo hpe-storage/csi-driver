@@ -309,7 +309,7 @@ func (driver *Driver) createVolume(
 			return nil, status.Error(codes.InvalidArgument, "NFS volume provisioning is not supported with block access type")
 		}
 
-		volume, rollback, err := driver.flavor.CreateNFSVolume(name, size, createParameters)
+		volume, rollback, err := driver.flavor.CreateNFSVolume(name, size, createParameters, volumeContentSource)
 		if err == nil {
 			// Return multi-node volume
 			return volume, nil
@@ -591,7 +591,7 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	// Check if this is a multi-node volume
 	if driver.flavor.IsNFSVolume(volumeID) {
 		// volumeId represents nfs claim uid for multinode volume
-		err := driver.flavor.DeleteNFSVolume(fmt.Sprintf("pvc-%s", volumeID))
+		err := driver.flavor.DeleteNFSVolume(volumeID)
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
@@ -760,6 +760,7 @@ func (driver *Driver) controllerPublishVolume(
 		return map[string]string{
 			volumeAccessModeKey: volAccessType.String(),
 			readOnlyKey:         strconv.FormatBool(readOnlyAccessMode),
+			nfsMountOptionsKey:  volumeContext[nfsMountOptionsKey],
 		}, nil
 	}
 
