@@ -1,0 +1,10 @@
+apiVersion: snapshot.storage.k8s.io/v1beta1
+kind: VolumeSnapshotClass
+metadata:
+  name: my-snapclass-1
+driver: csi.hpe.com
+deletionPolicy: Delete
+parameters:
+  description: "Snapshot create by the HPE CSI Driver"
+  csi.storage.k8s.io/snapshotter-secret-name: primera3par-secret
+  csi.storage.k8s.io/snapshotter-secret-namespace: kube-system
