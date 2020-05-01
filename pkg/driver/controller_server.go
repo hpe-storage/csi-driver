@@ -1153,6 +1153,17 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 		return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 	}
 
+	// check if volume-id is fake(for nfs) and obtain real backing volume-id
+	nfsVolumeID, err := driver.flavor.GetNFSVolumeID(request.SourceVolumeId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to check if volume-id %s is of nfs type, %s", request.SourceVolumeId, err.Error()))
+	}
+
+	if nfsVolumeID != "" {
+		// replace requested volume-id(NFS) with real volume-id(RWO PV)
+		request.SourceVolumeId = nfsVolumeID
+	}
+
 	// Check if the source volume exists using Secrets
 	_, err = driver.GetVolumeByID(request.SourceVolumeId, request.Secrets)
 	if err != nil {

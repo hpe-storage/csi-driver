@@ -37,9 +37,10 @@ const (
 	nfsMountOptionsKey         = "nfsMountOptions"
 	nfsNodeSelectorKey         = "csi.hpe.com/hpe-nfs"
 	nfsNodeSelectorValue       = "true"
-	nfsVolumeHandleLabelKey    = "nfs-volume-handle"
+	nfsParentVolumeIDKey       = "nfs-parent-volume-id"
 	nfsNamespaceKey            = "nfsNamespace"
 	nfsProvisionerImageKey     = "nfsProvisionerImage"
+	pvcKind                    = "PersistentVolumeClaim"
 )
 
 // NFSSpec for creating NFS resources
@@ -132,12 +133,12 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 
 	// decorate NFS PV with its volume handle as label for easy lookup during RWX PV deletion
 	pv.ObjectMeta.Labels = make(map[string]string)
-	pv.ObjectMeta.Labels[nfsVolumeHandleLabelKey] = pv.Spec.PersistentVolumeSource.CSI.VolumeHandle
+	pv.ObjectMeta.Labels[nfsParentVolumeIDKey] = fmt.Sprintf("%s", claim.ObjectMeta.UID)
 	flavor.kubeClient.CoreV1().PersistentVolumes().Update(pv)
 
-	// Return newly created underlying nfs pv handle with pv attributes
+	// Return newly created underlying nfs claim uid with pv attributes
 	return &csi.Volume{
-		VolumeId:      pv.Spec.PersistentVolumeSource.CSI.VolumeHandle,
+		VolumeId:      fmt.Sprintf("%s", claim.ObjectMeta.UID),
 		CapacityBytes: reqVolSize,
 		VolumeContext: volumeContext,
 		ContentSource: volumeContentSource,
@@ -182,8 +183,8 @@ func (flavor *Flavor) DeleteNFSVolume(volumeID string) error {
 }
 
 func (flavor *Flavor) getNFSResourceNameByVolumeID(volumeID string) (string, error) {
-	// get NFS PV by volume-id
-	pv, err := flavor.getPvByNFSLabel(nfsVolumeHandleLabelKey, volumeID)
+	// get underlying by NFS(RWX) PV volume-id
+	pv, err := flavor.getPVByNFSLabel(nfsParentVolumeIDKey, volumeID)
 	if err != nil {
 		return "", fmt.Errorf("unable to obtain nfs resource name from volume-id %s, err %s", volumeID, err.Error())
 	}
@@ -195,10 +196,10 @@ func (flavor *Flavor) getNFSResourceNameByVolumeID(volumeID string) (string, err
 }
 
 func (flavor *Flavor) getNFSNamespaceByVolumeID(volumeID string) (string, error) {
-	// get NFS PV by volume-id
-	pv, err := flavor.getPvByNFSLabel(nfsVolumeHandleLabelKey, volumeID)
+	// get underlying by NFS(RWX) PV volume-id
+	pv, err := flavor.getPVByNFSLabel(nfsParentVolumeIDKey, volumeID)
 	if err != nil {
-		return "", fmt.Errorf("unable to obtain nfs resource name from volume-id %s, err %s", volumeID, err.Error())
+		return "", fmt.Errorf("unable to obtain nfs namespace from volume-id %s, err %s", volumeID, err.Error())
 	}
 	if pv == nil {
 		return "", nil
@@ -275,8 +276,8 @@ func (flavor *Flavor) HandleNFSNodePublish(req *csi.NodePublishVolumeRequest) (*
 
 // IsNFSVolume returns true if given volumeID belongs to nfs access volume
 func (flavor *Flavor) IsNFSVolume(volumeID string) bool {
-	// nfs pv, will have volume-id embedded in pv name
-	pv, err := flavor.getPvByNFSLabel(nfsVolumeHandleLabelKey, volumeID)
+	// NFS(RWX) pv, will have its volume-id added in underlying PV label
+	pv, err := flavor.getPVByNFSLabel(nfsParentVolumeIDKey, volumeID)
 	if err != nil {
 		log.Tracef("unable to obtain pv based on volume-id %s, err %s", volumeID, err.Error())
 		return false
@@ -285,6 +286,23 @@ func (flavor *Flavor) IsNFSVolume(volumeID string) bool {
 		return false
 	}
 	return true
+}
+
+// GetNFSVolumeID returns underlying volume-id of RWO PV based on RWX PV volume-id, if one exists
+func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
+	log.Tracef(">>>>> GetNFSVolumeID with %s", volumeID)
+	defer log.Tracef("<<<<< GetNFSVolumeID")
+
+	// NFS(RWX) pv, will have its volume-id added in underlying PV label
+	pv, err := flavor.getPVByNFSLabel(nfsParentVolumeIDKey, volumeID)
+	if err != nil {
+		log.Tracef("unable to obtain pv based on volume-id %s, err %s", volumeID, err.Error())
+		return "", err
+	}
+	if pv == nil {
+		return "", nil
+	}
+	return pv.Spec.PersistentVolumeSource.CSI.VolumeHandle, nil
 }
 
 func (flavor *Flavor) GetNFSSpec(scParams map[string]string) (*NFSSpec, error) {
@@ -341,9 +359,9 @@ func (flavor *Flavor) GetNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	return &nfsSpec, nil
 }
 
-func (flavor *Flavor) getPvByNFSLabel(name string, value string) (*core_v1.PersistentVolume, error) {
-	log.Tracef(">>>>> getPvByNFSLabel with key %s value %s", name, value)
-	defer log.Tracef("<<<<< getPvByNFSLabel")
+func (flavor *Flavor) getPVByNFSLabel(name string, value string) (*core_v1.PersistentVolume, error) {
+	log.Tracef(">>>>> getPVByNFSLabel with key %s value %s", name, value)
+	defer log.Tracef("<<<<< getPVByNFSLabel")
 
 	labelSelector := meta_v1.LabelSelector{MatchLabels: map[string]string{name: value}}
 	listOptions := meta_v1.ListOptions{
@@ -390,6 +408,21 @@ func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim, nfsNamesp
 	claimClone.Spec.AccessModes = []core_v1.PersistentVolumeAccessMode{core_v1.ReadWriteOnce}
 	// add annotation indicating this is an underlying nfs volume
 	claimClone.ObjectMeta.Annotations["csi.hpe.com/nfsPVC"] = "true"
+
+	// if clone is requested from existing pvc, ensure child-claim(i.e RWO type) is used instead
+	if claim.Spec.DataSource != nil && claim.Spec.DataSource.Kind == pvcKind {
+		// fetch source claim
+		sourceClaim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(nfsNamespace).Get(claim.Spec.DataSource.Name, meta_v1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("cannot fetch source claim %s for requested clone, err %s", claim.Spec.DataSource.Name, err.Error())
+		}
+		// check if a PVC exists with name hpe-nfs-<original-claim-uid> and replace that as data-source.
+		childClaim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(nfsNamespace).Get(fmt.Sprintf("%s%s", nfsPrefix, sourceClaim.ObjectMeta.UID), meta_v1.GetOptions{})
+		if childClaim != nil {
+			log.Tracef("replacing datasource from %s to %s for nfs claim %s creation", claim.Spec.DataSource.Name, childClaim.ObjectMeta.Name, claim.ObjectMeta.Name)
+			claimClone.Spec.DataSource.Name = childClaim.ObjectMeta.Name
+		}
+	}
 	return claimClone, nil
 }
 

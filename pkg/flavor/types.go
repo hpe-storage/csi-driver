@@ -30,4 +30,5 @@ type Flavor interface {
 	HandleNFSNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
 	IsNFSVolume(volumeID string) bool
 	GetVolumePropertyOfPV(propertyName string, pvName string) (string, error)
+	GetNFSVolumeID(volumeID string) (string, error)
 }

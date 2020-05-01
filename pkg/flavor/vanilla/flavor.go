@@ -71,3 +71,7 @@ func (flavor *Flavor) IsNFSVolume(volumeID string) bool {
 func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) (string, error) {
 	return "", nil
 }
+
+func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
+	return "", nil
+}
