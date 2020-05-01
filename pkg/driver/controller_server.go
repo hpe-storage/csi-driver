@@ -351,17 +351,17 @@ func (driver *Driver) createVolume(
 
 	// Build the volume context to be returned to the CO in the create response
 	// This same context will be used by the CO during Publish and Stage workflows
-	respVolContext := map[string]string{}
+	respVolContext := make(map[string]string)
 	if createParameters != nil {
 		// Copy the request parameters into resp context
 		respVolContext = createParameters
-		// Block or Mount type
-		respVolContext[volumeAccessModeKey] = volAccessType.String()
-		// For block access, the filesystem will be empty.
-		if filesystem != "" {
-			log.Trace("Adding filesystem to the volume context, Filesystem: ", filesystem)
-			respVolContext[fsTypeKey] = filesystem
-		}
+	}
+	// Block or Mount type
+	respVolContext[volumeAccessModeKey] = volAccessType.String()
+	// For block access, the filesystem will be empty.
+	if filesystem != "" {
+		log.Trace("Adding filesystem to the volume context, Filesystem: ", filesystem)
+		respVolContext[fsTypeKey] = filesystem
 	}
 	log.Trace("Volume context in response to CO: ", respVolContext)
 
