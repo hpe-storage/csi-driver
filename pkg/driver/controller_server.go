@@ -309,7 +309,7 @@ func (driver *Driver) createVolume(
 			return nil, status.Error(codes.InvalidArgument, "NFS volume provisioning is not supported with block access type")
 		}
 
-		volume, rollback, err := driver.flavor.CreateNFSVolume(name, size, createParameters)
+		volume, rollback, err := driver.flavor.CreateNFSVolume(name, size, createParameters, volumeContentSource)
 		if err == nil {
 			// Return multi-node volume
 			return volume, nil
@@ -591,7 +591,7 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	// Check if this is a multi-node volume
 	if driver.flavor.IsNFSVolume(volumeID) {
 		// volumeId represents nfs claim uid for multinode volume
-		err := driver.flavor.DeleteNFSVolume(fmt.Sprintf("pvc-%s", volumeID))
+		err := driver.flavor.DeleteNFSVolume(volumeID)
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
@@ -760,6 +760,7 @@ func (driver *Driver) controllerPublishVolume(
 		return map[string]string{
 			volumeAccessModeKey: volAccessType.String(),
 			readOnlyKey:         strconv.FormatBool(readOnlyAccessMode),
+			nfsMountOptionsKey:  volumeContext[nfsMountOptionsKey],
 		}, nil
 	}
 
@@ -1150,6 +1151,17 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
+	}
+
+	// check if volume-id is fake(for nfs) and obtain real backing volume-id
+	nfsVolumeID, err := driver.flavor.GetNFSVolumeID(request.SourceVolumeId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to check if volume-id %s is of nfs type, %s", request.SourceVolumeId, err.Error()))
+	}
+
+	if nfsVolumeID != "" {
+		// replace requested volume-id(NFS) with real volume-id(RWO PV)
+		request.SourceVolumeId = nfsVolumeID
 	}
 
 	// Check if the source volume exists using Secrets

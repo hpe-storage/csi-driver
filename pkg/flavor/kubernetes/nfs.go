@@ -18,12 +18,13 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 const (
-	nfsPrefix    = "hpe-nfs-"
-	nfsNamespace = "hpe-nfs"
-	nfsImage     = "hpestorage/nfs-provisioner:2.8.3-4"
+	nfsPrefix           = "hpe-nfs-"
+	defaultNFSNamespace = "hpe-nfs"
+	defaultNFSImage     = "hpestorage/nfs-provisioner:2.8.3-4"
 
 	deletionInterval           = 30 // 60s with sleep interval of 2s
 	deletionDelay              = 2 * time.Second
@@ -32,8 +33,14 @@ const (
 	defaultExportPath          = "/export"
 	nfsResourceLimitsCPUKey    = "nfsResourceLimitsCpuM"
 	nfsResourceLimitsMemoryKey = "nfsResourceLimitsMemoryMi"
+	nfsPodPriorityCriticalKey  = "nfsPodPriorityCritical"
+	nfsMountOptionsKey         = "nfsMountOptions"
 	nfsNodeSelectorKey         = "csi.hpe.com/hpe-nfs"
 	nfsNodeSelectorValue       = "true"
+	nfsParentVolumeIDKey       = "nfs-parent-volume-id"
+	nfsNamespaceKey            = "nfsNamespace"
+	nfsProvisionerImageKey     = "nfsProvisionerImage"
+	pvcKind                    = "PersistentVolumeClaim"
 )
 
 // NFSSpec for creating NFS resources
@@ -41,17 +48,24 @@ type NFSSpec struct {
 	volumeClaim          string
 	resourceRequirements *core_v1.ResourceRequirements
 	nodeSelector         map[string]string
+	podPriorityCritical  bool
+	image                string
 }
 
 // CreateNFSVolume creates nfs volume abstracting underlying nfs pvc, deployment and service
-func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string) (nfsVolume *csi.Volume, rollback bool, err error) {
+func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
 	log.Tracef(">>>>> CreateNFSVolume with %s", pvName)
 	defer log.Tracef("<<<<< CreateNFSVolume")
 
+	nfsResourceNamespace := defaultNFSNamespace
+
+	if namespace, ok := parameters[nfsNamespaceKey]; ok {
+		nfsResourceNamespace = namespace
+	}
 	// create namespace if not already present
-	_, err = flavor.GetNFSNamespace(nfsNamespace)
+	_, err = flavor.GetNFSNamespace(nfsResourceNamespace)
 	if err != nil {
-		_, err = flavor.CreateNFSNamespace(nfsNamespace)
+		_, err = flavor.CreateNFSNamespace(nfsResourceNamespace)
 		if err != nil {
 			return nil, false, err
 		}
@@ -70,13 +84,13 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	}
 
 	// clone pvc and modify to RWO mode
-	claimClone, err := flavor.cloneClaim(claim)
+	claimClone, err := flavor.cloneClaim(claim, nfsResourceNamespace)
 	if err != nil {
 		return nil, false, err
 	}
 
 	// create pvc
-	newClaim, err := flavor.CreateNFSPVC(claimClone)
+	newClaim, err := flavor.CreateNFSPVC(claimClone, nfsResourceNamespace)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
 		return nil, true, err
@@ -87,7 +101,7 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 
 	// create deployment with name hpe-nfs-<originalclaim-uid>
 	deploymentName := fmt.Sprintf("%s%s", nfsPrefix, claim.ObjectMeta.UID)
-	err = flavor.CreateNFSDeployment(deploymentName, nfsSpec)
+	err = flavor.CreateNFSDeployment(deploymentName, nfsSpec, nfsResourceNamespace)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
 		return nil, true, err
@@ -95,7 +109,7 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 
 	// create service with name hpe-nfs-svc-<originalclaim-uid>
 	serviceName := fmt.Sprintf("%s%s", nfsPrefix, claim.ObjectMeta.UID)
-	err = flavor.CreateNFSService(serviceName)
+	err = flavor.CreateNFSService(serviceName, nfsResourceNamespace)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
 		return nil, true, err
@@ -117,35 +131,50 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 		}
 	}
 
+	// decorate NFS PV with its volume handle as label for easy lookup during RWX PV deletion
+	pv.ObjectMeta.Labels = make(map[string]string)
+	pv.ObjectMeta.Labels[nfsParentVolumeIDKey] = fmt.Sprintf("%s", claim.ObjectMeta.UID)
+	flavor.kubeClient.CoreV1().PersistentVolumes().Update(pv)
+
 	// Return newly created underlying nfs claim uid with pv attributes
 	return &csi.Volume{
 		VolumeId:      fmt.Sprintf("%s", claim.ObjectMeta.UID),
 		CapacityBytes: reqVolSize,
 		VolumeContext: volumeContext,
+		ContentSource: volumeContentSource,
 	}, false, nil
 }
 
 // DeleteNFSVolume deletes nfs volume which represents nfs pvc, deployment and service
-func (flavor *Flavor) DeleteNFSVolume(pvName string) error {
-	log.Tracef(">>>>> DeleteNFSVolume with %s", pvName)
+func (flavor *Flavor) DeleteNFSVolume(volumeID string) error {
+	log.Tracef(">>>>> DeleteNFSVolume with %s", volumeID)
 	defer log.Tracef("<<<<< DeleteNFSVolume")
 
+	resourceName, err := flavor.getNFSResourceNameByVolumeID(volumeID)
+	if err != nil {
+		return err
+	}
+
+	nfsNamespace, err := flavor.getNFSNamespaceByVolumeID(volumeID)
+	if err != nil {
+		return err
+	}
+
 	// delete deployment deployment/hpe-nfs-<originalclaim-uid>
-	resourceName := fmt.Sprintf("%s%s", nfsPrefix, strings.TrimPrefix(pvName, "pvc-"))
-	err := flavor.DeleteNFSDeployment(resourceName)
+	err = flavor.DeleteNFSDeployment(resourceName, nfsNamespace)
 	if err != nil {
 		log.Errorf("unable to delete nfs deployment %s as part of cleanup, err %s", resourceName, err.Error())
 	}
 
 	// delete nfs pvc pvc/hpe-nfs-<originalclaim-uuid>
 	// if deployment is still around, then pvc cannot be deleted due to protection, try to cleanup as best effort
-	err = flavor.DeleteNFSPVC(resourceName)
+	err = flavor.DeleteNFSPVC(resourceName, nfsNamespace)
 	if err != nil {
 		log.Errorf("unable to delete nfs pvc %s as part of cleanup, err %s", resourceName, err.Error())
 	}
 
 	// delete service service/hpe-nfs-<originalclaim-uid>
-	err = flavor.DeleteNFSService(resourceName)
+	err = flavor.DeleteNFSService(resourceName, nfsNamespace)
 	if err != nil {
 		log.Errorf("unable to delete nfs service %s as part of cleanup, err %s", resourceName, err.Error())
 	}
@@ -153,15 +182,58 @@ func (flavor *Flavor) DeleteNFSVolume(pvName string) error {
 	return err
 }
 
+func (flavor *Flavor) getNFSResourceNameByVolumeID(volumeID string) (string, error) {
+	// get underlying by NFS(RWX) PV volume-id
+	pv, err := flavor.getPVByNFSLabel(nfsParentVolumeIDKey, volumeID)
+	if err != nil {
+		return "", fmt.Errorf("unable to obtain nfs resource name from volume-id %s, err %s", volumeID, err.Error())
+	}
+	if pv == nil {
+		return "", nil
+	}
+	// get NFS claim name from pv of format hpe-nfs-<rwx-pvc-uid> as generic resource name
+	return pv.Spec.ClaimRef.Name, nil
+}
+
+func (flavor *Flavor) getNFSNamespaceByVolumeID(volumeID string) (string, error) {
+	// get underlying by NFS(RWX) PV volume-id
+	pv, err := flavor.getPVByNFSLabel(nfsParentVolumeIDKey, volumeID)
+	if err != nil {
+		return "", fmt.Errorf("unable to obtain nfs namespace from volume-id %s, err %s", volumeID, err.Error())
+	}
+	if pv == nil {
+		return "", nil
+	}
+	// return namespace of the corresponding claim for this pv
+	return pv.Spec.ClaimRef.Namespace, nil
+}
+
+// getMountOptionsFromVolCap returns the mount options from the VolumeCapability if any
+func getNFSMountOptions(volumeContext map[string]string) (mountOptions []string) {
+	if val, ok := volumeContext[nfsMountOptionsKey]; ok {
+		return strings.Split(val, ",")
+	}
+	return nil
+}
+
 func (flavor *Flavor) HandleNFSNodePublish(req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log.Tracef(">>>>> HandleNFSNodePublish with volume %s target path %s", req.VolumeId, req.TargetPath)
 	defer log.Tracef("<<<<< HandleNFSNodePublish")
 
+	var mountOptions []string
 	// get nfs claim for corresponding nfs pv
-	nfsResourceName := fmt.Sprintf("%s%s", nfsPrefix, req.VolumeId)
+	nfsResourceName, err := flavor.getNFSResourceNameByVolumeID(req.VolumeId)
+	if err != nil {
+		return nil, err
+	}
+
+	nfsNamespace, err := flavor.getNFSNamespaceByVolumeID(req.VolumeId)
+	if err != nil {
+		return nil, err
+	}
 
 	// get service with matching volume-id(i.e original claim-id)
-	service, err := flavor.GetNFSService(nfsResourceName)
+	service, err := flavor.GetNFSService(nfsResourceName, nfsNamespace)
 	if err != nil {
 		log.Errorf("unable to obtain service %s volume-id %s to publish volume", nfsResourceName, req.VolumeId)
 		return nil, err
@@ -172,15 +244,18 @@ func (flavor *Flavor) HandleNFSNodePublish(req *csi.NodePublishVolumeRequest) (*
 	source := fmt.Sprintf("%s:%s", clusterIP, defaultExportPath)
 	target := req.GetTargetPath()
 	log.Debugf("mounting nfs volume %s to %s", source, target)
-	opts := []string{
-		"nolock",
-		"intr",
-		fmt.Sprintf("addr=%s", clusterIP),
+	mountOptions = getNFSMountOptions(req.VolumeContext)
+	if len(mountOptions) == 0 {
+		// use default mount options, i.e (rw,relatime,vers=4.0,rsize=1048576,wsize=1048576,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,local_lock=none)
+		mountOptions = []string{
+			"nolock",
+		}
 	}
+	mountOptions = append(mountOptions, fmt.Sprintf("addr=%s", clusterIP))
 	if req.GetReadonly() {
-		opts = append(opts, "ro")
+		mountOptions = append(mountOptions, "ro")
 	}
-	options := strings.Join(opts, ",")
+	options := strings.Join(mountOptions, ",")
 
 	log.Debugf("creating target path %s for nfs mount", target)
 	if err := os.MkdirAll(target, 0750); err != nil {
@@ -201,13 +276,33 @@ func (flavor *Flavor) HandleNFSNodePublish(req *csi.NodePublishVolumeRequest) (*
 
 // IsNFSVolume returns true if given volumeID belongs to nfs access volume
 func (flavor *Flavor) IsNFSVolume(volumeID string) bool {
-	// nfs pv, will have volume-id embedded in pv name
-	_, err := flavor.getPvFromName(fmt.Sprintf("pvc-%s", volumeID))
+	// NFS(RWX) pv, will have its volume-id added in underlying PV label
+	pv, err := flavor.getPVByNFSLabel(nfsParentVolumeIDKey, volumeID)
 	if err != nil {
-		log.Tracef("unable to obtain pv based on volume-id %s", volumeID)
+		log.Tracef("unable to obtain pv based on volume-id %s, err %s", volumeID, err.Error())
+		return false
+	}
+	if pv == nil {
 		return false
 	}
 	return true
+}
+
+// GetNFSVolumeID returns underlying volume-id of RWO PV based on RWX PV volume-id, if one exists
+func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
+	log.Tracef(">>>>> GetNFSVolumeID with %s", volumeID)
+	defer log.Tracef("<<<<< GetNFSVolumeID")
+
+	// NFS(RWX) pv, will have its volume-id added in underlying PV label
+	pv, err := flavor.getPVByNFSLabel(nfsParentVolumeIDKey, volumeID)
+	if err != nil {
+		log.Tracef("unable to obtain pv based on volume-id %s, err %s", volumeID, err.Error())
+		return "", err
+	}
+	if pv == nil {
+		return "", nil
+	}
+	return pv.Spec.PersistentVolumeSource.CSI.VolumeHandle, nil
 }
 
 func (flavor *Flavor) GetNFSSpec(scParams map[string]string) (*NFSSpec, error) {
@@ -250,7 +345,42 @@ func (flavor *Flavor) GetNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	if len(nodes) > 0 {
 		nfsSpec.nodeSelector = map[string]string{nfsNodeSelectorKey: nfsNodeSelectorValue}
 	}
+
+	// set pod scheduling priority if specified by user
+	if val, ok := scParams[nfsPodPriorityCriticalKey]; ok && val == "true" {
+		nfsSpec.podPriorityCritical = true
+	}
+
+	// use nfs provisioner image specified in storage class
+	nfsSpec.image = defaultNFSImage
+	if image, ok := scParams[nfsProvisionerImageKey]; ok {
+		nfsSpec.image = image
+	}
 	return &nfsSpec, nil
+}
+
+func (flavor *Flavor) getPVByNFSLabel(name string, value string) (*core_v1.PersistentVolume, error) {
+	log.Tracef(">>>>> getPVByNFSLabel with key %s value %s", name, value)
+	defer log.Tracef("<<<<< getPVByNFSLabel")
+
+	labelSelector := meta_v1.LabelSelector{MatchLabels: map[string]string{name: value}}
+	listOptions := meta_v1.ListOptions{
+		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
+	}
+
+	pvList, err := flavor.kubeClient.CoreV1().PersistentVolumes().List(listOptions)
+	if err != nil {
+		return nil, err
+	}
+	if pvList == nil || len(pvList.Items) == 0 {
+		// no PV's found with label
+		return nil, nil
+	}
+	if len(pvList.Items) > 1 {
+		// this should never happen
+		return nil, fmt.Errorf("multiple pv's found with same nfs label %s=%s", name, value)
+	}
+	return &pvList.Items[0], nil
 }
 
 func (flavor *Flavor) getPvFromName(pvName string) (*core_v1.PersistentVolume, error) {
@@ -264,7 +394,7 @@ func (flavor *Flavor) getPvFromName(pvName string) (*core_v1.PersistentVolume, e
 	return pv, nil
 }
 
-func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim) (*core_v1.PersistentVolumeClaim, error) {
+func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim, nfsNamespace string) (*core_v1.PersistentVolumeClaim, error) {
 	log.Tracef(">>>>> cloneClaim with claim %s", claim.ObjectMeta.Name)
 	defer log.Tracef("<<<<< cloneClaim")
 
@@ -278,11 +408,26 @@ func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim) (*core_v1
 	claimClone.Spec.AccessModes = []core_v1.PersistentVolumeAccessMode{core_v1.ReadWriteOnce}
 	// add annotation indicating this is an underlying nfs volume
 	claimClone.ObjectMeta.Annotations["csi.hpe.com/nfsPVC"] = "true"
+
+	// if clone is requested from existing pvc, ensure child-claim(i.e RWO type) is used instead
+	if claim.Spec.DataSource != nil && claim.Spec.DataSource.Kind == pvcKind {
+		// fetch source claim
+		sourceClaim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(nfsNamespace).Get(claim.Spec.DataSource.Name, meta_v1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("cannot fetch source claim %s for requested clone, err %s", claim.Spec.DataSource.Name, err.Error())
+		}
+		// check if a PVC exists with name hpe-nfs-<original-claim-uid> and replace that as data-source.
+		childClaim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(nfsNamespace).Get(fmt.Sprintf("%s%s", nfsPrefix, sourceClaim.ObjectMeta.UID), meta_v1.GetOptions{})
+		if childClaim != nil {
+			log.Tracef("replacing datasource from %s to %s for nfs claim %s creation", claim.Spec.DataSource.Name, childClaim.ObjectMeta.Name, claim.ObjectMeta.Name)
+			claimClone.Spec.DataSource.Name = childClaim.ObjectMeta.Name
+		}
+	}
 	return claimClone, nil
 }
 
 // CreateNFSPVC creates Kubernetes Persistent Volume Claim
-func (flavor *Flavor) CreateNFSPVC(claim *core_v1.PersistentVolumeClaim) (*core_v1.PersistentVolumeClaim, error) {
+func (flavor *Flavor) CreateNFSPVC(claim *core_v1.PersistentVolumeClaim, nfsNamespace string) (*core_v1.PersistentVolumeClaim, error) {
 	log.Tracef(">>>>> CreateNFSPVC with claim %s", claim.ObjectMeta.Name)
 	defer log.Tracef("<<<<< CreateNFSPVC")
 
@@ -300,7 +445,7 @@ func (flavor *Flavor) CreateNFSPVC(claim *core_v1.PersistentVolumeClaim) (*core_
 	}
 
 	// wait for pvc to be bound
-	err = flavor.waitForPVCCreation(newClaim.ObjectMeta.Name)
+	err = flavor.waitForPVCCreation(newClaim.ObjectMeta.Name, nfsNamespace)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +455,7 @@ func (flavor *Flavor) CreateNFSPVC(claim *core_v1.PersistentVolumeClaim) (*core_
 }
 
 // CreateNFSService creates a NFS service with given name
-func (flavor *Flavor) CreateNFSService(svcName string) error {
+func (flavor *Flavor) CreateNFSService(svcName string, nfsNamespace string) error {
 	log.Tracef(">>>>> CreateNFSService with service name %s", svcName)
 	defer log.Tracef("<<<<< CreateNFSService")
 
@@ -331,7 +476,7 @@ func (flavor *Flavor) CreateNFSService(svcName string) error {
 	}
 
 	// create the nfs service
-	service := flavor.makeNFSService(svcName)
+	service := flavor.makeNFSService(svcName, nfsNamespace)
 	if _, err := flavor.kubeClient.CoreV1().Services(nfsNamespace).Create(service); err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return fmt.Errorf("failed to create nfs service %s, err %+v", svcName, err)
@@ -367,7 +512,7 @@ func (flavor *Flavor) CreateNFSNamespace(namespace string) (*core_v1.Namespace, 
 }
 
 // GetNFSService :
-func (flavor *Flavor) GetNFSService(svcName string) (*core_v1.Service, error) {
+func (flavor *Flavor) GetNFSService(svcName, nfsNamespace string) (*core_v1.Service, error) {
 	log.Tracef(">>>>> GetNFSService with service name %s", svcName)
 	defer log.Tracef("<<<<< GetNFSService")
 
@@ -393,7 +538,7 @@ func (flavor *Flavor) GetNFSNodes() ([]core_v1.Node, error) {
 }
 
 // CreateNFSDeployment creates a nfs deployment with given name
-func (flavor *Flavor) CreateNFSDeployment(deploymentName string, nfsSpec *NFSSpec) error {
+func (flavor *Flavor) CreateNFSDeployment(deploymentName string, nfsSpec *NFSSpec, nfsNamespace string) error {
 	log.Tracef(">>>>> CreateNFSDeployment with name %s volume %s", deploymentName, nfsSpec.volumeClaim)
 	defer log.Tracef("<<<<< CreateNFSDeployment")
 
@@ -414,7 +559,7 @@ func (flavor *Flavor) CreateNFSDeployment(deploymentName string, nfsSpec *NFSSpe
 	}
 
 	// create a nfs deployment
-	deployment := flavor.makeNFSDeployment(deploymentName, nfsSpec)
+	deployment := flavor.makeNFSDeployment(deploymentName, nfsSpec, nfsNamespace)
 	if _, err := flavor.kubeClient.AppsV1().Deployments(nfsNamespace).Create(deployment); err != nil {
 		if !errors.IsAlreadyExists(err) {
 			return fmt.Errorf("failed to create nfs deployment %s, err %+v", deploymentName, err)
@@ -423,7 +568,7 @@ func (flavor *Flavor) CreateNFSDeployment(deploymentName string, nfsSpec *NFSSpe
 		return nil
 	}
 	// make sure its available
-	err = flavor.waitForDeployment(deploymentName)
+	err = flavor.waitForDeployment(deploymentName, nfsNamespace)
 	if err != nil {
 		return err
 	}
@@ -434,7 +579,7 @@ func (flavor *Flavor) CreateNFSDeployment(deploymentName string, nfsSpec *NFSSpe
 }
 
 //nolint
-func (flavor *Flavor) makeNFSService(svcName string) *core_v1.Service {
+func (flavor *Flavor) makeNFSService(svcName string, nfsNamespace string) *core_v1.Service {
 	log.Tracef(">>>>> makeNFSService with name %s", svcName)
 	defer log.Tracef("<<<<< makeNFSService")
 
@@ -469,7 +614,7 @@ func (flavor *Flavor) makeNFSService(svcName string) *core_v1.Service {
 	return svc
 }
 
-func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec) *apps_v1.Deployment {
+func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamespace string) *apps_v1.Deployment {
 	log.Tracef(">>>>> makeNFSDeployment with name %s, pvc %s", name, nfsSpec.volumeClaim)
 	defer log.Tracef("<<<<< makeNFSDeployment")
 
@@ -491,18 +636,21 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec) *apps_v1.
 			Annotations: map[string]string{"tags": name},
 		},
 		Spec: core_v1.PodSpec{
-			Containers:        []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)},
-			RestartPolicy:     core_v1.RestartPolicyAlways,
-			Volumes:           volumes,
-			HostIPC:           false,
-			HostNetwork:       false,
-			PriorityClassName: "system-cluster-critical",
+			Containers:    []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)},
+			RestartPolicy: core_v1.RestartPolicyAlways,
+			Volumes:       volumes,
+			HostIPC:       false,
+			HostNetwork:   false,
 		},
 	}
 
 	// apply if any node selector is specified by user
 	if len(nfsSpec.nodeSelector) != 0 {
 		podSpec.Spec.NodeSelector = nfsSpec.nodeSelector
+	}
+
+	if nfsSpec.podPriorityCritical {
+		podSpec.Spec.PriorityClassName = "system-cluster-critical"
 	}
 
 	d := &apps_v1.Deployment{
@@ -542,7 +690,7 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 
 	cont := core_v1.Container{
 		Name:            name,
-		Image:           nfsImage,
+		Image:           nfsSpec.image,
 		ImagePullPolicy: core_v1.PullAlways,
 		SecurityContext: securityContext,
 		Env: []core_v1.EnvVar{
@@ -583,7 +731,7 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 }
 
 // DeleteNFSService deletes NFS service and its depending artifacts
-func (flavor *Flavor) DeleteNFSService(svcName string) error {
+func (flavor *Flavor) DeleteNFSService(svcName string, nfsNamespace string) error {
 	log.Tracef(">>>>> DeleteNFSService with service %s", svcName)
 	defer log.Tracef("<<<<< DeleteNFSService")
 
@@ -618,7 +766,7 @@ func (flavor *Flavor) DeleteNFSService(svcName string) error {
 }
 
 // DeleteNFSDeployment deletes NFS service and its depending artifacts
-func (flavor *Flavor) DeleteNFSDeployment(name string) error {
+func (flavor *Flavor) DeleteNFSDeployment(name string, nfsNamespace string) error {
 	log.Tracef(">>>>> DeleteDeployment with %s", name)
 	defer log.Tracef("<<<<< DeleteDeployment")
 
@@ -638,7 +786,7 @@ func (flavor *Flavor) DeleteNFSDeployment(name string) error {
 }
 
 // DeleteNFSPVC deletes NFS service and its depending artifacts
-func (flavor *Flavor) DeleteNFSPVC(claimName string) error {
+func (flavor *Flavor) DeleteNFSPVC(claimName string, nfsNamespace string) error {
 	log.Tracef(">>>>> DeletePVC with %s", claimName)
 	defer log.Tracef("<<<<< DeletePVC")
 
@@ -673,7 +821,7 @@ func (flavor *Flavor) resourceExists(getAction func() error, resourceType string
 	return true, nil
 }
 
-func (flavor *Flavor) deploymentExists(deploymentName string) (bool, error) {
+func (flavor *Flavor) deploymentExists(deploymentName string, nfsNamespace string) (bool, error) {
 	log.Tracef(">>>>> deploymentExists with %s", deploymentName)
 	defer log.Tracef("<<<<< deploymentExists")
 
@@ -691,7 +839,7 @@ func (flavor *Flavor) deploymentExists(deploymentName string) (bool, error) {
 }
 
 // Check if the NFS service exists
-func (flavor *Flavor) serviceExists(svcName string) (bool, error) {
+func (flavor *Flavor) serviceExists(svcName string, nfsNamespace string) (bool, error) {
 	log.Tracef(">>>>> serviceExists with %s", svcName)
 	defer log.Tracef("<<<<< serviceExists")
 
@@ -750,7 +898,7 @@ func (flavor *Flavor) deleteResourceAndWait(namespace, name, resourceType string
 	return fmt.Errorf("gave up waiting for %s %s to be terminated", resourceType, name)
 }
 
-func (flavor *Flavor) waitForPVCCreation(claimName string) error {
+func (flavor *Flavor) waitForPVCCreation(claimName, nfsNamespace string) error {
 	log.Tracef(">>>>> waitForPVCCreation with %s", claimName)
 	defer log.Tracef("<<<<< waitForPVCCreation")
 
@@ -773,7 +921,7 @@ func (flavor *Flavor) waitForPVCCreation(claimName string) error {
 	return fmt.Errorf("gave up waiting for pvc %s to be bound", claimName)
 }
 
-func (flavor *Flavor) waitForDeployment(deploymentName string) error {
+func (flavor *Flavor) waitForDeployment(deploymentName string, nfsNamespace string) error {
 	log.Tracef(">>>>> waitForDeployment with %s", deploymentName)
 	defer log.Tracef("<<<<< waitForDeployment")
 

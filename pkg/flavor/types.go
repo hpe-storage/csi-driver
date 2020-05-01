@@ -25,9 +25,10 @@ type Flavor interface {
 	GetCredentialsFromPodSpec(volumeHandle string, podName string, namespace string) (map[string]string, error)
 	GetCredentialsFromSecret(name string, namespace string) (map[string]string, error)
 
-	CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string) (nfsVolume *csi.Volume, rollback bool, err error)
+	CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error)
 	DeleteNFSVolume(pvName string) error
 	HandleNFSNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
 	IsNFSVolume(volumeID string) bool
 	GetVolumePropertyOfPV(propertyName string, pvName string) (string, error)
+	GetNFSVolumeID(volumeID string) (string, error)
 }
