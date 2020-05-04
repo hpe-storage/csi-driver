@@ -163,7 +163,7 @@ func (flavor *Flavor) CreateNFSConfigMap(nfsNamespace string) error {
 NFS_Core_Param
 {
   NFS_Protocols= 4;
-  NFS_Port = 2049;g
+  NFS_Port = 2049;
   fsid_device = false;
 }
 
