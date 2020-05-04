@@ -322,8 +322,10 @@ func (driver *Driver) createVolume(
 			if namespace, ok := createParameters[nfsNamespaceKey]; ok {
 				nfsNamespace = namespace
 			}
+
+			nfsResourceName := fmt.Sprintf("%s-%s", "hpe-nfs", strings.TrimPrefix("pvc-", name))
 			// attempt to teardown all nfs resources
-			err2 := driver.flavor.RollbackNFSResources(fmt.Sprintf("%s-%s", "hpe-nfs", name), nfsNamespace)
+			err2 := driver.flavor.RollbackNFSResources(nfsResourceName, nfsNamespace)
 			if err2 != nil {
 				log.Errorf("failed to rollback NFS resources for %s, err %s", name, err2.Error())
 				rollbackStatus = err2.Error()
