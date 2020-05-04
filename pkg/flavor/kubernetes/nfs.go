@@ -11,6 +11,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	log "github.com/hpe-storage/common-host-libs/logger"
+	"golang.org/x/mod/semver"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	apps_v1 "k8s.io/api/apps/v1"
@@ -33,7 +34,6 @@ const (
 	defaultExportPath          = "/export"
 	nfsResourceLimitsCPUKey    = "nfsResourceLimitsCpuM"
 	nfsResourceLimitsMemoryKey = "nfsResourceLimitsMemoryMi"
-	nfsPodPriorityCriticalKey  = "nfsPodPriorityCritical"
 	nfsMountOptionsKey         = "nfsMountOptions"
 	nfsNodeSelectorKey         = "csi.hpe.com/hpe-nfs"
 	nfsNodeSelectorValue       = "true"
@@ -41,6 +41,8 @@ const (
 	nfsNamespaceKey            = "nfsNamespace"
 	nfsProvisionerImageKey     = "nfsProvisionerImage"
 	pvcKind                    = "PersistentVolumeClaim"
+	ganeshaConfigFile          = "ganesha.conf"
+	ganeshaConfigMap           = "hpe-nfs-config"
 )
 
 // NFSSpec for creating NFS resources
@@ -48,7 +50,6 @@ type NFSSpec struct {
 	volumeClaim          string
 	resourceRequirements *core_v1.ResourceRequirements
 	nodeSelector         map[string]string
-	podPriorityCritical  bool
 	image                string
 }
 
@@ -346,11 +347,6 @@ func (flavor *Flavor) GetNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 		nfsSpec.nodeSelector = map[string]string{nfsNodeSelectorKey: nfsNodeSelectorValue}
 	}
 
-	// set pod scheduling priority if specified by user
-	if val, ok := scParams[nfsPodPriorityCriticalKey]; ok && val == "true" {
-		nfsSpec.podPriorityCritical = true
-	}
-
 	// use nfs provisioner image specified in storage class
 	nfsSpec.image = defaultNFSImage
 	if image, ok := scParams[nfsProvisionerImageKey]; ok {
@@ -537,6 +533,21 @@ func (flavor *Flavor) GetNFSNodes() ([]core_v1.Node, error) {
 	return nodeList.Items, nil
 }
 
+func (flavor *Flavor) getKubeletVersion() (string, error) {
+	log.Tracef(">>>>> getKubeletVersion")
+	defer log.Tracef("<<<<< getKubeletVersion")
+
+	node, err := flavor.kubeClient.CoreV1().Nodes().Get(os.Getenv("NODE_NAME"), meta_v1.GetOptions{})
+	if err != nil {
+		log.Errorf("unable to get current node %s information, err %s", os.Getenv("NODE_NAME"), err.Error())
+		return "", err
+	}
+	if !semver.IsValid(node.Status.NodeInfo.KubeletVersion) {
+		return "", fmt.Errorf("invalid kubelet vesion %s obtained", node.Status.NodeInfo.KubeletVersion)
+	}
+	return node.Status.NodeInfo.KubeletVersion, nil
+}
+
 // CreateNFSDeployment creates a nfs deployment with given name
 func (flavor *Flavor) CreateNFSDeployment(deploymentName string, nfsSpec *NFSSpec, nfsNamespace string) error {
 	log.Tracef(">>>>> CreateNFSDeployment with name %s volume %s", deploymentName, nfsSpec.volumeClaim)
@@ -629,6 +640,25 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		},
 	})
 
+	// add configmap for ganesha.conf
+	configMapSrc := &core_v1.ConfigMapVolumeSource{
+		Items: []core_v1.KeyToPath{
+			{
+				Key:  ganeshaConfigFile,
+				Path: ganeshaConfigFile,
+			},
+		},
+	}
+	configMapSrc.Name = ganeshaConfigMap
+	configMapVol := core_v1.Volume{
+		Name: ganeshaConfigMap,
+		VolumeSource: core_v1.VolumeSource{
+			ConfigMap: configMapSrc,
+		},
+	}
+
+	volumes = append(volumes, configMapVol)
+
 	podSpec := core_v1.PodTemplateSpec{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:        name,
@@ -649,7 +679,9 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		podSpec.Spec.NodeSelector = nfsSpec.nodeSelector
 	}
 
-	if nfsSpec.podPriorityCritical {
+	// apply pod priority(supported from k8s 1.17 onwards to run critical pods in non kube-system namespace)
+	kubeletVersion, _ := flavor.getKubeletVersion()
+	if kubeletVersion != "" && semver.Compare(kubeletVersion, "v1.17.0") >= 0 {
 		podSpec.Spec.PriorityClassName = "system-cluster-critical"
 	}
 
@@ -682,7 +714,9 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 	log.Tracef(">>>>> makeContainer with name %s, volume %s", name, nfsSpec.volumeClaim)
 	defer log.Tracef("<<<<< makeContainer")
 
+	privileged := true
 	securityContext := &core_v1.SecurityContext{
+		Privileged: &privileged,
 		Capabilities: &core_v1.Capabilities{
 			Add: []core_v1.Capability{"SYS_ADMIN", "DAC_READ_SEARCH"},
 		},
@@ -718,6 +752,11 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 			{
 				Name:      nfsSpec.volumeClaim,
 				MountPath: "/export",
+			},
+			{
+				Name:      ganeshaConfigMap,
+				MountPath: "/etc/ganesha.conf",
+				SubPath:   ganeshaConfigFile,
 			},
 		},
 	}
