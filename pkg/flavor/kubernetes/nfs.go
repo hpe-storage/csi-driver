@@ -43,6 +43,8 @@ const (
 	pvcKind                    = "PersistentVolumeClaim"
 	nfsConfigFile              = "ganesha.conf"
 	nfsConfigMap               = "hpe-nfs-config"
+	apiServerLabelName         = "component"
+	apiServerLabelValue        = "kube-apiserver"
 )
 
 // NFSSpec for creating NFS resources
@@ -201,40 +203,56 @@ EXPORT
 	return nil
 }
 
+func (flavor *Flavor) RollbackNFSResources(nfsResourceName string, nfsNamespace string) error {
+	log.Tracef(">>>>> RollbackNFSResources with name %s namespace %s", nfsResourceName, nfsNamespace)
+	defer log.Tracef("<<<<< RollbackNFSResources")
+	err := flavor.deleteNFSResources(nfsResourceName, nfsNamespace)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // DeleteNFSVolume deletes nfs volume which represents nfs pvc, deployment and service
 func (flavor *Flavor) DeleteNFSVolume(volumeID string) error {
 	log.Tracef(">>>>> DeleteNFSVolume with %s", volumeID)
 	defer log.Tracef("<<<<< DeleteNFSVolume")
 
-	resourceName, err := flavor.getNFSResourceNameByVolumeID(volumeID)
+	nfsResourceName, err := flavor.getNFSResourceNameByVolumeID(volumeID)
 	if err != nil {
 		return err
 	}
-
 	nfsNamespace, err := flavor.getNFSNamespaceByVolumeID(volumeID)
 	if err != nil {
 		return err
 	}
-
-	// delete deployment deployment/hpe-nfs-<originalclaim-uid>
-	err = flavor.DeleteNFSDeployment(resourceName, nfsNamespace)
+	err = flavor.deleteNFSResources(nfsResourceName, nfsNamespace)
 	if err != nil {
-		log.Errorf("unable to delete nfs deployment %s as part of cleanup, err %s", resourceName, err.Error())
+		return err
+	}
+
+	return err
+}
+
+func (flavor *Flavor) deleteNFSResources(nfsResourceName, nfsNamespace string) (err error) {
+	// delete deployment deployment/hpe-nfs-<originalclaim-uid>
+	err = flavor.DeleteNFSDeployment(nfsResourceName, nfsNamespace)
+	if err != nil {
+		log.Errorf("unable to delete nfs deployment %s as part of cleanup, err %s", nfsResourceName, err.Error())
 	}
 
 	// delete nfs pvc pvc/hpe-nfs-<originalclaim-uuid>
 	// if deployment is still around, then pvc cannot be deleted due to protection, try to cleanup as best effort
-	err = flavor.DeleteNFSPVC(resourceName, nfsNamespace)
+	err = flavor.DeleteNFSPVC(nfsResourceName, nfsNamespace)
 	if err != nil {
-		log.Errorf("unable to delete nfs pvc %s as part of cleanup, err %s", resourceName, err.Error())
+		log.Errorf("unable to delete nfs pvc %s as part of cleanup, err %s", nfsResourceName, err.Error())
 	}
 
 	// delete service service/hpe-nfs-<originalclaim-uid>
-	err = flavor.DeleteNFSService(resourceName, nfsNamespace)
+	err = flavor.DeleteNFSService(nfsResourceName, nfsNamespace)
 	if err != nil {
-		log.Errorf("unable to delete nfs service %s as part of cleanup, err %s", resourceName, err.Error())
+		log.Errorf("unable to delete nfs service %s as part of cleanup, err %s", nfsResourceName, err.Error())
 	}
-
 	return err
 }
 
@@ -588,19 +606,31 @@ func (flavor *Flavor) GetNFSNodes() ([]core_v1.Node, error) {
 	return nodeList.Items, nil
 }
 
-func (flavor *Flavor) getKubeletVersion() (string, error) {
-	log.Tracef(">>>>> getKubeletVersion")
-	defer log.Tracef("<<<<< getKubeletVersion")
+func (flavor *Flavor) GetOrchestratorVersion() (string, error) {
+	log.Tracef(">>>>> GetOrchestratorVersion")
+	defer log.Tracef("<<<<< GetOrchestratorVersion")
 
-	node, err := flavor.kubeClient.CoreV1().Nodes().Get(os.Getenv("NODE_NAME"), meta_v1.GetOptions{})
+	labelSelector := meta_v1.LabelSelector{MatchLabels: map[string]string{apiServerLabelName: apiServerLabelValue}}
+	listOptions := meta_v1.ListOptions{
+		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
+	}
+
+	podList, err := flavor.kubeClient.CoreV1().Pods("kube-system").List(listOptions)
 	if err != nil {
-		log.Errorf("unable to get current node %s information, err %s", os.Getenv("NODE_NAME"), err.Error())
 		return "", err
 	}
-	if !semver.IsValid(node.Status.NodeInfo.KubeletVersion) {
-		return "", fmt.Errorf("invalid kubelet vesion %s obtained", node.Status.NodeInfo.KubeletVersion)
+	if podList == nil || len(podList.Items) == 0 {
+		return "", fmt.Errorf("cannot find api-server pod with label %s=%s", apiServerLabelName, apiServerLabelValue)
+	} else {
+		for _, container := range podList.Items[0].Spec.Containers {
+			if container.Image != "" && strings.Contains(container.Image, "kube-apiserver") {
+				version := strings.TrimSpace(strings.Split(container.Image, ":")[1])
+				log.Tracef("obtained k8s version as %s", version)
+				return version, nil
+			}
+		}
 	}
-	return node.Status.NodeInfo.KubeletVersion, nil
+	return "", nil
 }
 
 func createNFSAppLabels() map[string]string {
@@ -741,8 +771,11 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	}
 
 	// apply pod priority(supported from k8s 1.17 onwards to run critical pods in non kube-system namespace)
-	kubeletVersion, _ := flavor.getKubeletVersion()
-	if kubeletVersion != "" && semver.Compare(kubeletVersion, "v1.17.0") >= 0 {
+	k8sVersion, err := flavor.GetOrchestratorVersion()
+	if err != nil {
+		log.Warnf("unable to obtain k8s version for adding nfs pod priority, err %s", err.Error())
+	}
+	if k8sVersion != "" && semver.Compare(k8sVersion, "v1.17.0") >= 0 {
 		podSpec.Spec.PriorityClassName = "system-cluster-critical"
 	}
 

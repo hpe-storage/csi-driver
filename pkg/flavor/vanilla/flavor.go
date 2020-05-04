@@ -57,6 +57,10 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	return nil, false, fmt.Errorf("NFS provisioned volume is not supported for non-k8s environments")
 }
 
+func (flavor *Flavor) RollbackNFSResources(nfsResourceName, nfsNamespace string) error {
+	return nil
+}
+
 func (flavor *Flavor) DeleteNFSVolume(pvName string) error {
 	return fmt.Errorf("NFS provisioned volume is not supported for non-k8s environments")
 }
@@ -78,4 +82,8 @@ func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
 
 func (flavor *Flavor) CreateNFSConfigMap(nfsNamespace string) error {
 	return nil
+}
+
+func (flavor *Flavor) GetOrchestratorVersion() (string, error) {
+	return "", nil
 }
