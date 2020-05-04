@@ -11,6 +11,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	log "github.com/hpe-storage/common-host-libs/logger"
+	"golang.org/x/mod/semver"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	apps_v1 "k8s.io/api/apps/v1"
@@ -33,7 +34,6 @@ const (
 	defaultExportPath          = "/export"
 	nfsResourceLimitsCPUKey    = "nfsResourceLimitsCpuM"
 	nfsResourceLimitsMemoryKey = "nfsResourceLimitsMemoryMi"
-	nfsPodPriorityCriticalKey  = "nfsPodPriorityCritical"
 	nfsMountOptionsKey         = "nfsMountOptions"
 	nfsNodeSelectorKey         = "csi.hpe.com/hpe-nfs"
 	nfsNodeSelectorValue       = "true"
@@ -41,6 +41,10 @@ const (
 	nfsNamespaceKey            = "nfsNamespace"
 	nfsProvisionerImageKey     = "nfsProvisionerImage"
 	pvcKind                    = "PersistentVolumeClaim"
+	nfsConfigFile              = "ganesha.conf"
+	nfsConfigMap               = "hpe-nfs-config"
+	apiServerLabelName         = "component"
+	apiServerLabelValue        = "kube-apiserver"
 )
 
 // NFSSpec for creating NFS resources
@@ -48,7 +52,6 @@ type NFSSpec struct {
 	volumeClaim          string
 	resourceRequirements *core_v1.ResourceRequirements
 	nodeSelector         map[string]string
-	podPriorityCritical  bool
 	image                string
 }
 
@@ -99,6 +102,13 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	// update newly created nfs claim in nfs spec
 	nfsSpec.volumeClaim = newClaim.ObjectMeta.Name
 
+	// create nfs configmap
+	err = flavor.CreateNFSConfigMap(nfsResourceNamespace)
+	if err != nil {
+		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
+		return nil, true, err
+	}
+
 	// create deployment with name hpe-nfs-<originalclaim-uid>
 	deploymentName := fmt.Sprintf("%s%s", nfsPrefix, claim.ObjectMeta.UID)
 	err = flavor.CreateNFSDeployment(deploymentName, nfsSpec, nfsResourceNamespace)
@@ -145,40 +155,104 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	}, false, nil
 }
 
+func (flavor *Flavor) CreateNFSConfigMap(nfsNamespace string) error {
+	log.Tracef(">>>>> CreateNFSConfigMap with namespace %s", nfsNamespace)
+	defer log.Tracef("<<<<< CreateNFSConfigMap")
+
+	nfsGaneshaConfig := `
+NFS_Core_Param
+{
+  NFS_Protocols= 4;
+  NFS_Port = 2049;
+  fsid_device = false;
+}
+
+EXPORT
+{
+  Export_Id = 716;
+  Path = /export;
+  Pseudo = /export;
+  Access_Type = RW;
+  Squash = No_Root_Squash;
+  Transports = TCP;
+  Protocols = 4;
+  SecType = "sys";
+  FSAL {
+	  Name = VFS;
+  }
+}`
+
+	configMap := &core_v1.ConfigMap{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name:      nfsConfigMap,
+			Namespace: nfsNamespace,
+			Labels:    createNFSAppLabels(),
+		},
+		Data: map[string]string{
+			nfsConfigFile: nfsGaneshaConfig,
+		},
+	}
+	_, err := flavor.kubeClient.CoreV1().ConfigMaps(nfsNamespace).Create(configMap)
+	if err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return err
+		}
+	}
+
+	log.Debugf("configmap %s successfully created in namespace %s", nfsConfigMap, nfsNamespace)
+	return nil
+}
+
+func (flavor *Flavor) RollbackNFSResources(nfsResourceName string, nfsNamespace string) error {
+	log.Tracef(">>>>> RollbackNFSResources with name %s namespace %s", nfsResourceName, nfsNamespace)
+	defer log.Tracef("<<<<< RollbackNFSResources")
+	err := flavor.deleteNFSResources(nfsResourceName, nfsNamespace)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 // DeleteNFSVolume deletes nfs volume which represents nfs pvc, deployment and service
 func (flavor *Flavor) DeleteNFSVolume(volumeID string) error {
 	log.Tracef(">>>>> DeleteNFSVolume with %s", volumeID)
 	defer log.Tracef("<<<<< DeleteNFSVolume")
 
-	resourceName, err := flavor.getNFSResourceNameByVolumeID(volumeID)
+	nfsResourceName, err := flavor.getNFSResourceNameByVolumeID(volumeID)
 	if err != nil {
 		return err
 	}
-
 	nfsNamespace, err := flavor.getNFSNamespaceByVolumeID(volumeID)
 	if err != nil {
 		return err
 	}
-
-	// delete deployment deployment/hpe-nfs-<originalclaim-uid>
-	err = flavor.DeleteNFSDeployment(resourceName, nfsNamespace)
+	err = flavor.deleteNFSResources(nfsResourceName, nfsNamespace)
 	if err != nil {
-		log.Errorf("unable to delete nfs deployment %s as part of cleanup, err %s", resourceName, err.Error())
+		return err
+	}
+
+	return err
+}
+
+func (flavor *Flavor) deleteNFSResources(nfsResourceName, nfsNamespace string) (err error) {
+	// delete deployment deployment/hpe-nfs-<originalclaim-uid>
+	err = flavor.DeleteNFSDeployment(nfsResourceName, nfsNamespace)
+	if err != nil {
+		log.Errorf("unable to delete nfs deployment %s as part of cleanup, err %s", nfsResourceName, err.Error())
 	}
 
 	// delete nfs pvc pvc/hpe-nfs-<originalclaim-uuid>
 	// if deployment is still around, then pvc cannot be deleted due to protection, try to cleanup as best effort
-	err = flavor.DeleteNFSPVC(resourceName, nfsNamespace)
+	err = flavor.DeleteNFSPVC(nfsResourceName, nfsNamespace)
 	if err != nil {
-		log.Errorf("unable to delete nfs pvc %s as part of cleanup, err %s", resourceName, err.Error())
+		log.Errorf("unable to delete nfs pvc %s as part of cleanup, err %s", nfsResourceName, err.Error())
 	}
 
 	// delete service service/hpe-nfs-<originalclaim-uid>
-	err = flavor.DeleteNFSService(resourceName, nfsNamespace)
+	err = flavor.DeleteNFSService(nfsResourceName, nfsNamespace)
 	if err != nil {
-		log.Errorf("unable to delete nfs service %s as part of cleanup, err %s", resourceName, err.Error())
+		log.Errorf("unable to delete nfs service %s as part of cleanup, err %s", nfsResourceName, err.Error())
 	}
-
 	return err
 }
 
@@ -344,11 +418,6 @@ func (flavor *Flavor) GetNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	// use node-selector for deployment if we find nodes with hpe-nfs label
 	if len(nodes) > 0 {
 		nfsSpec.nodeSelector = map[string]string{nfsNodeSelectorKey: nfsNodeSelectorValue}
-	}
-
-	// set pod scheduling priority if specified by user
-	if val, ok := scParams[nfsPodPriorityCriticalKey]; ok && val == "true" {
-		nfsSpec.podPriorityCritical = true
 	}
 
 	// use nfs provisioner image specified in storage class
@@ -537,6 +606,39 @@ func (flavor *Flavor) GetNFSNodes() ([]core_v1.Node, error) {
 	return nodeList.Items, nil
 }
 
+func (flavor *Flavor) GetOrchestratorVersion() (string, error) {
+	log.Tracef(">>>>> GetOrchestratorVersion")
+	defer log.Tracef("<<<<< GetOrchestratorVersion")
+
+	labelSelector := meta_v1.LabelSelector{MatchLabels: map[string]string{apiServerLabelName: apiServerLabelValue}}
+	listOptions := meta_v1.ListOptions{
+		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
+	}
+
+	podList, err := flavor.kubeClient.CoreV1().Pods("kube-system").List(listOptions)
+	if err != nil {
+		return "", err
+	}
+	if podList == nil || len(podList.Items) == 0 {
+		return "", fmt.Errorf("cannot find api-server pod with label %s=%s", apiServerLabelName, apiServerLabelValue)
+	} else {
+		for _, container := range podList.Items[0].Spec.Containers {
+			if container.Image != "" && strings.Contains(container.Image, "kube-apiserver") {
+				version := strings.TrimSpace(strings.Split(container.Image, ":")[1])
+				log.Tracef("obtained k8s version as %s", version)
+				return version, nil
+			}
+		}
+	}
+	return "", nil
+}
+
+func createNFSAppLabels() map[string]string {
+	return map[string]string{
+		"app": "hpe-nfs",
+	}
+}
+
 // CreateNFSDeployment creates a nfs deployment with given name
 func (flavor *Flavor) CreateNFSDeployment(deploymentName string, nfsSpec *NFSSpec, nfsNamespace string) error {
 	log.Tracef(">>>>> CreateNFSDeployment with name %s volume %s", deploymentName, nfsSpec.volumeClaim)
@@ -629,6 +731,25 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		},
 	})
 
+	// add configmap for ganesha.conf
+	configMapSrc := &core_v1.ConfigMapVolumeSource{
+		Items: []core_v1.KeyToPath{
+			{
+				Key:  nfsConfigFile,
+				Path: nfsConfigFile,
+			},
+		},
+	}
+	configMapSrc.Name = nfsConfigMap
+	configMapVol := core_v1.Volume{
+		Name: nfsConfigMap,
+		VolumeSource: core_v1.VolumeSource{
+			ConfigMap: configMapSrc,
+		},
+	}
+
+	volumes = append(volumes, configMapVol)
+
 	podSpec := core_v1.PodTemplateSpec{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:        name,
@@ -649,7 +770,12 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		podSpec.Spec.NodeSelector = nfsSpec.nodeSelector
 	}
 
-	if nfsSpec.podPriorityCritical {
+	// apply pod priority(supported from k8s 1.17 onwards to run critical pods in non kube-system namespace)
+	k8sVersion, err := flavor.GetOrchestratorVersion()
+	if err != nil {
+		log.Warnf("unable to obtain k8s version for adding nfs pod priority, err %s", err.Error())
+	}
+	if k8sVersion != "" && semver.Compare(k8sVersion, "v1.17.0") >= 0 {
 		podSpec.Spec.PriorityClassName = "system-cluster-critical"
 	}
 
@@ -682,7 +808,9 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 	log.Tracef(">>>>> makeContainer with name %s, volume %s", name, nfsSpec.volumeClaim)
 	defer log.Tracef("<<<<< makeContainer")
 
+	privileged := true
 	securityContext := &core_v1.SecurityContext{
+		Privileged: &privileged,
 		Capabilities: &core_v1.Capabilities{
 			Add: []core_v1.Capability{"SYS_ADMIN", "DAC_READ_SEARCH"},
 		},
@@ -718,6 +846,11 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 			{
 				Name:      nfsSpec.volumeClaim,
 				MountPath: "/export",
+			},
+			{
+				Name:      nfsConfigMap,
+				MountPath: "/etc/ganesha.conf",
+				SubPath:   nfsConfigFile,
 			},
 		},
 	}

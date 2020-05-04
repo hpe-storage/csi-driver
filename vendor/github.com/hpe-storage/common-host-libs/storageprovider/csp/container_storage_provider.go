@@ -462,6 +462,36 @@ func (provider *ContainerStorageProvider) ExpandVolume(id string, requestBytes i
 	return response, err
 }
 
+// CreateVolume creates a volume on the CSP
+func (provider *ContainerStorageProvider) EditVolume(id string, opts map[string]interface{}) (*model.Volume, error) {
+	log.Tracef(">>>>> EditVolume, id: %s, opts: %v", id, opts)
+	defer log.Trace("<<<<< EditVolume")
+
+	response := &model.Volume{}
+	var errorResponse *ErrorsPayload
+
+	volume := &model.Volume{
+		ID:     id,
+		Config: opts,
+	}
+
+	// Edit the volume on the array
+	status, err := provider.invoke(
+		&connectivity.Request{
+			Action:        "PUT",
+			Path:          fmt.Sprintf("/containers/v1/volumes/%s", id),
+			Payload:       &volume,
+			Response:      &response,
+			ResponseError: &errorResponse,
+		},
+	)
+	if errorResponse != nil {
+		return nil, handleError(status, errorResponse)
+	}
+
+	return response, err
+}
+
 // GetVolume will return information about the given volume
 func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, error) {
 	response := &model.Volume{}

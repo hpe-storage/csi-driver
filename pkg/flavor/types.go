@@ -27,8 +27,11 @@ type Flavor interface {
 
 	CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error)
 	DeleteNFSVolume(pvName string) error
+	RollbackNFSResources(nfsResourceName, nfsNamespace string) error
 	HandleNFSNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
 	IsNFSVolume(volumeID string) bool
 	GetVolumePropertyOfPV(propertyName string, pvName string) (string, error)
 	GetNFSVolumeID(volumeID string) (string, error)
+	CreateNFSConfigMap(nfsNamespace string) error
+	GetOrchestratorVersion() (string, error)
 }

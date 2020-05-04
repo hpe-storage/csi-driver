@@ -82,9 +82,10 @@ const (
 	// nfs properties
 	nfsResourcesKey = "nfsResources"
 	// indicates if this is an underlying NFS PVC(not exposed to user)
-	nfsPVCKey = "nfsPVC"
-	// nfs mount options
-	nfsMountOptionsKey = "nfsMountOptions"
+	nfsPVCKey           = "nfsPVC"
+	nfsMountOptionsKey  = "nfsMountOptions"
+	nfsNamespaceKey     = "nfsNamespace"
+	defaultNFSNamespace = "hpe-nfs"
 
 	// Maximum default number of volumes that controller can publish to the node.
 	defaultMaxVolPerNode = 100
