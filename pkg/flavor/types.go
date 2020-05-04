@@ -31,4 +31,5 @@ type Flavor interface {
 	IsNFSVolume(volumeID string) bool
 	GetVolumePropertyOfPV(propertyName string, pvName string) (string, error)
 	GetNFSVolumeID(volumeID string) (string, error)
+	CreateNFSConfigMap(nfsNamespace string) error
 }

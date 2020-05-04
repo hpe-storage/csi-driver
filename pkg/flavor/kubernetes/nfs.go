@@ -41,8 +41,8 @@ const (
 	nfsNamespaceKey            = "nfsNamespace"
 	nfsProvisionerImageKey     = "nfsProvisionerImage"
 	pvcKind                    = "PersistentVolumeClaim"
-	ganeshaConfigFile          = "ganesha.conf"
-	ganeshaConfigMap           = "hpe-nfs-config"
+	nfsConfigFile              = "ganesha.conf"
+	nfsConfigMap               = "hpe-nfs-config"
 )
 
 // NFSSpec for creating NFS resources
@@ -100,6 +100,13 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	// update newly created nfs claim in nfs spec
 	nfsSpec.volumeClaim = newClaim.ObjectMeta.Name
 
+	// create nfs configmap
+	err = flavor.CreateNFSConfigMap(nfsResourceNamespace)
+	if err != nil {
+		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
+		return nil, true, err
+	}
+
 	// create deployment with name hpe-nfs-<originalclaim-uid>
 	deploymentName := fmt.Sprintf("%s%s", nfsPrefix, claim.ObjectMeta.UID)
 	err = flavor.CreateNFSDeployment(deploymentName, nfsSpec, nfsResourceNamespace)
@@ -144,6 +151,54 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 		VolumeContext: volumeContext,
 		ContentSource: volumeContentSource,
 	}, false, nil
+}
+
+func (flavor *Flavor) CreateNFSConfigMap(nfsNamespace string) error {
+	log.Tracef(">>>>> CreateNFSConfigMap with namespace %s", nfsNamespace)
+	defer log.Tracef("<<<<< CreateNFSConfigMap")
+
+	nfsGaneshaConfig := `
+NFS_Core_Param
+{
+  NFS_Protocols= 4;
+  NFS_Port = 2049;g
+  fsid_device = false;
+}
+
+EXPORT
+{
+  Export_Id = 716;
+  Path = /export;
+  Pseudo = /export;
+  Access_Type = RW;
+  Squash = No_Root_Squash;
+  Transports = TCP;
+  Protocols = 4;
+  SecType = "sys";
+  FSAL {
+	  Name = VFS;
+  }
+}`
+
+	configMap := &core_v1.ConfigMap{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name:      nfsConfigMap,
+			Namespace: nfsNamespace,
+			Labels:    createNFSAppLabels(),
+		},
+		Data: map[string]string{
+			nfsConfigFile: nfsGaneshaConfig,
+		},
+	}
+	_, err := flavor.kubeClient.CoreV1().ConfigMaps(nfsNamespace).Create(configMap)
+	if err != nil {
+		if !errors.IsAlreadyExists(err) {
+			return err
+		}
+	}
+
+	log.Debugf("configmap %s successfully created in namespace %s", nfsConfigMap, nfsNamespace)
+	return nil
 }
 
 // DeleteNFSVolume deletes nfs volume which represents nfs pvc, deployment and service
@@ -548,6 +603,12 @@ func (flavor *Flavor) getKubeletVersion() (string, error) {
 	return node.Status.NodeInfo.KubeletVersion, nil
 }
 
+func createNFSAppLabels() map[string]string {
+	return map[string]string{
+		"app": "hpe-nfs",
+	}
+}
+
 // CreateNFSDeployment creates a nfs deployment with given name
 func (flavor *Flavor) CreateNFSDeployment(deploymentName string, nfsSpec *NFSSpec, nfsNamespace string) error {
 	log.Tracef(">>>>> CreateNFSDeployment with name %s volume %s", deploymentName, nfsSpec.volumeClaim)
@@ -644,14 +705,14 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	configMapSrc := &core_v1.ConfigMapVolumeSource{
 		Items: []core_v1.KeyToPath{
 			{
-				Key:  ganeshaConfigFile,
-				Path: ganeshaConfigFile,
+				Key:  nfsConfigFile,
+				Path: nfsConfigFile,
 			},
 		},
 	}
-	configMapSrc.Name = ganeshaConfigMap
+	configMapSrc.Name = nfsConfigMap
 	configMapVol := core_v1.Volume{
-		Name: ganeshaConfigMap,
+		Name: nfsConfigMap,
 		VolumeSource: core_v1.VolumeSource{
 			ConfigMap: configMapSrc,
 		},
@@ -754,9 +815,9 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 				MountPath: "/export",
 			},
 			{
-				Name:      ganeshaConfigMap,
+				Name:      nfsConfigMap,
 				MountPath: "/etc/ganesha.conf",
-				SubPath:   ganeshaConfigFile,
+				SubPath:   nfsConfigFile,
 			},
 		},
 	}

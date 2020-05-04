@@ -75,3 +75,7 @@ func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) 
 func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
 	return "", nil
 }
+
+func (flavor *Flavor) CreateNFSConfigMap(nfsNamespace string) error {
+	return nil
+}
