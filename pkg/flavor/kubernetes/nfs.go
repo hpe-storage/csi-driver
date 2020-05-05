@@ -621,15 +621,15 @@ func (flavor *Flavor) GetOrchestratorVersion() (string, error) {
 	}
 	if podList == nil || len(podList.Items) == 0 {
 		return "", fmt.Errorf("cannot find api-server pod with label %s=%s", apiServerLabelName, apiServerLabelValue)
-	} else {
-		for _, container := range podList.Items[0].Spec.Containers {
-			if container.Image != "" && strings.Contains(container.Image, "kube-apiserver") {
-				version := strings.TrimSpace(strings.Split(container.Image, ":")[1])
-				log.Tracef("obtained k8s version as %s", version)
-				return version, nil
-			}
+	}
+	for _, container := range podList.Items[0].Spec.Containers {
+		if container.Image != "" && strings.Contains(container.Image, "kube-apiserver") {
+			version := strings.TrimSpace(strings.Split(container.Image, ":")[1])
+			log.Tracef("obtained k8s version as %s", version)
+			return version, nil
 		}
 	}
+
 	return "", nil
 }
 
