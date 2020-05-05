@@ -111,17 +111,28 @@ func csiCliHandler(cmd *cobra.Command) error {
 
 	if nodeService {
 		// perform conformance checks and service management
+		errors := 0
+
 		// configure iscsi
 		err = tunelinux.ConfigureIscsi()
 		if err != nil {
-			return fmt.Errorf("Unable to configure iscsid service, err %v", err.Error())
+			errors++
+			fmt.Printf("Unable to configure iscsid service, err %v", err.Error())
 		}
 
 		// configure multipath
 		err = tunelinux.ConfigureMultipath()
 		if err != nil {
-			return fmt.Errorf("Unable to configure multipathd service, err %v", err.Error())
+			errors++
+			fmt.Printf("Unable to configure multipathd service, err %v", err.Error())
 		}
+		
+		// We want to be resilient in case the OS is not using either multipathd or iscsid
+		// but we need to use at least one
+		if errors > 1 {
+			return fmt.Errorf("Either iscsid or multipathd must be available")
+		}
+
 	}
 
 	log.Tracef("About to start the CSI driver '%v'", driverName)

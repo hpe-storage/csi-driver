@@ -61,4 +61,7 @@ ADD [ "csi-driver", "/bin/" ]
 ADD [ "conform/entrypoint.sh", "/entrypoint.sh" ]
 RUN [ "chmod", "+x", "/entrypoint.sh" ]
 
+# add plugin binary
+ADD [ "csi-driver", "/bin/" ]
+
 ENTRYPOINT [ "/entrypoint.sh" ]
