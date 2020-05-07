@@ -53,8 +53,12 @@ func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (m
 	return nil, nil
 }
 
-func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string) (nfsVolume *csi.Volume, rollback bool, err error) {
+func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
 	return nil, false, fmt.Errorf("NFS provisioned volume is not supported for non-k8s environments")
+}
+
+func (flavor *Flavor) RollbackNFSResources(nfsResourceName, nfsNamespace string) error {
+	return nil
 }
 
 func (flavor *Flavor) DeleteNFSVolume(pvName string) error {
@@ -69,5 +73,17 @@ func (flavor *Flavor) IsNFSVolume(volumeID string) bool {
 	return false
 }
 func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) (string, error) {
+	return "", nil
+}
+
+func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
+	return "", nil
+}
+
+func (flavor *Flavor) CreateNFSConfigMap(nfsNamespace string) error {
+	return nil
+}
+
+func (flavor *Flavor) GetOrchestratorVersion() (string, error) {
 	return "", nil
 }

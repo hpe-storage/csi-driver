@@ -309,7 +309,7 @@ func (driver *Driver) createVolume(
 			return nil, status.Error(codes.InvalidArgument, "NFS volume provisioning is not supported with block access type")
 		}
 
-		volume, rollback, err := driver.flavor.CreateNFSVolume(name, size, createParameters)
+		volume, rollback, err := driver.flavor.CreateNFSVolume(name, size, createParameters, volumeContentSource)
 		if err == nil {
 			// Return multi-node volume
 			return volume, nil
@@ -317,8 +317,15 @@ func (driver *Driver) createVolume(
 
 		rollbackStatus := "success"
 		if rollback {
+			// get nfs namespace for cleanup
+			nfsNamespace := defaultNFSNamespace
+			if namespace, ok := createParameters[nfsNamespaceKey]; ok {
+				nfsNamespace = namespace
+			}
+
+			nfsResourceName := fmt.Sprintf("%s-%s", "hpe-nfs", strings.TrimPrefix("pvc-", name))
 			// attempt to teardown all nfs resources
-			err2 := driver.flavor.DeleteNFSVolume(name)
+			err2 := driver.flavor.RollbackNFSResources(nfsResourceName, nfsNamespace)
 			if err2 != nil {
 				log.Errorf("failed to rollback NFS resources for %s, err %s", name, err2.Error())
 				rollbackStatus = err2.Error()
@@ -351,17 +358,17 @@ func (driver *Driver) createVolume(
 
 	// Build the volume context to be returned to the CO in the create response
 	// This same context will be used by the CO during Publish and Stage workflows
-	respVolContext := map[string]string{}
+	respVolContext := make(map[string]string)
 	if createParameters != nil {
 		// Copy the request parameters into resp context
 		respVolContext = createParameters
-		// Block or Mount type
-		respVolContext[volumeAccessModeKey] = volAccessType.String()
-		// For block access, the filesystem will be empty.
-		if filesystem != "" {
-			log.Trace("Adding filesystem to the volume context, Filesystem: ", filesystem)
-			respVolContext[fsTypeKey] = filesystem
-		}
+	}
+	// Block or Mount type
+	respVolContext[volumeAccessModeKey] = volAccessType.String()
+	// For block access, the filesystem will be empty.
+	if filesystem != "" {
+		log.Trace("Adding filesystem to the volume context, Filesystem: ", filesystem)
+		respVolContext[fsTypeKey] = filesystem
 	}
 	log.Trace("Volume context in response to CO: ", respVolContext)
 
@@ -591,7 +598,7 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	// Check if this is a multi-node volume
 	if driver.flavor.IsNFSVolume(volumeID) {
 		// volumeId represents nfs claim uid for multinode volume
-		err := driver.flavor.DeleteNFSVolume(fmt.Sprintf("pvc-%s", volumeID))
+		err := driver.flavor.DeleteNFSVolume(volumeID)
 		if err != nil {
 			return status.Error(codes.Internal, err.Error())
 		}
@@ -760,6 +767,7 @@ func (driver *Driver) controllerPublishVolume(
 		return map[string]string{
 			volumeAccessModeKey: volAccessType.String(),
 			readOnlyKey:         strconv.FormatBool(readOnlyAccessMode),
+			nfsMountOptionsKey:  volumeContext[nfsMountOptionsKey],
 		}, nil
 	}
 
@@ -1152,6 +1160,17 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 		return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 	}
 
+	// check if volume-id is fake(for nfs) and obtain real backing volume-id
+	nfsVolumeID, err := driver.flavor.GetNFSVolumeID(request.SourceVolumeId)
+	if err != nil {
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to check if volume-id %s is of nfs type, %s", request.SourceVolumeId, err.Error()))
+	}
+
+	if nfsVolumeID != "" {
+		// replace requested volume-id(NFS) with real volume-id(RWO PV)
+		request.SourceVolumeId = nfsVolumeID
+	}
+
 	// Check if the source volume exists using Secrets
 	_, err = driver.GetVolumeByID(request.SourceVolumeId, request.Secrets)
 	if err != nil {
@@ -1422,11 +1441,23 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 	}
 	log.Tracef("Found Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
 
-	if existingVolume.Size == request.CapacityRange.GetLimitBytes() {
-		// volume is already at max limit size per request, so no action required.
+	// Set node expansion required to 'true' for mount type as fs resize is always required in that case
+	nodeExpansionRequired := true
+	if request.GetVolumeCapability() != nil {
+		switch request.GetVolumeCapability().GetAccessType().(type) {
+		case *csi.VolumeCapability_Block:
+			if !existingVolume.Published {
+				log.Info("node expansion is not required for raw block volumes when not published")
+				nodeExpansionRequired = false
+			}
+		}
+	}
+
+	if existingVolume.Size == request.CapacityRange.GetLimitBytes() || existingVolume.Size == request.CapacityRange.GetRequiredBytes() {
+		// volume is already at requested size, so no action required.
 		return &csi.ControllerExpandVolumeResponse{
 			CapacityBytes:         existingVolume.Size,
-			NodeExpansionRequired: false, /* No NodeExpand() to be called */
+			NodeExpansionRequired: nodeExpansionRequired,
 		}, nil
 	}
 
@@ -1456,18 +1487,6 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 	}
 	if err != nil {
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to expand volume to requested size, %s", err.Error()))
-	}
-
-	// Set node expansion required to 'true' for mount type as fs resize is always required in that case
-	nodeExpansionRequired := true
-	if request.GetVolumeCapability() != nil {
-		switch request.GetVolumeCapability().GetAccessType().(type) {
-		case *csi.VolumeCapability_Block:
-			if !existingVolume.Published {
-				log.Info("node expansion is not required for raw block volumes when not published")
-				nodeExpansionRequired = false
-			}
-		}
 	}
 
 	return &csi.ControllerExpandVolumeResponse{

@@ -31,7 +31,6 @@ import (
 
 const (
 	allowOverrides = "allowOverrides"
-	cloneOf        = "cloneOf"
 )
 
 var (
@@ -131,6 +130,11 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 	log.Tracef(">>>>> LoadNodeInfo called with node %v", node)
 	defer log.Trace("<<<<< LoadNodeInfo")
 
+	// overwrite actual host name with node name from k8s to be compliant
+	if name := os.Getenv("NODE_NAME"); name != "" {
+		node.Name = name
+	}
+
 	nodeInfo, err := flavor.getNodeInfoByUUID(node.UUID)
 	if err != nil {
 		log.Errorf("Error obtaining node info by uuid %s- %s\n", node.UUID, err.Error())
@@ -207,8 +211,7 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 		log.Infof("Adding node with name %s", node.Name)
 		nodeInfo, err = flavor.crdClient.StorageV1().HPENodeInfos().Create(newNodeInfo)
 		if err != nil {
-			log.Infof("Error adding node %v - %s", nodeInfo, err.Error())
-			return "", nil
+			log.Fatalf("Error adding node %v - %s", nodeInfo, err.Error())
 		}
 
 		// update nodename for lookup during cleanup(unload)
