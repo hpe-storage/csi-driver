@@ -34,6 +34,7 @@ var (
 	ephemeralPublishLock   sync.Mutex
 	ephemeralUnpublishLock sync.Mutex
 )
+var isWatcherEnabled bool = false
 
 // Helper utility to construct default mountpoint path
 func getDefaultMountPoint(id string) string {
@@ -1609,6 +1610,7 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
 	// Get max volume per node from environment variable
 	nodeMaxVolumesLimit := driver.nodeGetIntEnv(maxVolumesPerNodeKey)
 
@@ -1621,6 +1623,28 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		nodeMaxVolumesLimit = defaultMaxVolPerNode
 	}
 
+	// Enable watcher only once. GetNodeInfo rpc may be called multiple times by external
+	// provisioner.
+	if !isWatcherEnabled {
+		// Create a anonymous wrapper function over nodeGetInfo. This is os event driven
+		// fn execution.
+		getNodeInfoFunc := func() {
+			nodeID, err := driver.nodeGetInfo()
+			if err != nil {
+				log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+			}
+			return
+		}
+		// Register anonymous wrapper function(watcher).
+		watcher, _ := util.InitializeWatcher(getNodeInfoFunc)
+		// Add list of files /and directories to watch. The list contains
+		// iSCSI , FC and CHAP Info and Networking config directories
+		list := []string{"/etc/sysconfig/network-scripts/","/etc/sysconfig/network/", "/etc/iscsi/initiatorname.iscsi", "/etc/networks","/etc/iscsi/iscsid.conf"}
+		watcher.AddWatchList(list)
+		// Start event the watcher in a separate thread.
+		go watcher.StartWatcher()
+		isWatcherEnabled = true
+	}
 	return &csi.NodeGetInfoResponse{
 		NodeId:            nodeID,
 		MaxVolumesPerNode: nodeMaxVolumesLimit,
