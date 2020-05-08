@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -26,7 +27,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	//"k8s.io/kubernetes/pkg/volume/util"
 )
 
 const (
@@ -573,4 +573,16 @@ func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) 
 		return propertyVal, nil
 	}
 	return "", nil
+}
+
+func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
+	log.Tracef(">>>>> GetOrchestratorVersion")
+	defer log.Tracef("<<<<< GetOrchestratorVersion")
+
+	version, err := flavor.kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return nil, err
+	}
+	log.Tracef("obtained k8s version as %s", version.String())
+	return version, nil
 }
