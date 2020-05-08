@@ -40,7 +40,6 @@ var (
 
 // Flavor of the CSI driver
 type Flavor struct {
-	//kubeClient *kubernetes.Clientset
 	crdClient  *crd_client.Clientset
 	nodeName   string
 	kubeClient kubernetes.Interface
