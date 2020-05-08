@@ -747,7 +747,7 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	// Check if volume is requested with NFS resources and intercept here
 	if driver.IsNFSResourceRequest(request.VolumeContext) {
 		log.Infof("NodePublish requested with NFS resources for %s", request.VolumeId)
-		return driver.flavor.HandleNFSNodePublish(request)
+		return driver.flavor.HandleNFSNodePublish(driver.chapiDriver, request)
 	}
 
 	// If ephemeral volume request, then create new volume, add ACL and NodeStage/NodePublish
@@ -1639,7 +1639,7 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		watcher, _ := util.InitializeWatcher(getNodeInfoFunc)
 		// Add list of files /and directories to watch. The list contains
 		// iSCSI , FC and CHAP Info and Networking config directories
-		list := []string{"/etc/sysconfig/network-scripts/","/etc/sysconfig/network/", "/etc/iscsi/initiatorname.iscsi", "/etc/networks","/etc/iscsi/iscsid.conf"}
+		list := []string{"/etc/sysconfig/network-scripts/", "/etc/sysconfig/network/", "/etc/iscsi/initiatorname.iscsi", "/etc/networks", "/etc/iscsi/iscsid.conf"}
 		watcher.AddWatchList(list)
 		// Start event the watcher in a separate thread.
 		go watcher.StartWatcher()

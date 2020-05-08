@@ -235,6 +235,17 @@ func (driver *LinuxDriver) GetMountsForDevice(device *model.Device) ([]*model.Mo
 	return linux.GetMountPointsForDevices(devices)
 }
 
+func (driver *LinuxDriver) MountNFSVolume(source string, targetPath string, mountOptions []string) error {
+	log.Tracef(">>>>> MountNFSVolume called with source %s target %s options %v: ", source, targetPath, mountOptions)
+	defer log.Trace("<<<<< MountNFSVolume")
+
+	err := linux.MountNFSShare(source, targetPath, mountOptions)
+	if err != nil {
+		return fmt.Errorf("Error mounting nfs share %s at %s, err %s", source, targetPath, err.Error())
+	}
+	return nil
+}
+
 // MountDevice mounts the given device to the given mount point. This must be idempotent.
 func (driver *LinuxDriver) MountDevice(device *model.Device, mountPoint string, mountOptions []string, fsOpts *model.FilesystemOpts) (*model.Mount, error) {
 	log.Tracef(">>>>> MountDevice, device: %+v, mountPoint: %s, mountOptions: %v, fsOpts: %+v", device, mountPoint, mountOptions, fsOpts)

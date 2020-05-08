@@ -154,3 +154,8 @@ func (driver *FakeDriver) OfflineDevice(device *model.Device) error {
 func (driver *FakeDriver) ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error {
 	return nil
 }
+
+// MountNFSVolume mounts NFS share onto given target path
+func (driver *FakeDriver) MountNFSVolume(source string, targetPath string, mountOptions []string) error {
+	return nil
+}

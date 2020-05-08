@@ -16,8 +16,7 @@ import (
 )
 
 var (
-	clientSet *fake.Clientset
-	flavor    *Flavor
+	flavor *Flavor
 )
 
 func TestMain(m *testing.M) {
