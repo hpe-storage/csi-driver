@@ -54,6 +54,7 @@ github.com/elazarl/goproxy v0.0.0-20170405201442-c4fc26588b6e/go.mod h1:/Zj4wYkg
 github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153/go.mod h1:/Zj4wYkgs4iZTTu3o/KG3Itv/qCCa8VVMlb3i9OVuzc=
 github.com/emicklei/go-restful v0.0.0-20170410110728-ff4f55a20633/go.mod h1:otzb+WCGbkyDHkqmQmT5YD2WR4BBwUdeQoFo8l/7tVs=
 github.com/emicklei/go-restful v2.9.5+incompatible/go.mod h1:otzb+WCGbkyDHkqmQmT5YD2WR4BBwUdeQoFo8l/7tVs=
+github.com/evanphx/json-patch v4.2.0+incompatible h1:fUDGZCv/7iAN7u0puUVhvKCcsR6vRfwrJatElLBEf0I=
 github.com/evanphx/json-patch v4.2.0+incompatible/go.mod h1:50XU6AFN0ol/bzJsmQLiYLvXMP4fmwYFNcr97nuDLSk=
 github.com/frankban/quicktest v1.2.2 h1:xfmOhhoH5fGPgbEAlhLpJH9p0z/0Qizio9osmvn9IUY=
 github.com/frankban/quicktest v1.2.2/go.mod h1:Qh/WofXFeiAFII1aEBu529AtJo6Zg2VHscnEsbBnJ20=
@@ -472,6 +473,7 @@ k8s.io/apimachinery v0.0.0-20190827074644-f378a67c6af3 h1:H+w7kcm7TBi3Nq6F2ARqrA
 k8s.io/apimachinery v0.0.0-20190827074644-f378a67c6af3/go.mod h1:EZoIMuAgG/4v58YL+bz0kqnivqupk28fKYxFCa5e6X8=
 k8s.io/apimachinery v0.0.0-20200307122051-2b7fa1cb5395 h1:xW3Jdh+hZTpOshKs73JOz7Bg0QNsJnhwLJweiVs826w=
 k8s.io/apimachinery v0.0.0-20200307122051-2b7fa1cb5395/go.mod h1:9SnR/e11v5IbyPCGbvJViimtJ0SwHG4nfZFjU77ftcA=
+k8s.io/apimachinery v0.18.2 h1:44CmtbmkzVDAhCpRVSiP2R5PPrC2RtlIv/MoB8xpdRA=
 k8s.io/client-go v0.0.0-20190722143104-cea58bd85b8c h1:yalWd294vzwDnEEV+sKl+IIS/Q3PRvS7e9ZxzCU0QKs=
 k8s.io/client-go v0.0.0-20190722143104-cea58bd85b8c/go.mod h1:R4w0jH5cG9/E/GhYNzqN71DTLlyxJRwpceJYcGNKPGM=
 k8s.io/client-go v11.0.0+incompatible h1:LBbX2+lOwY9flffWlJM7f1Ct8V2SRNiMRDFeiwnJo9o=
