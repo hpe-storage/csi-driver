@@ -579,10 +579,10 @@ func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
 	log.Tracef(">>>>> GetOrchestratorVersion")
 	defer log.Tracef("<<<<< GetOrchestratorVersion")
 
-	version, err := flavor.kubeClient.Discovery().ServerVersion()
+	versionInfo, err := flavor.kubeClient.Discovery().ServerVersion()
 	if err != nil {
 		return nil, err
 	}
-	log.Tracef("obtained k8s version as %s", version.String())
-	return version, nil
+	log.Tracef("obtained k8s version as %s", versionInfo.String())
+	return versionInfo, nil
 }
