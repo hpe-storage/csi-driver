@@ -511,7 +511,6 @@ func (flavor *Flavor) CreateNFSPVC(claim *core_v1.PersistentVolumeClaim, nfsName
 		if err != nil {
 			return nil, err
 		}
-		return newClaim, nil
 	}
 
 	// wait for pvc to be bound
