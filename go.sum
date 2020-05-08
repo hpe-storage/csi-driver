@@ -158,6 +158,8 @@ github.com/hpe-storage/common-host-libs v0.0.0-20200310065158-276b0a683231 h1:40
 github.com/hpe-storage/common-host-libs v0.0.0-20200310065158-276b0a683231/go.mod h1:qQxvwt4l9C79p2V8bY1P13As1+ylyznKJVp3K2P5bz8=
 github.com/hpe-storage/common-host-libs v0.0.0-20200314034025-021d242ce481 h1:hZcgfeszby6B19VdlV+tBPKLIIcNr7fm2f7TJJUIxy8=
 github.com/hpe-storage/common-host-libs v0.0.0-20200314034025-021d242ce481/go.mod h1:qQxvwt4l9C79p2V8bY1P13As1+ylyznKJVp3K2P5bz8=
+github.com/hpe-storage/common-host-libs v0.0.0-20200507161320-98ce16843504 h1:Buk2pCROqfoSHTvX5nKYKqJ06oLQSGN40krxr+ZrTPo=
+github.com/hpe-storage/common-host-libs v0.0.0-20200507161320-98ce16843504/go.mod h1:qQxvwt4l9C79p2V8bY1P13As1+ylyznKJVp3K2P5bz8=
 github.com/hpe-storage/k8s-custom-resources v0.0.0-20190828052325-42886f48215c h1:M/4pHhSouEEjd613SFODOskZmn6pS5tWITHdA8MPWMI=
 github.com/hpe-storage/k8s-custom-resources v0.0.0-20190828052325-42886f48215c/go.mod h1:qYST/Hepa2MRB85zskShx/+WlbUG5bmq/orhy6sA2jE=
 github.com/imdario/mergo v0.3.5/go.mod h1:2EnlNZ0deacrJVfApfmtdGgDfMuh/nq6Ok1EcJh5FfA=

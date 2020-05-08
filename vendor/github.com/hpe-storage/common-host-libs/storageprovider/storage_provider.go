@@ -42,6 +42,8 @@ type StorageProvider interface {
 	CreateSnapshot(name, description, sourceVolID string, opts map[string]interface{}) (*model.Snapshot, error)
 	DeleteSnapshot(id string) error
 	EditVolume(id string, opts map[string]interface{}) (*model.Volume, error)
+	CreateVolumeGroup(name, description string, opts map[string]interface{}) (*model.VolumeGroup, error)
+	DeleteVolumeGroup(id string) error
 }
 
 // Credentials defines how a StorageProvider is accessed

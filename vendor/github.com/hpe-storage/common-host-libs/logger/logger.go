@@ -396,6 +396,16 @@ func WithTime(t time.Time) *log.Entry {
 // HTTPLogger : wrapper for http logging
 func HTTPLogger(inner http.Handler, name string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panicked := true
+		defer func() {
+			if panicked {
+				const size = 64 << 10
+				buf := make([]byte, size)
+				buf = buf[:runtime.Stack(buf, false)]
+				sourced().Errorf("HTTPLogger: panic serving %v:\n%s", name, buf)
+			}
+		}()
+
 		sourced().Infof(
 			">>>>> %s %s - %s",
 			r.Method,
@@ -413,6 +423,8 @@ func HTTPLogger(inner http.Handler, name string) http.Handler {
 			name,
 			time.Since(start),
 		)
+
+		panicked = false
 	})
 }
 

@@ -506,6 +506,11 @@ func (flavor *Flavor) CreateNFSPVC(claim *core_v1.PersistentVolumeClaim, nfsName
 		if !errors.IsAlreadyExists(err) {
 			return nil, err
 		}
+		// claim already exists, get details
+		newClaim, err = flavor.kubeClient.CoreV1().PersistentVolumeClaims(nfsNamespace).Get(claim.ObjectMeta.Name, meta_v1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	// wait for pvc to be bound
