@@ -192,6 +192,7 @@ type Volume struct {
 	TargetScope    string                 `json:"target_scope,omitempty"` //GST="group", VST="volume" or empty(older array fiji etc), and no-op for FC
 	IscsiSessions  []*IscsiSession        `json:"iscsi_sessions,omitempty"`
 	FcSessions     []*FcSession           `json:"fc_sessions,omitempty"`
+	VolumeGroupId  string                 `json:"volume_group_id"`
 }
 
 func (v Volume) TargetNames() []string {
@@ -240,6 +241,14 @@ type Snapshot struct {
 	CreationTime int64                  `json:"creation_time,omitempty"`
 	ReadyToUse   bool                   `json:"ready_to_use,omitempty"`
 	InUse        bool                   `json:"in_use,omitempty"`
+	Config       map[string]interface{} `json:"config,omitempty"`
+}
+
+type VolumeGroup struct {
+	ID           string                 `json:"id,omitempty"`
+	Name         string                 `json:"name,omitempty"`
+	Description  string                 `json:"description,omitempty"`
+	CreationTime int64                  `json:"creation_time,omitempty"`
 	Config       map[string]interface{} `json:"config,omitempty"`
 }
 

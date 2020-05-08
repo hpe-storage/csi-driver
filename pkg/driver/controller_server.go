@@ -323,7 +323,7 @@ func (driver *Driver) createVolume(
 				nfsNamespace = namespace
 			}
 
-			nfsResourceName := fmt.Sprintf("%s-%s", "hpe-nfs", strings.TrimPrefix("pvc-", name))
+			nfsResourceName := fmt.Sprintf("%s-%s", "hpe-nfs", strings.TrimPrefix(name, "pvc-"))
 			// attempt to teardown all nfs resources
 			err2 := driver.flavor.RollbackNFSResources(nfsResourceName, nfsNamespace)
 			if err2 != nil {
