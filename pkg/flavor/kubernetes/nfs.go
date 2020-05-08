@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/hpe-storage/common-host-libs/chapi"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"golang.org/x/mod/semver"
 	"google.golang.org/grpc/codes"
@@ -290,7 +290,7 @@ func getNFSMountOptions(volumeContext map[string]string) (mountOptions []string)
 	return nil
 }
 
-func (flavor *Flavor) HandleNFSNodePublish(req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+func (flavor *Flavor) HandleNFSNodePublish(chapiDriver chapi.Driver, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log.Tracef(">>>>> HandleNFSNodePublish with volume %s target path %s", req.VolumeId, req.TargetPath)
 	defer log.Tracef("<<<<< HandleNFSNodePublish")
 
@@ -329,20 +329,13 @@ func (flavor *Flavor) HandleNFSNodePublish(req *csi.NodePublishVolumeRequest) (*
 	if req.GetReadonly() {
 		mountOptions = append(mountOptions, "ro")
 	}
-	options := strings.Join(mountOptions, ",")
 
 	log.Debugf("creating target path %s for nfs mount", target)
 	if err := os.MkdirAll(target, 0750); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	if err := syscall.Mount(source, target, "nfs4", 0, options); err != nil {
-		if os.IsPermission(err) {
-			return nil, status.Error(codes.PermissionDenied, err.Error())
-		}
-		if strings.Contains(err.Error(), "invalid argument") {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
-		}
+	if err := chapiDriver.MountNFSVolume(source, target, mountOptions); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &csi.NodePublishVolumeResponse{}, nil

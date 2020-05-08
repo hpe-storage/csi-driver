@@ -4,6 +4,7 @@ package flavor
 
 import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/hpe-storage/common-host-libs/chapi"
 	"github.com/hpe-storage/common-host-libs/model"
 )
 
@@ -28,7 +29,7 @@ type Flavor interface {
 	CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error)
 	DeleteNFSVolume(pvName string) error
 	RollbackNFSResources(nfsResourceName, nfsNamespace string) error
-	HandleNFSNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
+	HandleNFSNodePublish(chapiDriver chapi.Driver, request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
 	IsNFSVolume(volumeID string) bool
 	GetVolumePropertyOfPV(propertyName string, pvName string) (string, error)
 	GetNFSVolumeID(volumeID string) (string, error)
