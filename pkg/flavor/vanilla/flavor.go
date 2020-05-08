@@ -11,6 +11,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/apimachinery/pkg/version"
 )
 
 // Flavor of the CSI driver
@@ -85,6 +86,6 @@ func (flavor *Flavor) CreateNFSConfigMap(nfsNamespace string) error {
 	return nil
 }
 
-func (flavor *Flavor) GetOrchestratorVersion() (string, error) {
-	return "", nil
+func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
+	return nil, nil
 }

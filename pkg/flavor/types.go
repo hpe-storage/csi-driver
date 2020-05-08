@@ -6,6 +6,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/hpe-storage/common-host-libs/chapi"
 	"github.com/hpe-storage/common-host-libs/model"
+	"k8s.io/apimachinery/pkg/version"
 )
 
 const (
@@ -34,5 +35,5 @@ type Flavor interface {
 	GetVolumePropertyOfPV(propertyName string, pvName string) (string, error)
 	GetNFSVolumeID(volumeID string) (string, error)
 	CreateNFSConfigMap(nfsNamespace string) error
-	GetOrchestratorVersion() (string, error)
+	GetOrchestratorVersion() (*version.Info, error)
 }

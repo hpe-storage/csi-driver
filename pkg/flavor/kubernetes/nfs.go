@@ -599,33 +599,6 @@ func (flavor *Flavor) GetNFSNodes() ([]core_v1.Node, error) {
 	return nodeList.Items, nil
 }
 
-func (flavor *Flavor) GetOrchestratorVersion() (string, error) {
-	log.Tracef(">>>>> GetOrchestratorVersion")
-	defer log.Tracef("<<<<< GetOrchestratorVersion")
-
-	labelSelector := meta_v1.LabelSelector{MatchLabels: map[string]string{apiServerLabelName: apiServerLabelValue}}
-	listOptions := meta_v1.ListOptions{
-		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
-	}
-
-	podList, err := flavor.kubeClient.CoreV1().Pods("kube-system").List(listOptions)
-	if err != nil {
-		return "", err
-	}
-	if podList == nil || len(podList.Items) == 0 {
-		return "", fmt.Errorf("cannot find api-server pod with label %s=%s", apiServerLabelName, apiServerLabelValue)
-	}
-	for _, container := range podList.Items[0].Spec.Containers {
-		if container.Image != "" && strings.Contains(container.Image, "kube-apiserver") {
-			version := strings.TrimSpace(strings.Split(container.Image, ":")[1])
-			log.Tracef("obtained k8s version as %s", version)
-			return version, nil
-		}
-	}
-
-	return "", nil
-}
-
 func createNFSAppLabels() map[string]string {
 	return map[string]string{
 		"app": "hpe-nfs",
@@ -757,7 +730,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	if err != nil {
 		log.Warnf("unable to obtain k8s version for adding nfs pod priority, err %s", err.Error())
 	}
-	if k8sVersion != "" && semver.Compare(k8sVersion, "v1.17.0") >= 0 {
+	if k8sVersion != nil && semver.Compare(k8sVersion.String(), "v1.17.0") >= 0 {
 		podSpec.Spec.PriorityClassName = "system-cluster-critical"
 	}
 
