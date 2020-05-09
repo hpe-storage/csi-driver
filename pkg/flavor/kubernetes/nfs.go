@@ -43,8 +43,6 @@ const (
 	pvcKind                    = "PersistentVolumeClaim"
 	nfsConfigFile              = "ganesha.conf"
 	nfsConfigMap               = "hpe-nfs-config"
-	apiServerLabelName         = "component"
-	apiServerLabelValue        = "kube-apiserver"
 )
 
 // NFSSpec for creating NFS resources
