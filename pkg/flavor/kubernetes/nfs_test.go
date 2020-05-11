@@ -62,30 +62,41 @@ func NewCluster(nodes int) (*fake.Clientset, error) {
 }
 
 func TestGetNodes(t *testing.T) {
-	nodes, err := flavor.GetNFSNodes()
+	nodes, err := flavor.getNFSNodes()
 	assert.Nil(t, err)
 	assert.NotNil(t, nodes)
 	assert.Equal(t, len(nodes), 3)
 }
 
 func TestCreateNFSNamespace(t *testing.T) {
-	namespace, err := flavor.CreateNFSNamespace(defaultNFSNamespace)
+	namespace, err := flavor.createNFSNamespace(defaultNFSNamespace)
 	assert.Nil(t, err)
 	assert.Equal(t, namespace.ObjectMeta.Name, defaultNFSNamespace)
 }
 
 func TestCreateNFSService(t *testing.T) {
-	err := flavor.CreateNFSService("hpe-nfs-my-service", defaultNFSNamespace)
+	err := flavor.createNFSService("hpe-nfs-my-service", defaultNFSNamespace)
 	assert.Nil(t, err)
-	service, err := flavor.GetNFSService("hpe-nfs-my-service", defaultNFSNamespace)
+	service, err := flavor.getNFSService("hpe-nfs-my-service", defaultNFSNamespace)
 	assert.Nil(t, err)
 	assert.NotNil(t, service)
 	assert.Equal(t, service.ObjectMeta.Name, "hpe-nfs-my-service")
 	assert.Equal(t, v1.ServiceTypeClusterIP, service.Spec.Type)
 }
 
+func TestCreateServiceAccount(t *testing.T) {
+	err := flavor.createServiceAccount(defaultNFSNamespace)
+	assert.Nil(t, err)
+	serviceAccount, err := flavor.kubeClient.CoreV1().ServiceAccounts(defaultNFSNamespace).Get(nfsServiceAccount, metav1.GetOptions{})
+	assert.Nil(t, err)
+	assert.Equal(t, serviceAccount.ObjectMeta.Name, nfsServiceAccount)
+	// run duplicate call and make sure we don't throw an error if service account already exists
+	err = flavor.createServiceAccount(defaultNFSNamespace)
+	assert.Nil(t, err)
+}
+
 func TestCreateConfigMap(t *testing.T) {
-	err := flavor.CreateNFSConfigMap(defaultNFSNamespace)
+	err := flavor.createNFSConfigMap(defaultNFSNamespace)
 	assert.Nil(t, err)
 	configMap, err := flavor.kubeClient.CoreV1().ConfigMaps(defaultNFSNamespace).Get(nfsConfigMap, metav1.GetOptions{})
 	assert.Nil(t, err)
@@ -96,7 +107,7 @@ func TestGetNFSSpec(t *testing.T) {
 	createParams := make(map[string]string)
 
 	// test with defaults
-	spec, err := flavor.GetNFSSpec(createParams)
+	spec, err := flavor.getNFSSpec(createParams)
 	assert.Nil(t, err)
 	assert.NotNil(t, spec)
 	assert.Equal(t, defaultNFSImage, spec.image)
@@ -109,7 +120,7 @@ func TestGetNFSSpec(t *testing.T) {
 	createParams["nfsResourceLimitsCpuM"] = "500m"
 	createParams["nfsResourceLimitsMemoryMi"] = "100Mi"
 
-	spec, err = flavor.GetNFSSpec(createParams)
+	spec, err = flavor.getNFSSpec(createParams)
 	assert.Nil(t, err)
 	assert.NotNil(t, spec)
 	assert.Equal(t, spec.image, "hpestorage/my-nfs-image:my-tag")
@@ -120,7 +131,7 @@ func TestGetNFSSpec(t *testing.T) {
 
 	// test invalid cpu
 	createParams["nfsResourceLimitsCpuM"] = "500x"
-	spec, err = flavor.GetNFSSpec(createParams)
+	spec, err = flavor.getNFSSpec(createParams)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "invalid nfs cpu resource limit"))
 
@@ -128,7 +139,7 @@ func TestGetNFSSpec(t *testing.T) {
 	createParams["nfsResourceLimitsCpuM"] = "500m"
 	// Only suffixes: E, P, T, G, M, K and power-of-two equivalents: Ei, Pi, Ti, Gi, Mi, Ki are allowed
 	createParams["nfsResourceLimitsMemoryMi"] = "100MB"
-	spec, err = flavor.GetNFSSpec(createParams)
+	spec, err = flavor.getNFSSpec(createParams)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "invalid nfs memory resource limit"))
 }

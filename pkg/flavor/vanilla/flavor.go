@@ -82,10 +82,6 @@ func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
 	return "", nil
 }
 
-func (flavor *Flavor) CreateNFSConfigMap(nfsNamespace string) error {
-	return nil
-}
-
 func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
 	return nil, nil
 }
