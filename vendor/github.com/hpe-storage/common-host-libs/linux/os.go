@@ -69,16 +69,6 @@ var OsIscsiPackageMap = map[string]string{
 	OsTypeAmazon: iscsiInitiatorUtils,
 }
 
-// OsIscsiServiceMap provides mapping of os distribution to iscsi service name
-var OsIscsiServiceMap = map[string]string{
-	OsTypeUbuntu: iscsid,
-	OsTypeSuse:   iscsid,
-	OsTypeRedhat: iscsid,
-	OsTypeCentos: iscsid,
-	OsTypeOracle: iscsid,
-	OsTypeAmazon: iscsid,
-}
-
 var osInfo *OsInfo
 var osInfoLock sync.Mutex
 
@@ -498,7 +488,7 @@ func EnableService(serviceType string) (err error) {
 func enableSystemdService(osInfo *OsInfo, serviceType string) (err error) {
 	var serviceName string
 	if serviceType == iscsi {
-		serviceName = OsIscsiServiceMap[osInfo.GetOsDistro()]
+		serviceName = "iscsid.service"
 	} else if serviceType == multipath {
 		serviceName = "multipathd.service"
 	} else {
@@ -555,8 +545,8 @@ func enableInitVService(osInfo *OsInfo, serviceType string) (err error) {
 func enableUbuntuService(osInfo *OsInfo, serviceType string) (err error) {
 	var serviceName string
 	if serviceType == iscsi {
-		// get distro specific iscsi service name
-		serviceName = OsIscsiServiceMap[osInfo.GetOsDistro()]
+		// generic for all distros
+		serviceName = iscsid
 	} else if serviceType == multipath {
 		// generic for all distros
 		serviceName = multipathd
@@ -634,7 +624,7 @@ func getServiceCommandArgs(osInfo *OsInfo, packageType string, operation string)
 			// suse 11.* has open-iscsi and 12.* has iscsid
 			args = append(args, openIscsi)
 		} else {
-			args = append(args, OsIscsiServiceMap[osInfo.GetOsDistro()])
+			args = append(args, iscsid)
 		}
 	}
 
