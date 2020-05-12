@@ -4,7 +4,12 @@
 package driver
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -14,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 
 	log "github.com/hpe-storage/common-host-libs/logger"
+	"github.com/hpe-storage/common-host-libs/util"
 )
 
 // ParseEndpoint parses the gRPC endpoint provided
@@ -76,4 +82,39 @@ func convertSecsToTimestamp(seconds int64) *timestamp.Timestamp {
 	return &timestamp.Timestamp{
 		Seconds: seconds,
 	}
+}
+
+// writeData persists data as json file at the provided location. Creates new directory if not already present.
+func writeData(dir string, fileName string, data interface{}) error {
+	dataFilePath := filepath.Join(dir, fileName)
+	log.Tracef("saving data file [%s]", dataFilePath)
+
+	// Encode from json object
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+
+	// Attempt create of staging dir, as CSI attacher can remove the directory
+	// while operation is still pending(during retries)
+	if err = os.MkdirAll(dir, 0750); err != nil {
+		log.Errorf("Failed to create dir %s, %v", dir, err.Error())
+		return err
+	}
+
+	// Write to file
+	err = ioutil.WriteFile(dataFilePath, jsonData, 0600)
+	if err != nil {
+		log.Errorf("Failed to write to file [%s], %v", dataFilePath, err.Error())
+		return err
+	}
+	log.Tracef("Data file [%s] saved successfully", dataFilePath)
+	return nil
+}
+
+func removeDataFile(dirPath string, fileName string) error {
+	log.Trace(">>>>> removeDataFile, dir: %s, fileName: %s", dirPath, fileName)
+	defer log.Trace("<<<<< removeDataFile")
+	filePath := path.Join(dirPath, fileName)
+	return util.FileDelete(filePath)
 }

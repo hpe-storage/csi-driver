@@ -10,8 +10,6 @@ import (
 type StagingDevice struct {
 	VolumeID         string                 `json:"volume_id"`
 	VolumeAccessMode model.VolumeAccessType `json:"volume_access_mode"` // block or mount
-	POD              *POD                   `json:"pod,omitempty"`      // ephemeral inline volume
-	Secret           *Secret                `json:"secret,omitempty"`   // secret for ephemeral inline volume
 	Device           *model.Device          `json:"device"`
 	MountInfo        *Mount                 `json:"mount_info,omitempty"`
 }
@@ -23,15 +21,29 @@ type Mount struct {
 	FilesystemOptions *model.FilesystemOpts `json:"filesystem_options,omitempty"`
 }
 
-// POD represents the pod information of ephemeral inline volumes that is stored in the publish area
+// Ephemeral represents the ephemeral inline volume and its associated pod details.
+type Ephemeral struct {
+	VolumeID     string  `json:"volume_id"`            // Volume ID
+	VolumeHandle string  `json:"volume_handle"`        // ephemeral volume handle
+	PodData      *POD    `json:"pod_data,omitempty"`   // POD info of ephemeral volume
+	SecretRef    *Secret `json:"secret_ref,omitempty"` // secret reference for ephemeral volume
+}
+
+// POD represents the pod information of ephemeral inline volume that is stored in the publish area
 type POD struct {
-	UID       string `json:"pod_uid"`
-	Name      string `json:"pod_name"`
-	Namespace string `json:"pod_namespace"`
+	UID       string `json:"uid"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
 }
 
 // Secret represents the secret information of ephemeral inline volumes (Provided via volume attributes)
 type Secret struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
+}
+
+// VolumeHandleTargetPath represents ephemeral volume handle and its assocatiate node stage/publish target path
+type VolumeHandleTargetPath struct {
+	VolumeHandle string `json:"volume_handle"` // ephemeral volume handle
+	TargetPath   string `json:"target_path"`   // target path of ephemeral volume
 }

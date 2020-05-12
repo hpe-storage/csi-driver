@@ -51,6 +51,26 @@ const (
 	// deviceInfoFileName is used to store the device details in a JSON file
 	deviceInfoFileName = "deviceInfo.json"
 
+	// volDataFileName stores the volume data
+	volDataFileName = "vol_data.json"
+
+	// ephemeralDataFileName stores Volume ID, POD info and Secrets reference
+	ephemeralDataFileName = "ephemeral_data.json"
+
+	// driverModeKey stored in the vol_data.json file
+	driverModeKey = "driverMode"
+
+	// ephemeralDriverMode for ephmeral inline volume
+	ephemeralDriverMode = "ephemeral"
+
+	// Default scrubber interval for Ephemeral inline volumes on the node.
+	defaultInlineVolumeScrubberInterval = 3600 // Default value is 3600 seconds or 1 Hour
+	inlineVolumeScrubberIntervalKey     = "INLINE_VOLUMES_SCRUBBER_INTERVAL"
+
+	// Default pods directory path on the node for Kubernetes/Openshift
+	defaultPodsDirPath = "/var/lib/kubelet/pods"
+	podsDirPathKey     = "PODS_DIR_PATH"
+
 	// Pending :
 	Pending = "PENDING"
 
@@ -82,7 +102,10 @@ const (
 	// nfs properties
 	nfsResourcesKey = "nfsResources"
 	// indicates if this is an underlying NFS PVC(not exposed to user)
-	nfsPVCKey = "nfsPVC"
+	nfsPVCKey           = "nfsPVC"
+	nfsMountOptionsKey  = "nfsMountOptions"
+	nfsNamespaceKey     = "nfsNamespace"
+	defaultNFSNamespace = "hpe-nfs"
 
 	// Maximum default number of volumes that controller can publish to the node.
 	defaultMaxVolPerNode = 100

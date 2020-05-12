@@ -20,12 +20,12 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/stringformat"
 	"github.com/hpe-storage/common-host-libs/util"
-	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 var (
@@ -34,6 +34,7 @@ var (
 	ephemeralPublishLock   sync.Mutex
 	ephemeralUnpublishLock sync.Mutex
 )
+var isWatcherEnabled bool = false
 
 // Helper utility to construct default mountpoint path
 func getDefaultMountPoint(id string) string {
@@ -267,20 +268,14 @@ func (driver *Driver) nodeStageVolume(
 		return status.Error(codes.Internal,
 			fmt.Sprintf("Failed to stage volume %s, err: %s", volumeID, err.Error()))
 	}
-
-	// Store the secret reference from volume context (if exists) in the staging device
-	if volumeContext[secretNameKey] != "" && volumeContext[secretNamespaceKey] != "" {
-		secret := &Secret{
-			Name:      volumeContext[secretNameKey],
-			Namespace: volumeContext[secretNamespaceKey],
-		}
-		stagingDev.Secret = secret
-	}
 	log.Tracef("Staged volume %s successfully, StagingDev: %#v", volumeID, stagingDev)
 
 	// Save staged device info in the staging area
 	log.Tracef("NodeStageVolume writing device info %+v to staging target path %s", stagingDev.Device, stagingTargetPath)
-	err = writeStagedDeviceInfo(stagingTargetPath, stagingDev)
+	if stagingDev == nil || stagingDev.Device == nil {
+		return fmt.Errorf("Invalid staging device info. Staging device cannot be nil")
+	}
+	err = writeData(stagingTargetPath, deviceInfoFileName, stagingDev)
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("Failed to stage volume %s, err: %s", volumeID, err.Error()))
 	}
@@ -408,17 +403,6 @@ func (driver *Driver) stageVolume(
 		VolumeID:         volumeID,
 		VolumeAccessMode: volAccessType,
 		Device:           device,
-	}
-
-	// If ephemeral volume, then get POD info and store in the staging device
-	ephemeral := isEphemeral(volumeContext)
-	if ephemeral {
-		// Store POD info in the stagingDevice (Required during NodeUnpublish())
-		stagingDevice.POD = &POD{
-			UID:       volumeContext[csiEphemeralPodUID],
-			Name:      volumeContext[csiEphemeralPodName],
-			Namespace: volumeContext[csiEphemeralPodNamespace],
-		}
 	}
 
 	// If Block, then stage the volume for raw block device access
@@ -610,7 +594,7 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 		return status.Error(codes.Internal, "Error deleting device "+device.Pathname)
 	}
 	// Remove the device file
-	removeStagedDeviceInfo(stagingTargetPath)
+	removeDataFile(stagingTargetPath, deviceInfoFileName)
 	return nil
 }
 
@@ -630,33 +614,6 @@ func getEphemeralVolName(podName string, volumeHandle string) string {
 		podNameInfix = podNameInfix[podNameLength-trimSize:] // Trim the podName to retain only the last 'n' chars
 	}
 	return fmt.Sprintf("%s-%s-%s", ephemeralKey, podNameInfix, volumeHandle)
-}
-
-func (driver *Driver) getEphemeralVolCredentials(volumeHandle string, stagingDev *StagingDevice) (map[string]string, error) {
-	// Check if secret name/namespace exists in the staging device.
-	// If yes, then retrieve credentials using them.
-	if stagingDev.Secret != nil {
-		secrets, err := driver.flavor.GetCredentialsFromSecret(stagingDev.Secret.Name, stagingDev.Secret.Namespace)
-		if err != nil {
-			log.Errorf("Failed to get credentials for ephemeral volume %s from secret %s/%s, err: %s",
-				volumeHandle, stagingDev.Secret.Name, stagingDev.Secret.Namespace, err.Error())
-			return nil, err
-		}
-		return secrets, nil
-	}
-
-	// Get POD name/namespace from the staging device and retrieve credentials from the POD spec.
-	if stagingDev.POD == nil {
-		return nil, fmt.Errorf("Failed to get credentials for ephemeral volume %s. Missing POD information in the staging device %+v",
-			volumeHandle, stagingDev)
-	}
-	// Get secrets from POD spec
-	secrets, err := driver.flavor.GetCredentialsFromPodSpec(volumeHandle, stagingDev.POD.Name, stagingDev.POD.Namespace)
-	if err != nil {
-		log.Errorf("Failed to get credentials from POD, err: %s", err.Error())
-		return nil, err
-	}
-	return secrets, nil
 }
 
 // NodePublishVolume ...
@@ -746,7 +703,7 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	// Check if volume is requested with NFS resources and intercept here
 	if driver.IsNFSResourceRequest(request.VolumeContext) {
 		log.Infof("NodePublish requested with NFS resources for %s", request.VolumeId)
-		return driver.flavor.HandleNFSNodePublish(request)
+		return driver.flavor.HandleNFSNodePublish(driver.chapiDriver, request)
 	}
 
 	// If ephemeral volume request, then create new volume, add ACL and NodeStage/NodePublish
@@ -796,34 +753,41 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 			ephemeralVolName, request.VolumeId, podName)
 
 		// Node publish
-		err = driver.nodePublishEphemeralVolume(
-			ephemeralVolName,
-			stagingTargetPath,
-			request.TargetPath,
-			request.VolumeCapability,
-			secrets,
-			request.Readonly,
-			request.VolumeContext,
-		)
-		if err != nil {
-			log.Errorf("Failed to node publish ephemeral volume %s, err: %s", request.VolumeId, err.Error())
+		{
+			// serialize ephemeral NodePublish() requests
+			ephemeralPublishLock.Lock()
+			defer ephemeralPublishLock.Unlock()
 
-			rbErr := driver.retryRollbackEphemeralVolume(
-				request.VolumeId, // Volume Handle
+			err = driver.nodePublishEphemeralVolume(
+				request.VolumeId, // Ephemeral CSI Volume Handle
 				ephemeralVolName,
-				request.Secrets,
 				stagingTargetPath,
 				request.TargetPath,
+				request.VolumeCapability,
+				secrets,
+				request.Readonly,
+				request.VolumeContext,
 			)
-			if rbErr != nil {
-				log.Errorf("Failed to cleanup/rollback ephemeral volume %s, err: %s",
-					request.VolumeId, rbErr.Error())
-				// Returning both original error + rollback error
-				return nil, status.Error(codes.Internal,
-					fmt.Sprintf("%s, %s", err.Error(), rbErr.Error()))
+			if err != nil {
+				log.Errorf("Failed to node publish ephemeral volume %s, err: %s", request.VolumeId, err.Error())
+
+				rbErr := driver.retryRollbackEphemeralVolume(
+					request.VolumeId, // Ephemeral CSI Volume Handle
+					ephemeralVolName,
+					request.Secrets,
+					stagingTargetPath,
+					request.TargetPath,
+				)
+				if rbErr != nil {
+					log.Errorf("Failed to cleanup/rollback ephemeral volume %s, err: %s",
+						request.VolumeId, rbErr.Error())
+					// Returning both original error + rollback error
+					return nil, status.Error(codes.Internal,
+						fmt.Sprintf("%s, %s", err.Error(), rbErr.Error()))
+				}
+				log.Infof("Cleanup/Rollback of ephemeral volume %s successful", request.VolumeId)
+				return nil, err
 			}
-			log.Infof("Cleanup/Rollback of ephemeral volume %s successful", request.VolumeId)
-			return nil, err
 		}
 		log.Infof("Successfully published the ephemeral volume %s (name: %s) to the target path %s",
 			request.VolumeId, ephemeralVolName, request.TargetPath)
@@ -997,7 +961,7 @@ func (driver *Driver) rollbackEphemeralVolume(
 
 	log.Tracef(">>>>> rollbackEphemeralVolume, volumeID: %s, stagingTargetPath: %s, targetPath: %s",
 		volumeHandle, stagingTargetPath, targetPath)
-	log.Trace("<<<<< rollbackEphemeralVolume")
+	defer log.Trace("<<<<< rollbackEphemeralVolume")
 
 	// Node Unpublish node (umount)
 	err := driver.nodeUnpublishVolume(targetPath)
@@ -1044,11 +1008,20 @@ func (driver *Driver) rollbackEphemeralVolume(
 			return err
 		}
 	}
+	// Remove ephemeral data file as volume does not exists anymore
+	removeDataFile(stagingTargetPath, ephemeralDataFileName)
+
+	// Delete DB entry
+	if err := driver.RemoveFromDB(volume.Name); err != nil {
+		return err
+	}
+
 	log.Infof("Rollback successful for the ephemeral volume handle %s", volumeHandle)
 	return nil
 }
 
 func (driver *Driver) nodePublishEphemeralVolume(
+	volumeHandle string,
 	volumeName string,
 	stagingTargetPath string,
 	targetPath string,
@@ -1057,8 +1030,8 @@ func (driver *Driver) nodePublishEphemeralVolume(
 	readOnly bool,
 	volumeContext map[string]string) error {
 
-	log.Tracef(">>>>> nodePublishEphemeralVolume, volumeName: %s, targetPath: %s, volumeCapability: %v, volumeContext: %v",
-		volumeName, targetPath, volumeCapability, volumeContext)
+	log.Tracef(">>>>> nodePublishEphemeralVolume, volumeHandle: %s, volumeName: %s, targetPath: %s, volumeCapability: %v, volumeContext: %v",
+		volumeHandle, volumeName, targetPath, volumeCapability, volumeContext)
 	defer log.Trace("<<<<< nodePublishEphemeralVolume")
 
 	// Create DB entry
@@ -1067,10 +1040,6 @@ func (driver *Driver) nodePublishEphemeralVolume(
 		return err
 	}
 	defer driver.RemoveFromDBIfPending(dbKey)
-
-	// serialize ephemeral NodePublish() requests
-	ephemeralPublishLock.Lock()
-	defer ephemeralPublishLock.Unlock()
 
 	// Do the following for ephemeral inline volume:
 	// 		1) Create new volume using volume context parameters
@@ -1100,20 +1069,34 @@ func (driver *Driver) nodePublishEphemeralVolume(
 		log.Tracef("Ephemeral volume %s requested with size %s (%v)", volumeName, sizeStr, sizeInBytes)
 	}
 
-	// make accessProtocol mandatory for inline volume
-	_, ok := volumeContext["accessProtocol"]
-	if !ok {
-		return status.Error(codes.Internal,
-			fmt.Sprintf("accessProtocol is required. Failed to create ephemeral volume %s",
-				volumeName))
-	}
-
 	// Construct volume capabitilities to pass to createVolume()
 	volCapabilities := []*csi.VolumeCapability{
 		volumeCapability,
 	}
 
-	// Create volume
+	// Check if the requested volume already exists on the backend.
+	// If yes, then we need to force re-create it (destroy and then create).
+	{
+		volume, err := driver.GetVolumeByName(volumeName, secrets)
+		if err != nil {
+			log.Errorf("Error while trying to check if ephemeral volume %s already exists, err: %s", volumeName, err.Error())
+			return status.Error(codes.Internal,
+				fmt.Sprintf("NodePublish of ephemeral volume %s failed, %s", err.Error()))
+		}
+		// If volume found, then force destroy it.
+		if volume != nil {
+			log.Infof("Volume %s already exists, attempting to force destroy", volumeName)
+			err = driver.deleteVolume(volume.ID, secrets, true)
+			if err != nil {
+				return status.Error(codes.Internal,
+					fmt.Sprintf("NodePublish of ephemeral volume %s failed, unable to destroy pre-existing volume with id %s, %s",
+						volumeName, volume.ID, err.Error()))
+			}
+			log.Infof("Successfully destroyed the pre-existing ephemeral volume %s", volumeName)
+		}
+	}
+
+	// Create new volume
 	volume, err := driver.createVolume(
 		volumeName,
 		sizeInBytes,
@@ -1134,6 +1117,50 @@ func (driver *Driver) nodePublishEphemeralVolume(
 	if err := driver.UpdateDB(dbKey, volume); err != nil {
 		return err
 	}
+
+	// POD information
+	podData := &POD{
+		UID:       volumeContext[csiEphemeralPodUID],
+		Name:      volumeContext[csiEphemeralPodName],
+		Namespace: volumeContext[csiEphemeralPodNamespace],
+	}
+
+	var secretRef *Secret
+	// Get the secret reference from volume context if specified
+	if volumeContext[secretNameKey] != "" && volumeContext[secretNamespaceKey] != "" {
+		log.Tracef("Extract the secret reference from volume context for volume %s", volumeHandle)
+		secretRef = &Secret{
+			Name:      volumeContext[secretNameKey],
+			Namespace: volumeContext[secretNamespaceKey],
+		}
+	} else {
+		log.Tracef("Fetching the secret reference from POD for volume handle %s", volumeHandle)
+		// Store the secret reference from POD (Fetch from POD using volumeHandle) in the staging device
+		volSecretName, err := driver.flavor.GetEphemeralVolumeSecretFromPod(volumeHandle, podData.Name, podData.Namespace)
+		if err != nil {
+			return status.Error(codes.Internal,
+				fmt.Sprintf("Failed to get secret for ephemeral volume %s from pod %s/%s, %s",
+					volumeHandle, podData.Name, podData.Namespace, err.Error()))
+		}
+		secretRef = &Secret{
+			Name:      volSecretName,
+			Namespace: podData.Namespace,
+		}
+	}
+	// Store ephemeral data for the newly created volume
+	ephemeralData := Ephemeral{
+		VolumeHandle: volumeHandle,
+		VolumeID:     volume.VolumeId,
+		PodData:      podData,
+		SecretRef:    secretRef,
+	}
+
+	// persist ephemeral data
+	if err := writeData(stagingTargetPath, ephemeralDataFileName, ephemeralData); err != nil {
+		return status.Error(codes.Internal,
+			fmt.Sprintf("failed to save ephemeral data: %v", err.Error()))
+	}
+	log.Tracef("Ephemeral data file [%s/%s] created successfully", stagingTargetPath, ephemeralDataFileName)
 
 	// Get Node Info
 	nodeID, err := driver.nodeGetInfo()
@@ -1347,8 +1374,35 @@ func (driver *Driver) isEphemeralTargetPath(targetPath string) (bool, error) {
 	}
 	if exists {
 		// Ephemeral volume
+		log.Tracef("Found [%s]. This is ephemeral target path", devFilePath)
 		return true, nil
 	}
+
+	// Another way to check if it is ephemeral.
+	// Check if 'ephemeral_data.json' exists
+	ephemeralDataFilePath := path.Join(devFileDir, ephemeralDataFileName)
+	exists, _, err = util.FileExists(ephemeralDataFilePath)
+	if err != nil {
+		return false, fmt.Errorf("Failed to check if ephemeral data file %s exists, %v", devFilePath, err.Error())
+	}
+	if exists {
+		// Ephemeral volume
+		log.Tracef("Found [%s]. This is ephemeral target path", ephemeralDataFilePath)
+		return true, nil
+	}
+
+	// Another way to check if it is ephemeral.
+	// Check if 'vol_data.json' contains ["driverMode" : "ephemeral"]
+	volData, err := loadVolumeData(devFileDir, volDataFileName)
+	if err != nil {
+		return false, err
+	}
+	if volData[driverModeKey] == ephemeralDriverMode {
+		// Ephemeral volume
+		log.Tracef("Found driver mode as 'ephemeral' in [%s]. This is ephemeral target path", volDataFileName)
+		return true, nil
+	}
+
 	return false, nil
 }
 
@@ -1398,65 +1452,74 @@ func (driver *Driver) nodeUnpublishEphemeralVolume(volumeHandle string, targetPa
 		log.Errorf("err: %s", err.Error())
 		return err
 	}
-	log.Infof("Successfully node unpublished volume %s from targetPath %s", volumeHandle, targetPath)
+	log.Infof("Successfully node unpublished ephemeral volume %s from targetPath %s", volumeHandle, targetPath)
 
 	// For ephemeral volume, targetPath's parent directory will be used as 'stagingTargetPath'
 	// The device info file is available in this directory.
 	stagingTargetPath := filepath.Dir(targetPath)
-	// Read device info from the staging area
-	stagingDev, err := readStagedDeviceInfo(stagingTargetPath)
+
+	// 2) Node Unstage volume (remove device, staging unmount and delete device file)
+	if err := driver.nodeUnstageVolume(volumeHandle, stagingTargetPath); err != nil {
+		log.Errorf("Error node unstaging the ephemeral volume %s, err: %s", volumeHandle, err.Error())
+		return err
+	}
+	log.Infof("Successfully unstaged the ephemeral volume %s from stagingTargetPath %s",
+		volumeHandle, stagingTargetPath)
+
+	// Fetch the volume from the backend using data from ephemeral_data.json file
+
+	// Load Ephemeral data
+	ephemeralData, err := loadEphemeralData(stagingTargetPath, ephemeralDataFileName)
 	if err != nil {
-		log.Error("err: ", err.Error())
+		log.Errorf("Failed to load ephemeral data from %s, %s", ephemeralDataFileName, err.Error())
 		return status.Error(codes.Internal, err.Error())
 	}
-	if stagingDev == nil || stagingDev.POD == nil {
-		log.Warnf("Missing staging device or POD information for volume %s", volumeHandle)
+	if ephemeralData == nil {
+		log.Infof("Ephemeral data not found for volume %s, return success", volumeHandle)
 		return nil
 	}
 
-	// Extract the volume credentials using staging device info (POD or Secret)
-	log.Tracef("Fetching credentials for ephemeral volume %s", volumeHandle)
-	secrets, err := driver.getEphemeralVolCredentials(volumeHandle, stagingDev)
+	// Fetch volume from backend
+	// Fetch credentials from secret reference
+	log.Tracef("Fetching credentials from ephemeral data %v", ephemeralData)
+	if ephemeralData.SecretRef == nil {
+		return status.Error(codes.Internal,
+			fmt.Sprintf("Missing Secret reference in the ephemeral data %v. Unable to fetch credentials for ephemeral volume %s with ID %s",
+				ephemeralData, ephemeralData.VolumeHandle, ephemeralData.VolumeID))
+	}
+	secrets, err := driver.flavor.GetCredentialsFromSecret(ephemeralData.SecretRef.Name, ephemeralData.SecretRef.Namespace)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return status.Error(codes.Internal,
-			fmt.Sprintf("Error getting volume credentials, so unable to destroy ephemeral volume %s, err: %s",
-				volumeHandle, err.Error()))
+		return status.Error(codes.Unavailable,
+			fmt.Sprintf("Failed to fetch credentials from secret %s/%s for ephemeral volume %s, err: %s",
+				ephemeralData.SecretRef.Name, ephemeralData.SecretRef.Namespace, ephemeralData.VolumeHandle, err.Error()))
 	}
-
 	// Get storage provider using secrets
 	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return status.Error(codes.Internal,
-			fmt.Sprintf("Failed to get storage provider from secrets, so unable to destroy ephemeral volume %s, err: %s",
-				volumeHandle, err.Error()))
+		return status.Error(codes.Unavailable,
+			fmt.Sprintf("Failed to get storage provider from secrets for volume %s with id %s, err: %s",
+				ephemeralData.VolumeHandle, ephemeralData.VolumeID, err.Error()))
 	}
-
-	// Get the volume from the backend using volume ID
-	volume, err := storageProvider.GetVolume(stagingDev.VolumeID)
+	// Fetch the volume from the backend using volume ID
+	volume, err := storageProvider.GetVolume(ephemeralData.VolumeID)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return status.Error(codes.Internal,
-			fmt.Sprintf("Error while retrieving ephemeral volume with id %s from the backend, err: %s",
-				stagingDev.VolumeID, err.Error()))
+			fmt.Sprintf("Error while retrieving ephemeral volume %s with id %s from the backend, err: %s",
+				ephemeralData.VolumeHandle, ephemeralData.VolumeID, err.Error()))
 	}
 	if volume == nil {
-		// Volume not found, so return success
+		// If volume is not found, then return success and skip both ControllerUnpublish() and DeleteVolume()
 		log.Infof("Ephemeral volume %s with ID %s not found on the backend, return success",
-			volumeHandle, stagingDev.VolumeID)
+			ephemeralData.VolumeHandle, ephemeralData.VolumeID)
+		// Remove ephemeral data file as volume does not exists anymore
+		removeDataFile(stagingTargetPath, ephemeralDataFileName)
 		return nil
 	}
-	ephemeralVolName := volume.Name
 
-	// 2) Node Unstage
-	if err := driver.nodeUnstageVolume(volume.ID, stagingTargetPath); err != nil {
-		log.Error("err: ", err.Error())
-		return err
-	}
-	log.Infof("Successfully unstaged the ephemeral volume %s with ID %s from stagingTargetPath %s",
-		volumeHandle, volume.ID, stagingTargetPath)
-
+	// 3) Controller Unpublish Volume
 	// Get Node Info
 	nodeID, err := driver.nodeGetInfo()
 	if err != nil {
@@ -1465,8 +1528,7 @@ func (driver *Driver) nodeUnpublishEphemeralVolume(volumeHandle string, targetPa
 			fmt.Sprintf("Failed to node unpublish ephemeral volume %s, err: %s",
 				volumeHandle, err.Error()))
 	}
-
-	// 3) Controller Unpublish
+	// Controller Unpublish
 	if err := driver.controllerUnpublishVolume(volume.ID, nodeID, secrets); err != nil {
 		log.Error("err: ", err.Error())
 		return err
@@ -1481,15 +1543,19 @@ func (driver *Driver) nodeUnpublishEphemeralVolume(volumeHandle string, targetPa
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return status.Error(codes.Internal,
-			fmt.Sprintf("Error destroying ephemeral volume %s with ID %s from the backend, err: %s",
+			fmt.Sprintf(" %s with ID %s from the backend, err: %s",
 				volumeHandle, volume.ID, err.Error()))
 	}
 	log.Infof("Successfully destroyed the ephemeral volume %s with ID %s", volumeHandle, volume.ID)
 
+	// Remove ephemeral data file as volume does not exists anymore
+	removeDataFile(stagingTargetPath, ephemeralDataFileName)
+
 	// Delete DB entry
-	if err := driver.RemoveFromDB(ephemeralVolName); err != nil {
+	if err := driver.RemoveFromDB(volume.Name); err != nil {
 		return err
 	}
+
 	log.Infof("Successfully node unpublished the ephemeral volume %s from targetPath %s", volumeHandle, targetPath)
 	return nil
 }
@@ -1609,6 +1675,7 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
+
 	// Get max volume per node from environment variable
 	nodeMaxVolumesLimit := driver.nodeGetIntEnv(maxVolumesPerNodeKey)
 
@@ -1621,6 +1688,28 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		nodeMaxVolumesLimit = defaultMaxVolPerNode
 	}
 
+	// Enable watcher only once. GetNodeInfo rpc may be called multiple times by external
+	// provisioner.
+	if !isWatcherEnabled {
+		// Create a anonymous wrapper function over nodeGetInfo. This is os event driven
+		// fn execution.
+		getNodeInfoFunc := func() {
+			nodeID, err := driver.nodeGetInfo()
+			if err != nil {
+				log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+			}
+			return
+		}
+		// Register anonymous wrapper function(watcher).
+		watcher, _ := util.InitializeWatcher(getNodeInfoFunc)
+		// Add list of files /and directories to watch. The list contains
+		// iSCSI , FC and CHAP Info and Networking config directories
+		list := []string{"/etc/sysconfig/network-scripts/", "/etc/sysconfig/network/", "/etc/iscsi/initiatorname.iscsi", "/etc/networks", "/etc/iscsi/iscsid.conf"}
+		watcher.AddWatchList(list)
+		// Start event the watcher in a separate thread.
+		go watcher.StartWatcher()
+		isWatcherEnabled = true
+	}
 	return &csi.NodeGetInfoResponse{
 		NodeId:            nodeID,
 		MaxVolumesPerNode: nodeMaxVolumesLimit,
@@ -1736,38 +1825,6 @@ func (driver *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetC
 	}, nil
 }
 
-func writeStagedDeviceInfo(targetPath string, stagingDev *StagingDevice) error {
-	log.Tracef(">>>>> writeStagedDeviceInfo, targetPath: %s, stagingDev: %+v", targetPath, stagingDev)
-	defer log.Trace("<<<<< writeStagedDeviceInfo")
-
-	if stagingDev == nil || stagingDev.Device == nil {
-		return fmt.Errorf("Invalid staging device info. Staging device cannot be nil")
-	}
-
-	// Encode from device object
-	deviceInfo, err := json.Marshal(stagingDev)
-	if err != nil {
-		return err
-	}
-
-	// Attempt create of staging dir, as CSI attacher can remove the directory
-	// while operation is still pending(during retries)
-	if err = os.MkdirAll(targetPath, 0750); err != nil {
-		log.Errorf("Failed to create staging dir %s err: %v", targetPath, err)
-		return err
-	}
-
-	// Write to file
-	filename := path.Join(targetPath, deviceInfoFileName)
-	err = ioutil.WriteFile(filename, deviceInfo, 0600)
-	if err != nil {
-		log.Errorf("Failed to write to file %s, err: %v", filename, err.Error())
-		return err
-	}
-
-	return nil
-}
-
 func readStagedDeviceInfo(targetPath string) (*StagingDevice, error) {
 	log.Trace(">>>>> readStagedDeviceInfo, targetPath: ", targetPath)
 	defer log.Trace("<<<<< readStagedDeviceInfo")
@@ -1801,9 +1858,77 @@ func readStagedDeviceInfo(targetPath string) (*StagingDevice, error) {
 	return &stagingDev, nil
 }
 
-func removeStagedDeviceInfo(targetPath string) error {
-	filePath := path.Join(targetPath, deviceInfoFileName)
-	log.Trace(">>>>> removeStagedDeviceInfo, filePath: ", filePath)
-	defer log.Trace("<<<<< removeStagedDeviceInfo")
-	return util.FileDelete(filePath)
+// loadEphemeralData loads ephemeral data from specified json file/location
+/* SAMPLE EPHEMERAL DATA FILE CONTENTS: 'ephemeral_data.json'
+{
+	"secret_ref" : {
+		"namespace" : "kube-system",
+		"name" : "nimble-secret"
+	},
+	"pod_data" : {
+		"namespace" : "kube-system",
+		"uid" : "daa1c178-9666-4afd-85fe-7906e1384c05",
+		"name" : "my-pod-inline-mount-test"
+	},
+	"volume_handle" : "csi-f4f081da0a1ec68b65231cf29fe0d332330eaa136f0284d72c447f49ce665d87",
+	"volume_id" : "0601a32bf8f45646a50000000000000000000005fd"
+}
+*/
+func loadEphemeralData(dir string, fileName string) (*Ephemeral, error) {
+	dataFilePath := filepath.Join(dir, fileName)
+	log.Tracef("loading data file [%s]", dataFilePath)
+
+	// Check if the fileexists
+	exists, _, _ := util.FileExists(dataFilePath)
+	if !exists {
+		log.Infof("Ephemeral data file %s does not exist. Returning here", dataFilePath)
+		return nil, nil // Ephemeral volume data not found
+	}
+
+	file, err := os.Open(dataFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open volume data file [%s], %v", dataFilePath, err)
+	}
+	defer file.Close()
+	data := Ephemeral{}
+	if err := json.NewDecoder(file).Decode(&data); err != nil {
+		return nil, fmt.Errorf("failed to parse data file [%s], %v", dataFilePath, err)
+	}
+	log.Tracef("Data file [%s] loaded successfully", dataFilePath)
+	return &data, nil
+}
+
+// loadVolumeData loads volume data from specified json file/location
+/* SAMPLE VOLUME DATA FILE CONTENTS: 'vol_data.json'
+{
+	"volumeHandle" : "csi-f4f081da0a1ec68b65231cf29fe0d332330eaa136f0284d72c447f49ce665d87",
+	"driverMode" : "ephemeral",
+	"driverName" : "csi.hpe.com",
+	"nodeName" : "suneeth-k8s-sjc-2.vlab.nimblestorage.com",
+	"specVolID" : "my-volume-1",
+	"attachmentID" : "csi-81d5ddd664b04e64b8b5a19a0f266237978584d1478598a8bd970c5e25f88484"
+}
+*/
+func loadVolumeData(dir string, fileName string) (map[string]string, error) {
+	dataFilePath := filepath.Join(dir, fileName)
+	log.Tracef("loading data file [%s]", dataFilePath)
+
+	// Check if the fileexists
+	exists, _, _ := util.FileExists(dataFilePath)
+	if !exists {
+		log.Infof("Volume data file %s does not exist. Returning here", dataFilePath)
+		return nil, nil // Volume data not found
+	}
+
+	file, err := os.Open(dataFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open volume data file [%s], %v", dataFilePath, err)
+	}
+	defer file.Close()
+	data := map[string]string{}
+	if err := json.NewDecoder(file).Decode(&data); err != nil {
+		return nil, fmt.Errorf("failed to parse data file [%s], %v", dataFilePath, err)
+	}
+	log.Tracef("Data file [%s] loaded successfully", dataFilePath)
+	return data, nil
 }

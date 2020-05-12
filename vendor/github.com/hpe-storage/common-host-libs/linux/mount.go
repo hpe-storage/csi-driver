@@ -570,6 +570,28 @@ func MountDeviceWithFileSystem(devPath string, mountPoint string, options []stri
 	return mount, nil
 }
 
+func MountNFSShare(source string, targetPath string, options []string) error {
+	log.Tracef(">>>>> MountNFSShare called with source %s target %s", source, targetPath)
+	defer log.Tracef("<<<<< MountNFSShare")
+
+	args := []string{source, targetPath}
+	optionArgs := []string{}
+	if len(options) != 0 {
+		optionArgs = append([]string{"-o"}, strings.Join(options, ","))
+	}
+	args = append(optionArgs, args...)
+	_, _, err := util.ExecCommandOutput(mountCommand, args)
+	if err != nil {
+		return err
+	}
+	// verify that mount is successful
+	err = verifyMount(source, targetPath)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func performMount(devPath string, mountPoint string, options []string) (*model.Mount, error) {
 	args := []string{devPath, mountPoint}
 	optionArgs := []string{}
@@ -694,15 +716,17 @@ func verifyUnMount(mountPoint string) error {
 	log.Tracef("%s is unmounted", mountPoint)
 	return nil
 }
+
 func verifyMount(devPath, mountPoint string) error {
 	mountedDevice, err := GetDeviceFromMountPoint(mountPoint)
 	if err != nil {
 		return err
 	}
-	if mountedDevice != "" {
-		log.Tracef("%s is mounted at %s", devPath, mountPoint)
+	if mountedDevice == "" {
+		return fmt.Errorf("device %s is not mounted at %s", devPath, mountPoint)
 	}
-	return err
+	log.Tracef("%s is mounted at %s", devPath, mountPoint)
+	return nil
 }
 
 // GetFsType returns filesytem type for a given mount object

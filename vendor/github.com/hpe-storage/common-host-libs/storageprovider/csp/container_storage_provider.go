@@ -263,6 +263,64 @@ func (provider *ContainerStorageProvider) CreateVolume(name, description string,
 	return response, err
 }
 
+// CreateVolumeGroup creates a volume group on the CSP
+func (provider *ContainerStorageProvider) CreateVolumeGroup(name, description string, opts map[string]interface{}) (*model.VolumeGroup, error) {
+	log.Tracef(">>>>> CreateVolumeGroup, name: %s, opts: %+v", name, opts)
+	defer log.Trace("<<<<< CreateVolumeGroup")
+
+	response := &model.VolumeGroup{}
+	var errorResponse *ErrorsPayload
+
+	volume_group := &model.VolumeGroup{
+		Name:        name,
+		Description: description,
+		Config:      opts,
+	}
+
+	// Create the volume group on the array
+	status, err := provider.invoke(
+		&connectivity.Request{
+			Action:        "POST",
+			Path:          "/containers/v1/volume_groups",
+			Payload:       &volume_group,
+			Response:      &response,
+			ResponseError: &errorResponse,
+		},
+	)
+	if errorResponse != nil {
+		return nil, handleError(status, errorResponse)
+	}
+
+	return response, err
+}
+
+// DeleteVolumeGroup deletes a volume group on the CSP
+func (provider *ContainerStorageProvider) DeleteVolumeGroup(id string) error {
+	log.Tracef(">>>>> DeleteVolumeGroup, id: %s", id)
+	defer log.Trace("<<<<< DeleteVolumeGroup")
+
+	var errorResponse *ErrorsPayload
+
+	// Delete the volume group on the array
+	status, err := provider.invoke(
+		&connectivity.Request{
+			Action:        "DELETE",
+			Path:          fmt.Sprintf("/containers/v1/volume_groups/%s", id),
+			Payload:       nil,
+			Response:      nil,
+			ResponseError: &errorResponse,
+		},
+	)
+	if errorResponse != nil {
+		return handleError(status, errorResponse)
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // CloneVolume clones a volume on the CSP
 // nolint : gocyclo
 func (provider *ContainerStorageProvider) CloneVolume(name, description, sourceID, snapshotID string, size int64, opts map[string]interface{}) (*model.Volume, error) {
@@ -446,6 +504,42 @@ func (provider *ContainerStorageProvider) ExpandVolume(id string, requestBytes i
 	}
 
 	// Expand volume on the array
+	status, err := provider.invoke(
+		&connectivity.Request{
+			Action:        "PUT",
+			Path:          fmt.Sprintf("/containers/v1/volumes/%s", id),
+			Payload:       &volume,
+			Response:      &response,
+			ResponseError: &errorResponse,
+		},
+	)
+	if errorResponse != nil {
+		return nil, handleError(status, errorResponse)
+	}
+
+	return response, err
+}
+
+// EditVolume edits a volume on the CSP
+func (provider *ContainerStorageProvider) EditVolume(id string, opts map[string]interface{}) (*model.Volume, error) {
+	log.Tracef(">>>>> EditVolume, id: %s, opts: %v", id, opts)
+	defer log.Trace("<<<<< EditVolume")
+
+	response := &model.Volume{}
+	var errorResponse *ErrorsPayload
+
+	volume := &model.Volume{
+		ID: id,
+	}
+
+	// volumeGroupId is part of volume object and should be removed from opts
+	if val, ok := opts["volumeGroupId"]; ok {
+		delete(opts, "volumeGroupId")
+		volume.VolumeGroupId = val.(string)
+	}
+	volume.Config = opts
+
+	// Edit the volume on the array
 	status, err := provider.invoke(
 		&connectivity.Request{
 			Action:        "PUT",

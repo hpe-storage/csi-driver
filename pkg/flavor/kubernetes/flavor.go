@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -26,7 +27,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	//"k8s.io/kubernetes/pkg/volume/util"
 )
 
 const (
@@ -40,9 +40,9 @@ var (
 
 // Flavor of the CSI driver
 type Flavor struct {
-	kubeClient *kubernetes.Clientset
 	crdClient  *crd_client.Clientset
 	nodeName   string
+	kubeClient kubernetes.Interface
 
 	claimInformer cache.SharedIndexInformer
 	claimIndexer  cache.Indexer
@@ -130,6 +130,11 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 	log.Tracef(">>>>> LoadNodeInfo called with node %v", node)
 	defer log.Trace("<<<<< LoadNodeInfo")
 
+	// overwrite actual host name with node name from k8s to be compliant
+	if name := os.Getenv("NODE_NAME"); name != "" {
+		node.Name = name
+	}
+
 	nodeInfo, err := flavor.getNodeInfoByUUID(node.UUID)
 	if err != nil {
 		log.Errorf("Error obtaining node info by uuid %s- %s\n", node.UUID, err.Error())
@@ -206,8 +211,7 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 		log.Infof("Adding node with name %s", node.Name)
 		nodeInfo, err = flavor.crdClient.StorageV1().HPENodeInfos().Create(newNodeInfo)
 		if err != nil {
-			log.Infof("Error adding node %v - %s", nodeInfo, err.Error())
-			return "", nil
+			log.Fatalf("Error adding node %v - %s", nodeInfo, err.Error())
 		}
 
 		// update nodename for lookup during cleanup(unload)
@@ -436,7 +440,6 @@ func (flavor *Flavor) getNodeInfoByUUID(uuid string) (*crd_v1.HPENodeInfo, error
 			return &nodeInfo, nil
 		}
 	}
-
 	return nil, nil
 }
 
@@ -475,6 +478,26 @@ func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (m
 	return credentials, nil
 }
 
+// IsPodExists checks if the pod with the given uid exists on the cluster
+func (flavor *Flavor) IsPodExists(uid string) (bool, error) {
+	log.Tracef(">>>>> IsPodExists, id: %s", uid)
+	defer log.Trace("<<<<< IsPodExists")
+
+	podList, err := flavor.kubeClient.CoreV1().Pods("").List(meta_v1.ListOptions{})
+	if err != nil {
+		log.Errorf("Error retrieving the pods, err: %v", err.Error())
+		return false, err
+	}
+	for _, pod := range podList.Items {
+		if uid == fmt.Sprintf("%s", pod.UID) {
+			return true, nil // Pod Found
+		}
+	}
+	// Pod not found or missing
+	log.Tracef("Pod with uid %s not found", uid)
+	return false, nil
+}
+
 func (flavor *Flavor) getPodByName(name string, namespace string) (*v1.Pod, error) {
 	log.Tracef(">>>>> getPodByName, name: %s, namespace: %s", name, namespace)
 	defer log.Trace("<<<<< getPodByName")
@@ -487,22 +510,6 @@ func (flavor *Flavor) getPodByName(name string, namespace string) (*v1.Pod, erro
 	return pod, nil
 }
 
-// getCredentialsFromPod retrieves the secrets map from the Pod for the given secret name if exists, else returns nil
-func (flavor *Flavor) getCredentialsFromPod(pod *v1.Pod, secretName string) (map[string]string, error) {
-	log.Tracef(">>>>> getCredentialsFromPod, secretName: %s, podNamespace: %s", secretName, pod.Namespace)
-	defer log.Trace("<<<<< getCredentialsFromPod")
-
-	secret := make(map[string]string)
-	secrets, err := flavor.kubeClient.CoreV1().Secrets(pod.Namespace).Get(secretName, meta_v1.GetOptions{})
-	if err != nil {
-		return secret, err
-	}
-	for name, data := range secrets.Data {
-		secret[name] = string(data)
-	}
-	return secret, nil
-}
-
 // makeVolumeHandle returns csi-<sha256(podUID,volSourceSpecName)>
 // Original source location: kubernetes/pkg/volume/csi/csi_mounter.go
 // TODO: Must be in-sync with k8s code
@@ -511,18 +518,18 @@ func makeVolumeHandle(podUID, volSourceSpecName string) string {
 	return fmt.Sprintf("csi-%x", result)
 }
 
-// GetCredentialsFromPodSpec retrieves volume secrets for a given CSI volname from a specified POD name and namespace
-func (flavor *Flavor) GetCredentialsFromPodSpec(volumeHandle string, podName string, namespace string) (map[string]string, error) {
-	log.Tracef(">>>>> GetCredentialsFromPodSpec, volumeHandle: %s, podName: %s, namespace: %s", volumeHandle, podName, namespace)
-	defer log.Trace("<<<<< GetCredentialsFromPodSpec")
+// GetEphemeralVolumeSecretFromPod retrieves secret for a given CSI volname from a specified POD name and namespace
+func (flavor *Flavor) GetEphemeralVolumeSecretFromPod(volumeHandle string, podName string, namespace string) (string, error) {
+	log.Tracef(">>>>> GetEphemeralVolumeSecretFromPod, volumeHandle: %s, podName: %s, namespace: %s", volumeHandle, podName, namespace)
+	defer log.Trace("<<<<< GetEphemeralVolumeSecretFromPod")
 
 	pod, err := flavor.getPodByName(podName, namespace)
 	if err != nil {
-		log.Errorf("Unable to get secrets for volume %s, err: %v", volumeHandle, err.Error())
-		return nil, err
+		log.Errorf("Unable to get pod %s/%s for volume %s, err: %v", podName, namespace, err.Error())
+		return "", err
 	}
 	if pod == nil {
-		return nil, fmt.Errorf("Pod %s is nil", podName)
+		return "", fmt.Errorf("Pod %s/%s not found", podName, namespace)
 	}
 
 	for _, vol := range pod.Spec.Volumes {
@@ -532,25 +539,18 @@ func (flavor *Flavor) GetCredentialsFromPodSpec(volumeHandle string, podName str
 			log.Tracef("Matched ephemeral volume %s attached to the POD [%s/%s]", vol.Name, namespace, podName)
 			csiSource := vol.VolumeSource.CSI
 			if csiSource == nil {
-				return nil, fmt.Errorf("CSI volume source is nil")
+				return "", fmt.Errorf("CSI volume source is nil")
 			}
 
 			// No secrets are configured
 			if csiSource.NodePublishSecretRef == nil {
 				log.Error("No secrets are configured")
-				return nil, fmt.Errorf("Missing 'NodePublishSecretRef' in the POD spec")
+				return "", fmt.Errorf("Missing 'NodePublishSecretRef' in the POD spec")
 			}
-
-			// Get the secrets from Pod
-			secret, err := flavor.getCredentialsFromPod(pod, csiSource.NodePublishSecretRef.Name)
-			if err != nil {
-				log.Errorf("failed to get secret from [%q/%q]", pod.Namespace, csiSource.NodePublishSecretRef.Name)
-				return nil, fmt.Errorf("failed to get secret from [%q/%q]", pod.Namespace, csiSource.NodePublishSecretRef.Name)
-			}
-			return secret, nil
+			return csiSource.NodePublishSecretRef.Name, nil
 		}
 	}
-	return nil, fmt.Errorf("Pod %s/%s does not contain the volume %s", namespace, podName, volumeHandle)
+	return "", fmt.Errorf("Pod %s/%s does not contain the volume %s", namespace, podName, volumeHandle)
 }
 
 // GetVolumePropertyOfPV retrieves volume filesystem for a given CSI volname
@@ -569,4 +569,16 @@ func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) 
 		return propertyVal, nil
 	}
 	return "", nil
+}
+
+func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
+	log.Tracef(">>>>> GetOrchestratorVersion")
+	defer log.Tracef("<<<<< GetOrchestratorVersion")
+
+	versionInfo, err := flavor.kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return nil, err
+	}
+	log.Tracef("obtained k8s version as %s", versionInfo.String())
+	return versionInfo, nil
 }
