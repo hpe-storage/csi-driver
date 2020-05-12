@@ -51,6 +51,18 @@ const (
 	// deviceInfoFileName is used to store the device details in a JSON file
 	deviceInfoFileName = "deviceInfo.json"
 
+	// volDataFileName stores the volume data
+	volDataFileName = "vol_data.json"
+
+	// ephemeralDataFileName stores Volume ID, POD info and Secrets reference
+	ephemeralDataFileName = "ephemeral_data.json"
+
+	// driverModeKey stored in the vol_data.json file
+	driverModeKey = "driverMode"
+
+	// ephemeralDriverMode for ephmeral inline volume
+	ephemeralDriverMode = "ephemeral"
+
 	// Pending :
 	Pending = "PENDING"
 
@@ -73,6 +85,9 @@ const (
 
 	// Prefix used by CSI ephemeral inline volume names
 	ephemeralKey = "ephemeral"
+
+	// Prefix used by the external sidecar in the ephemeral volume handle
+	csiHandlePrefix = "csi-"
 
 	// Ephemeral volume size specified in the POD spec
 	sizeKey = "size"

@@ -26,15 +26,17 @@ const (
 	csiControllerLogFile = "/var/log/hpe-csi-controller.log"
 	csiNodeLogFile       = "/var/log/hpe-csi-node.log"
 	csiEndpoint          = "unix:///var/lib/kubelet/csi.hpe.com/csi.sock"
+	csiScrubberInterval  = 1800 // Default value is 1800 seconds or 30 minutes
 )
 
 var (
 	// Flag variables for the command options
-	name       string
-	endpoint   string
-	dbServer   string
-	dbPort     string
-	flavorName string
+	name             string
+	endpoint         string
+	dbServer         string
+	dbPort           string
+	flavorName       string
+	scrubberInterval int64
 
 	// RootCmd is the main CSI command
 	RootCmd = &cobra.Command{
@@ -71,6 +73,7 @@ func init() {
 	RootCmd.PersistentFlags().StringVarP(&dbServer, "dbserver", "s", "", "Database server for the CSI driver")
 	RootCmd.PersistentFlags().StringVarP(&dbPort, "dbport", "p", etcd.DefaultPort, "Database server port for the CSI driver")
 	RootCmd.PersistentFlags().BoolP("node-service", "", false, "CSI node-plugin")
+	RootCmd.PersistentFlags().Int64Var(&scrubberInterval, "scrubber-interval", csiScrubberInterval, "Scrubber interval in seconds for the CSI driver")
 	RootCmd.PersistentFlags().BoolP("help", "h", false, "Show help information")
 	RootCmd.PersistentFlags().StringVarP(&flavorName, "flavor", "f", "", "CSI driver flavor")
 }
@@ -82,6 +85,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 	// Process cmd-line arguments for the CSI driver
 	driverName, _ := cmd.Flags().GetString("name")
 	nodeService, _ := cmd.Flags().GetBool("node-service")
+	scrubberInterval, _ := cmd.Flags().GetInt64("scrubber-interval")
 	endpoint, _ := cmd.Flags().GetString("endpoint")
 	dbServer, _ := cmd.Flags().GetString("dbserver")
 	dbPort, _ := cmd.Flags().GetString("dbport")
@@ -140,6 +144,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 
 	d.Start(nodeService)
 	log.Infof("[%d] reply  : %v", pid, os.Args)
+	d.StartScrubber(nodeService, scrubberInterval) // Schedule scrubber task
 
 	// Handle signals
 	stop := make(chan os.Signal, 1)
@@ -150,6 +155,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 	s := <-stop
 	log.Infof("Exiting due to signal [%v] notification for pid [%d]", s.String(), pid)
 	d.Stop(nodeService)
+	d.StopScrubber(nodeService) // Stop scrubber task
 	log.Infof("Stopped [%d]", pid)
 	return nil
 }

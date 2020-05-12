@@ -7,7 +7,10 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/Scalingo/go-etcd-lock/lock"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -22,6 +25,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/storageprovider"
 	"github.com/hpe-storage/common-host-libs/storageprovider/csp"
+	"github.com/hpe-storage/common-host-libs/util"
 	"github.com/hpe-storage/csi-driver/pkg/flavor"
 	"github.com/hpe-storage/csi-driver/pkg/flavor/kubernetes"
 	"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
@@ -29,6 +33,9 @@ import (
 
 const (
 	defaultTTL = 60
+
+	// podsDirPath on Kubernetes/Openshift
+	podsDirPath = "/var/lib/kubelet/pods" // TODO: Configurable???
 )
 
 // Driver is the object that implements the CSI interfaces
@@ -50,6 +57,12 @@ type Driver struct {
 	requestCache      map[string]interface{}
 	requestCacheMutex *concurrent.MapMutex
 	DBService         dbservice.DBService
+}
+
+// PodStorageProviderInfo :
+type PodStorageProviderInfo struct {
+	PodName         string
+	StorageProvider storageprovider.StorageProvider
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
@@ -153,6 +166,36 @@ func (driver *Driver) Stop(nodeService bool) error {
 	driver.grpc.GracefulStop()
 	if nodeService {
 		driver.flavor.UnloadNodeInfo()
+	}
+	return nil
+}
+
+// StartScrubber starts the scrubber period task
+func (driver *Driver) StartScrubber(nodeService bool, scrubberInterval int64) error {
+	if nodeService {
+		log.Tracef("Scheduling scrubber task to run every %v seconds", scrubberInterval)
+		tick := time.NewTicker(time.Duration(scrubberInterval) * time.Second)
+		done := make(chan bool)
+		go func() {
+			// Cleanup ephemeral orphan volumes
+			driver.ScrubberTask(time.Now())
+			for {
+				select {
+				case t := <-tick.C:
+					driver.ScrubberTask(t)
+				case <-done:
+					return
+				}
+			}
+		}()
+	}
+	return nil
+}
+
+// StopScrubber stops the scrubber period task
+func (driver *Driver) StopScrubber(nodeService bool) error {
+	if nodeService {
+		log.Infof("Stopped the scrubber task at %v", time.Now())
 	}
 	return nil
 }
@@ -492,7 +535,7 @@ func (driver *Driver) GetRequest(key string) interface{} {
 
 // AddRequest inserts the request entry into the driver cache map
 func (driver *Driver) AddRequest(key string, value interface{}) {
-	log.Tracef(">>>>> AddRequest, key: %s, value: %s", key, value)
+	log.Tracef(">>>>> AddRequest, key: %s, value: %v", key, value)
 	defer log.Trace("<<<<< AddRequest")
 
 	// Get the mutex lock on the map for the key
@@ -643,6 +686,98 @@ func (driver *Driver) IsNFSResourceRequest(parameters map[string]string) bool {
 		return true
 	}
 	return false
+}
+
+// ScrubberTask executes the scrubber function
+func (driver *Driver) ScrubberTask(t time.Time) error {
+	log.Infof("Scrubber task invoked at %v", t)
+	if err := driver.ScrubEphemeralPods(); err != nil {
+		log.Error(err.Error())
+		// Log error and continue
+	}
+	log.Infof("Scrubber task completed at %v", time.Now())
+	return nil
+}
+
+// ScrubEphemeralPods to cleanup the orphan/stale ephemeral volumes and its associated staged devices
+func (driver *Driver) ScrubEphemeralPods() error {
+	log.Trace(">>>>> ScrubEphemeralPods")
+	defer log.Trace("<<<<< ScrubEphemeralPods")
+
+	// Check if pods path exists
+	exists, isDir, err := util.FileExists(podsDirPath)
+	if err != nil {
+		return err
+	}
+	if !exists || !isDir {
+		return fmt.Errorf("Path [%s] does not exist or not a directory", podsDirPath)
+	}
+
+	// Fetch all ephemeral pods and populate it
+	//ephemeralPods := map[string][]*StagingDeviceEphemeralData{}
+	ephemeralPods := map[string][]*VolumeHandleTargetPath{}
+	err = filepath.Walk(podsDirPath, func(fileFullPath string, info os.FileInfo, err error) error {
+		if !info.IsDir() {
+			if info.Name() == ephemeralDataFileName {
+				log.Tracef("Found Ephemeral data file [%s]", fileFullPath)
+				targetDirPath := filepath.Dir(fileFullPath)
+				targetPath := fmt.Sprintf("%s/%s", targetDirPath, "mount")
+
+				// Load Ephemeral Data
+				ephemeralData, err := loadEphemeralData(targetDirPath, ephemeralDataFileName)
+				if err != nil {
+					log.Errorf("Failed to load ephemeral data from %s, %s", ephemeralDataFileName, err.Error())
+					return nil
+				}
+				if ephemeralData == nil {
+					log.Infof("Missing ephemeral data in %s, skip processing", fileFullPath)
+					return nil
+				}
+
+				// Add volumePath to the pod list
+				volHandleTargetPath := &VolumeHandleTargetPath{
+					VolumeHandle: ephemeralData.VolumeHandle,
+					TargetPath:   targetPath,
+				}
+				log.Tracef("Adding ephemeral pod/volume scrubbing, [POD: %s], [VolumeHandle: %s], [VolumeID: %s], [TargetPath: %s]",
+					ephemeralData.PodData.UID, ephemeralData.VolumeHandle, ephemeralData.VolumeID, targetPath)
+				ephemeralPods[ephemeralData.PodData.UID] = append(ephemeralPods[ephemeralData.PodData.UID], volHandleTargetPath)
+				return nil
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("Error processing the pods directory %s, %s", podsDirPath, err.Error())
+	}
+
+	if len(ephemeralPods) == 0 {
+		log.Info("No ephemeral Pod(s) found")
+		return nil
+	}
+	for podUID, volumePaths := range ephemeralPods {
+		// Check if the pod exists on the cluster
+		exists, err := driver.flavor.IsPodExists(podUID)
+		if err != nil {
+			log.Errorf("Failed to process POD [%s], err: %s", podUID, err.Error())
+			continue
+		}
+		if !exists {
+			log.Infof("POD with UID %s does not exist. So, attempting to cleanup device(s) and associated ephemeral volume(s)", podUID)
+			// Perform nodeUnpublishEphemeralVolume() for each target path
+			for _, volumePath := range volumePaths {
+				log.Infof("Cleanup/nodeUnpublish ephemeral volume %s on target path %s", volumePath.VolumeHandle, volumePath.TargetPath)
+				err := driver.nodeUnpublishEphemeralVolume(volumePath.VolumeHandle, volumePath.TargetPath)
+				if err != nil {
+					log.Errorf("Failed to node unpublish ephemeral volume from targetPath [%s], err: %s",
+						volumePath.TargetPath, err.Error())
+					continue
+				}
+				log.Infof("Successfully node unpublished ephemeral volume from targetPath [%s]", volumePath.TargetPath)
+			}
+		}
+	}
+	return nil
 }
 
 /******************************************************************************************/
