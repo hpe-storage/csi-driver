@@ -59,12 +59,6 @@ type Driver struct {
 	DBService         dbservice.DBService
 }
 
-// PodStorageProviderInfo :
-type PodStorageProviderInfo struct {
-	PodName         string
-	StorageProvider storageprovider.StorageProvider
-}
-
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
 func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string) (*Driver, error) {
 

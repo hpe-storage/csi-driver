@@ -94,9 +94,6 @@ const (
 	// Prefix used by CSI ephemeral inline volume names
 	ephemeralKey = "ephemeral"
 
-	// Prefix used by the external sidecar in the ephemeral volume handle
-	csiHandlePrefix = "csi-"
-
 	// Ephemeral volume size specified in the POD spec
 	sizeKey = "size"
 
