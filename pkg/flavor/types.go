@@ -35,4 +35,6 @@ type Flavor interface {
 	GetVolumePropertyOfPV(propertyName string, pvName string) (string, error)
 	GetNFSVolumeID(volumeID string) (string, error)
 	GetOrchestratorVersion() (*version.Info, error)
+	StartNFSMonitor() error
+	StopNFSMonitor() error
 }

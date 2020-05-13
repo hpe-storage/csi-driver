@@ -32,7 +32,7 @@ func TestPluginSuite(t *testing.T) {
 	driver.grpc = NewNonBlockingGRPCServer()
 	// start node, controller and identity servers on same endpoint for tests
 	go driver.grpc.Start(driver.endpoint, driver, driver, driver)
-	defer driver.Stop(true)
+	defer driver.Stop(true, false)
 
 	stagingPath := "./csi-mnt"
 	targetPath := "./csi-mnt-stage"
@@ -51,7 +51,7 @@ func TestPluginSuite(t *testing.T) {
 
 // nolint: deadcode
 func realDriver(t *testing.T, endpoint string) *Driver {
-	driver, err := NewDriver("test-driver", "0.1", endpoint, flavor.Kubernetes, true, "", "")
+	driver, err := NewDriver("test-driver", "0.1", endpoint, flavor.Kubernetes, true, "", "", false, 0)
 
 	if err != nil {
 		t.Fatal("Failed to initialize driver")

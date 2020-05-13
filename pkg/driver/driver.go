@@ -45,6 +45,7 @@ type Driver struct {
 	storageProviders map[string]storageprovider.StorageProvider
 	flavor           flavor.Flavor
 	grpc             NonBlockingGRPCServer
+	nfsPodMonitor    *kubernetes.Monitor
 
 	controllerServiceCapabilities     []*csi.ControllerServiceCapability
 	nodeServiceCapabilities           []*csi.NodeServiceCapability
@@ -57,14 +58,14 @@ type Driver struct {
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
-func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string) (*Driver, error) {
+func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, nfsMonitor bool, nfsMonitorInterval int64) (*Driver, error) {
 
 	// Get CSI driver
 	driver := getDriver(name, version, endpoint)
 
 	// Configure flavor
 	if flavorName == flavor.Kubernetes {
-		flavor, err := kubernetes.NewKubernetesFlavor(nodeService)
+		flavor, err := kubernetes.NewKubernetesFlavor(nodeService, nfsMonitor, nfsMonitorInterval)
 		if err != nil {
 			return nil, err
 		}
@@ -140,23 +141,29 @@ func getDBClient(server string, port string) (*etcd.DBClient, error) {
 }
 
 // Start starts the gRPC server
-func (driver *Driver) Start(nodeService bool) error {
+func (driver *Driver) Start(nodeService bool, nfsMonitor bool) error {
 	go func() {
 		driver.grpc = NewNonBlockingGRPCServer()
 		if nodeService {
 			driver.grpc.Start(driver.endpoint, driver, nil, driver)
 		} else {
 			driver.grpc.Start(driver.endpoint, driver, driver, nil)
+			if nfsMonitor {
+				driver.flavor.StartNFSMonitor()
+			}
 		}
 	}()
 	return nil
 }
 
 // Stop stops the gRPC server
-func (driver *Driver) Stop(nodeService bool) error {
+func (driver *Driver) Stop(nodeService bool, nfsMonitor bool) error {
 	driver.grpc.GracefulStop()
 	if nodeService {
 		driver.flavor.UnloadNodeInfo()
+	}
+	if nfsMonitor {
+		driver.flavor.StopNFSMonitor()
 	}
 	return nil
 }

@@ -16,6 +16,7 @@ import (
 	crd_v1 "github.com/hpe-storage/k8s-custom-resources/pkg/apis/hpestorage/v1"
 	crd_client "github.com/hpe-storage/k8s-custom-resources/pkg/client/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
+	storage_v1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -49,10 +50,11 @@ type Flavor struct {
 	claimStopChan chan struct{}
 
 	eventRecorder record.EventRecorder
+	nfsMonitor    *Monitor
 }
 
 // NewKubernetesFlavor creates a new k8s flavored CSI driver
-func NewKubernetesFlavor(nodeService bool) (*Flavor, error) {
+func NewKubernetesFlavor(nodeService bool, nfsMonitor bool, nfsMonitorInterval int64) (*Flavor, error) {
 	kubeConfig, err := rest.InClusterConfig()
 	if err != nil {
 		fmt.Printf("Error getting config cluster - %s\n", err.Error())
@@ -77,6 +79,11 @@ func NewKubernetesFlavor(nodeService bool) (*Flavor, error) {
 	}
 
 	if !nodeService {
+		// initialize NFS pod monitor with controller service
+		if nfsMonitor {
+			flavor.nfsMonitor = &Monitor{IntervalSec: nfsMonitorInterval}
+		}
+
 		broadcaster := record.NewBroadcaster()
 		broadcaster.StartRecordingToSink(&core_v1.EventSinkImpl{Interface: kubeClient.CoreV1().Events(v1.NamespaceAll)})
 		flavor.eventRecorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "csi.hpe.com"})
@@ -581,4 +588,59 @@ func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
 	}
 	log.Tracef("obtained k8s version as %s", versionInfo.String())
 	return versionInfo, nil
+}
+
+func (flavor *Flavor) GetNodeByName(nodeName string) (*v1.Node, error) {
+	log.Tracef(">>>>> GetNodeByName called with %s", nodeName)
+	defer log.Trace("<<<<< GetNodeByName")
+
+	node, err := flavor.kubeClient.CoreV1().Nodes().Get(nodeName, meta_v1.GetOptions{})
+	if err != nil {
+		log.Errorf("unable to get node with name %s, err %s", nodeName, err.Error())
+		return nil, err
+	}
+	return node, nil
+}
+
+func (flavor *Flavor) DeletePod(podName string, namespace string, force bool) error {
+	log.Tracef(">>>>> DeletePod called with pod %s in namespace %s", podName, namespace)
+	defer log.Trace("<<<<< DeletePod")
+
+	deleteOptions := meta_v1.DeleteOptions{}
+	if force {
+		gracePeriodSec := int64(0)
+		deleteOptions.GracePeriodSeconds = &gracePeriodSec
+	}
+	err := flavor.kubeClient.CoreV1().Pods(namespace).Delete(podName, &deleteOptions)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (flavor *Flavor) ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error) {
+	log.Trace(">>>>> ListVolumeAttachments")
+	defer log.Trace("<<<<< ListVolumeAttachments")
+
+	vaList, err := flavor.kubeClient.StorageV1().VolumeAttachments().List(meta_v1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return vaList, nil
+}
+
+func (flavor *Flavor) DeleteVolumeAttachment(va string, force bool) error {
+	log.Trace(">>>>> DeleteVolumeAttachment")
+	defer log.Trace("<<<<< DeleteVolumeAttachment")
+
+	deleteOptions := meta_v1.DeleteOptions{}
+	if force {
+		gracePeriodSec := int64(0)
+		deleteOptions.GracePeriodSeconds = &gracePeriodSec
+	}
+	err := flavor.kubeClient.StorageV1().VolumeAttachments().Delete(va, &deleteOptions)
+	if err != nil {
+		return err
+	}
+	return nil
 }

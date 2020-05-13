@@ -44,6 +44,8 @@ const (
 	nfsConfigFile              = "ganesha.conf"
 	nfsConfigMap               = "hpe-nfs-config"
 	nfsServiceAccount          = "hpe-csi-nfs-sa"
+	nfsPodLabelKey             = "managed-by"
+	nfsPodLabelValue           = "hpe-csi"
 )
 
 // NFSSpec for creating NFS resources
@@ -726,7 +728,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	podSpec := core_v1.PodTemplateSpec{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:        name,
-			Labels:      map[string]string{"app": name},
+			Labels:      map[string]string{"app": name, nfsPodLabelKey: nfsPodLabelValue},
 			Annotations: map[string]string{"tags": name},
 		},
 		Spec: core_v1.PodSpec{

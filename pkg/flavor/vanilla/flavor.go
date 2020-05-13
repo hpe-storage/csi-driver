@@ -90,3 +90,11 @@ func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
 func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
 	return nil, nil
 }
+
+func (flavor *Flavor) StartNFSMonitor() error {
+	return nil
+}
+
+func (flavor *Flavor) StopNFSMonitor() error {
+	return nil
+}

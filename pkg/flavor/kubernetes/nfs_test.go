@@ -24,7 +24,8 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		os.Exit(1)
 	}
-	flavor = &Flavor{kubeClient: clientSet}
+	monitor := &Monitor{IntervalSec: 30}
+	flavor = &Flavor{kubeClient: clientSet, nfsMonitor: monitor}
 	code := m.Run()
 	os.Exit(code)
 }
@@ -142,4 +143,24 @@ func TestGetNFSSpec(t *testing.T) {
 	spec, err = flavor.getNFSSpec(createParams)
 	assert.NotNil(t, err)
 	assert.True(t, strings.Contains(err.Error(), "invalid nfs memory resource limit"))
+}
+
+func TestStartNFSMonitor(t *testing.T) {
+	err := flavor.StartNFSMonitor()
+	assert.Nil(t, err)
+	assert.True(t, flavor.nfsMonitor.started)
+	// attempt to start again and verify we error out
+	err = flavor.StartNFSMonitor()
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "Monitor has already been started"))
+}
+
+func TestStopNFSMonitor(t *testing.T) {
+	err := flavor.StopNFSMonitor()
+	assert.Nil(t, err)
+	assert.False(t, flavor.nfsMonitor.started)
+	// attempt to stop again and verify we don't attempt to close channel again
+	err = flavor.StopNFSMonitor()
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "Monitor has not been started"))
 }
