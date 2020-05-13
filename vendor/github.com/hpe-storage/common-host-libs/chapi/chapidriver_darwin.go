@@ -33,7 +33,7 @@ func (driver *MacDriver) GetMountOptions(device *model.Device, mountPoint string
 }
 
 // GetHostNetworks reports the networks on this host
-func (driver *MacDriver) GetHostNetworks() ([]*model.Network, error) {
+func (driver *MacDriver) GetHostNetworks() ([]*model.NetworkInterface, error) {
 	return nil, fmt.Errorf("not implemented")
 }
 
@@ -130,4 +130,9 @@ func (driver *MacDriver) BindUnmount(mountPoint string) error {
 // ExpandDevice will expand the given device/filesystem on the host
 func (driver *MacDriver) ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error {
 	return fmt.Errorf("not implemented")
+}
+
+// MountNFSVolume mounts NFS share onto given target path
+func (driver *MacDriver) MountNFSVolume(source string, targetPath string, mountOptions []string) error {
+	return nil
 }

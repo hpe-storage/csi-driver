@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -26,7 +27,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
-	//"k8s.io/kubernetes/pkg/volume/util"
 )
 
 const (
@@ -40,9 +40,9 @@ var (
 
 // Flavor of the CSI driver
 type Flavor struct {
-	kubeClient *kubernetes.Clientset
 	crdClient  *crd_client.Clientset
 	nodeName   string
+	kubeClient kubernetes.Interface
 
 	claimInformer cache.SharedIndexInformer
 	claimIndexer  cache.Indexer
@@ -130,6 +130,11 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 	log.Tracef(">>>>> LoadNodeInfo called with node %v", node)
 	defer log.Trace("<<<<< LoadNodeInfo")
 
+	// overwrite actual host name with node name from k8s to be compliant
+	if name := os.Getenv("NODE_NAME"); name != "" {
+		node.Name = name
+	}
+
 	nodeInfo, err := flavor.getNodeInfoByUUID(node.UUID)
 	if err != nil {
 		log.Errorf("Error obtaining node info by uuid %s- %s\n", node.UUID, err.Error())
@@ -206,8 +211,7 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 		log.Infof("Adding node with name %s", node.Name)
 		nodeInfo, err = flavor.crdClient.StorageV1().HPENodeInfos().Create(newNodeInfo)
 		if err != nil {
-			log.Infof("Error adding node %v - %s", nodeInfo, err.Error())
-			return "", nil
+			log.Fatalf("Error adding node %v - %s", nodeInfo, err.Error())
 		}
 
 		// update nodename for lookup during cleanup(unload)
@@ -565,4 +569,16 @@ func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) 
 		return propertyVal, nil
 	}
 	return "", nil
+}
+
+func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
+	log.Tracef(">>>>> GetOrchestratorVersion")
+	defer log.Tracef("<<<<< GetOrchestratorVersion")
+
+	versionInfo, err := flavor.kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return nil, err
+	}
+	log.Tracef("obtained k8s version as %s", versionInfo.String())
+	return versionInfo, nil
 }

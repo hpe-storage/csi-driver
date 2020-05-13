@@ -11,15 +11,17 @@ import (
 
 // StorageProvider is an implementor of the StorageProvider interface
 type StorageProvider struct {
-	volumes   map[string]model.Volume
-	snapshots map[string]model.Snapshot
+	volumes      map[string]model.Volume
+	snapshots    map[string]model.Snapshot
+	volumeGroups map[string]model.VolumeGroup
 }
 
 // NewFakeStorageProvider returns a fake storage provider
 func NewFakeStorageProvider() *StorageProvider {
 	return &StorageProvider{
-		volumes:   make(map[string]model.Volume),
-		snapshots: make(map[string]model.Snapshot),
+		volumes:      make(map[string]model.Volume),
+		snapshots:    make(map[string]model.Snapshot),
+		volumeGroups: make(map[string]model.VolumeGroup),
 	}
 }
 
@@ -44,12 +46,27 @@ func (provider *StorageProvider) CreateVolume(name, description string, size int
 		return nil, fmt.Errorf("Volume named %s already exists", name)
 	}
 	fakeVolume := model.Volume{
-		ID:   name,
-		Name: name,
-		Size: size,
+		ID:     name,
+		Name:   name,
+		Size:   size,
+		Config: opts,
 	}
 	provider.volumes[name] = fakeVolume
 	return &fakeVolume, nil
+}
+
+// CreateVolume returns a fake volume group
+func (provider *StorageProvider) CreateVolumeGroup(name, description string, opts map[string]interface{}) (*model.VolumeGroup, error) {
+	if _, ok := provider.volumeGroups[name]; ok {
+		return nil, fmt.Errorf("Volume Group named %s already exists", name)
+	}
+	fakeVolumeGroup := model.VolumeGroup{
+		ID:     name,
+		Name:   name,
+		Config: opts,
+	}
+	provider.volumeGroups[name] = fakeVolumeGroup
+	return &fakeVolumeGroup, nil
 }
 
 // CloneVolume returns a fake volume
@@ -97,6 +114,15 @@ func (provider *StorageProvider) DeleteVolume(id string, force bool) error {
 	}
 
 	return fmt.Errorf("Could not find volume with id %s", id)
+}
+
+// DeleteVolumeGroup removes a fake volumeGroup
+func (provider *StorageProvider) DeleteVolumeGroup(id string) error {
+	if _, ok := provider.volumeGroups[id]; ok {
+		delete(provider.volumeGroups, id)
+		return nil
+	}
+	return fmt.Errorf("Could not find volume group with id %s", id)
 }
 
 // PublishVolume returns fake publish data
@@ -217,11 +243,22 @@ func (provider *StorageProvider) ExpandVolume(id string, requestBytes int64) (*m
 	if _, ok := provider.volumes[id]; !ok {
 		return nil, fmt.Errorf("Could not find volume with id %s", id)
 	}
-	fakeVolume := model.Volume{
-		ID:   id,
-		Size: requestBytes,
+	fakeVolume := provider.volumes[id]
+	// update volume, so that new size will be reflected
+	fakeVolume.Size = requestBytes
+	return &fakeVolume, nil
+}
+
+// EditVolume will edit the fake volume with requested params
+func (provider *StorageProvider) EditVolume(id string, parameters map[string]interface{}) (*model.Volume, error) {
+	if _, ok := provider.volumes[id]; !ok {
+		return nil, fmt.Errorf("Could not find volume with id %s", id)
 	}
-	// update volume in the map, so that new size will be reflected
-	provider.volumes[id] = fakeVolume
+
+	// update volume in the map, so that new properties will be reflected
+	fakeVolume := provider.volumes[id]
+	for key, value := range parameters {
+		fakeVolume.Config[key] = value
+	}
 	return &fakeVolume, nil
 }

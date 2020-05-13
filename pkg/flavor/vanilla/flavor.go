@@ -7,9 +7,11 @@ import (
 	"fmt"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/hpe-storage/common-host-libs/chapi"
 	"github.com/hpe-storage/common-host-libs/model"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/apimachinery/pkg/version"
 )
 
 // Flavor of the CSI driver
@@ -58,15 +60,19 @@ func (flavor *Flavor) IsPodExists(uid string) (bool, error) {
 	return false, nil
 }
 
-func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string) (nfsVolume *csi.Volume, rollback bool, err error) {
+func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
 	return nil, false, fmt.Errorf("NFS provisioned volume is not supported for non-k8s environments")
+}
+
+func (flavor *Flavor) RollbackNFSResources(nfsResourceName, nfsNamespace string) error {
+	return nil
 }
 
 func (flavor *Flavor) DeleteNFSVolume(pvName string) error {
 	return fmt.Errorf("NFS provisioned volume is not supported for non-k8s environments")
 }
 
-func (flavor *Flavor) HandleNFSNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+func (flavor *Flavor) HandleNFSNodePublish(chapiDriver chapi.Driver, request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	return nil, status.Error(codes.Internal, "NFS provisioned volume is not supported for non-k8s environments")
 }
 
@@ -75,4 +81,12 @@ func (flavor *Flavor) IsNFSVolume(volumeID string) bool {
 }
 func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) (string, error) {
 	return "", nil
+}
+
+func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
+	return "", nil
+}
+
+func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
+	return nil, nil
 }

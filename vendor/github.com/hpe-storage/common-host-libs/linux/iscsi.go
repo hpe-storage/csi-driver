@@ -649,6 +649,7 @@ func PerformDiscovery(discoveryIPs []string) (a model.IscsiTargets, err error) {
 
 	var isDiscoveryIpReachable bool
 	var out string
+	var outList []string
 	for _, discoveryIP := range discoveryIPs {
 		// find the first discovery ip which is reachable
 		isDiscoveryIpReachable, err = isReachable("", discoveryIP)
@@ -662,7 +663,7 @@ func PerformDiscovery(discoveryIPs []string) (a model.IscsiTargets, err error) {
 				log.Error(err.Error())
 				continue
 			}
-			break
+			outList = append(outList, out)
 		}
 	}
 
@@ -674,24 +675,26 @@ func PerformDiscovery(discoveryIPs []string) (a model.IscsiTargets, err error) {
 		return nil, err
 	}
 
-	log.Trace(out)
+	log.Trace(outList)
 
 	var iscsiTargets model.IscsiTargets
 	// parse the lines into output
 	r := regexp.MustCompile(getIscsiadmPattern())
 
-	listOut := r.FindAllString(out, -1)
-
-	for _, line := range listOut {
-		result := util.FindStringSubmatchMap(line, r)
-		target := &model.IscsiTarget{
-			Name:    result["target"],
-			Address: result["address"],
-			Port:    result["port"],
+	for _, outItem := range outList {
+		listOut := r.FindAllString(outItem, -1)
+		for _, line := range listOut {
+			result := util.FindStringSubmatchMap(line, r)
+			target := &model.IscsiTarget{
+				Name:    result["target"],
+				Address: result["address"],
+				Port:    result["port"],
+			}
+			log.Tracef("Name %s Address %s Port %s", target.Name, target.Address, target.Port)
+			iscsiTargets = append(iscsiTargets, target)
 		}
-		log.Tracef("Name %s Address %s Port %s", target.Name, target.Address, target.Port)
-		iscsiTargets = append(iscsiTargets, target)
 	}
+
 	uniqueIscsiTargets := removeDuplicateTargets(iscsiTargets)
 
 	return uniqueIscsiTargets, err
@@ -982,3 +985,4 @@ func bindIface(network model.NetworkInterface) error {
 	}
 	return nil
 }
+
