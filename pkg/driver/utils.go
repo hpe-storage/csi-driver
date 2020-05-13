@@ -113,7 +113,7 @@ func writeData(dir string, fileName string, data interface{}) error {
 }
 
 func removeDataFile(dirPath string, fileName string) error {
-	log.Trace(">>>>> removeDataFile, dir: %s, fileName: %s", dirPath, fileName)
+	log.Tracef(">>>>> removeDataFile, dir: %s, fileName: %s", dirPath, fileName)
 	defer log.Trace("<<<<< removeDataFile")
 	filePath := path.Join(dirPath, fileName)
 	return util.FileDelete(filePath)
