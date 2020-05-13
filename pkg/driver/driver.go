@@ -33,9 +33,6 @@ import (
 
 const (
 	defaultTTL = 60
-
-	// podsDirPath on Kubernetes/Openshift
-	podsDirPath = "/var/lib/kubelet/pods" // TODO: Configurable???
 )
 
 // Driver is the object that implements the CSI interfaces
