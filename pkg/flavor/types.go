@@ -24,9 +24,9 @@ type Flavor interface {
 	LoadNodeInfo(*model.Node) (string, error)
 	UnloadNodeInfo()
 	GetNodeInfo(nodeID string) (*model.Node, error)
-	GetCredentialsFromPodSpec(volumeHandle string, podName string, namespace string) (map[string]string, error)
+	GetEphemeralVolumeSecretFromPod(volumeHandle string, podName string, namespace string) (string, error)
 	GetCredentialsFromSecret(name string, namespace string) (map[string]string, error)
-
+	IsPodExists(uid string) (bool, error)
 	CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error)
 	DeleteNFSVolume(pvName string) error
 	RollbackNFSResources(nfsResourceName, nfsNamespace string) error

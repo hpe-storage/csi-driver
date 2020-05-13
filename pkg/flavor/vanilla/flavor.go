@@ -45,14 +45,19 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 	return node, err
 }
 
-// GetCredentialsFromPodSpec :
-func (flavor *Flavor) GetCredentialsFromPodSpec(volumeHandle string, podName string, namespace string) (map[string]string, error) {
-	return nil, nil
+// GetEphemeralVolumeSecretFromPod :
+func (flavor *Flavor) GetEphemeralVolumeSecretFromPod(volumeHandle string, podName string, namespace string) (string, error) {
+	return "", nil
 }
 
 // GetCredentialsFromSecret :
 func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (map[string]string, error) {
 	return nil, nil
+}
+
+// IsPodExists :
+func (flavor *Flavor) IsPodExists(uid string) (bool, error) {
+	return false, nil
 }
 
 func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
