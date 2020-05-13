@@ -1081,7 +1081,7 @@ func (driver *Driver) nodePublishEphemeralVolume(
 		if err != nil {
 			log.Errorf("Error while trying to check if ephemeral volume %s already exists, err: %s", volumeName, err.Error())
 			return status.Error(codes.Internal,
-				fmt.Sprintf("NodePublish of ephemeral volume %s failed, %s", err.Error()))
+				fmt.Sprintf("NodePublish of ephemeral volume %s failed, %s", volumeName, err.Error()))
 		}
 		// If volume found, then force destroy it.
 		if volume != nil {
