@@ -171,30 +171,45 @@ func (driver *Driver) Stop(nodeService bool) error {
 }
 
 // StartScrubber starts the scrubber period task
-func (driver *Driver) StartScrubber(nodeService bool, scrubberInterval int64) error {
+func (driver *Driver) StartScrubber(nodeService bool) chan bool {
 	if nodeService {
-		log.Tracef("Scheduling scrubber task to run every %v seconds", scrubberInterval)
+		// Fetch scrubber interval from env variable. If unspecified, then use default value.
+		scrubberInterval := driver.nodeGetIntEnv(inlineVolumeScrubberIntervalKey)
+		if scrubberInterval <= 0 {
+			scrubberInterval = defaultInlineVolumeScrubberInterval
+			log.Tracef("Using defaultInlineVolumeScrubberInterval %d", scrubberInterval)
+		}
+		// Fetch PODs directory path from env variable. If unspecified, then use default value.
+		podsDirPath := os.Getenv(podsDirPathKey)
+		if podsDirPath == "" {
+			podsDirPath = defaultPodsDirPath
+			log.Tracef("Using defaultPodsDirPath %s", podsDirPath)
+		}
+		log.Infof("Scheduled ephemeral inline volumes scrubber task to run every %d seconds, PodsDirPath: [%s]", scrubberInterval, podsDirPath)
 		tick := time.NewTicker(time.Duration(scrubberInterval) * time.Second)
 		done := make(chan bool)
 		go func() {
 			// Cleanup ephemeral orphan volumes
-			driver.ScrubberTask(time.Now())
+			driver.ScrubberTask(time.Now(), podsDirPath)
 			for {
 				select {
 				case t := <-tick.C:
-					driver.ScrubberTask(t)
-				case <-done:
+					driver.ScrubberTask(t, podsDirPath)
+				case d := <-done:
+					log.Tracef("Closed the scrubber task channel: [%v]", d)
 					return
 				}
 			}
 		}()
+		return done
 	}
 	return nil
 }
 
 // StopScrubber stops the scrubber period task
-func (driver *Driver) StopScrubber(nodeService bool) error {
+func (driver *Driver) StopScrubber(nodeService bool, chanDone chan<- bool) error {
 	if nodeService {
+		chanDone <- true // Send true to close the channel
 		log.Infof("Stopped the scrubber task at %v", time.Now())
 	}
 	return nil
@@ -689,18 +704,18 @@ func (driver *Driver) IsNFSResourceRequest(parameters map[string]string) bool {
 }
 
 // ScrubberTask executes the scrubber function
-func (driver *Driver) ScrubberTask(t time.Time) error {
-	log.Infof("Scrubber task invoked at %v", t)
-	if err := driver.ScrubEphemeralPods(); err != nil {
+func (driver *Driver) ScrubberTask(t time.Time, podsDirPath string) error {
+	log.Infof(">>>>> Scrubber task invoked at %v", t)
+	if err := driver.ScrubEphemeralPods(podsDirPath); err != nil {
 		log.Error(err.Error())
 		// Log error and continue
 	}
-	log.Infof("Scrubber task completed at %v", time.Now())
+	log.Infof("<<<<< Scrubber task completed at %v", time.Now())
 	return nil
 }
 
 // ScrubEphemeralPods to cleanup the orphan/stale ephemeral volumes and its associated staged devices
-func (driver *Driver) ScrubEphemeralPods() error {
+func (driver *Driver) ScrubEphemeralPods(podsDirPath string) error {
 	log.Trace(">>>>> ScrubEphemeralPods")
 	defer log.Trace("<<<<< ScrubEphemeralPods")
 
@@ -739,7 +754,7 @@ func (driver *Driver) ScrubEphemeralPods() error {
 					VolumeHandle: ephemeralData.VolumeHandle,
 					TargetPath:   targetPath,
 				}
-				log.Tracef("Adding ephemeral pod/volume scrubbing, [POD: %s], [VolumeHandle: %s], [VolumeID: %s], [TargetPath: %s]",
+				log.Tracef("Scrub ephemeral inline volume, [POD: %s], [VolumeHandle: %s], [VolumeID: %s], [TargetPath: %s]",
 					ephemeralData.PodData.UID, ephemeralData.VolumeHandle, ephemeralData.VolumeID, targetPath)
 				ephemeralPods[ephemeralData.PodData.UID] = append(ephemeralPods[ephemeralData.PodData.UID], volHandleTargetPath)
 				return nil
@@ -752,7 +767,7 @@ func (driver *Driver) ScrubEphemeralPods() error {
 	}
 
 	if len(ephemeralPods) == 0 {
-		log.Info("No ephemeral Pod(s) found")
+		log.Info("No ephemeral inline volumes found")
 		return nil
 	}
 	for podUID, volumePaths := range ephemeralPods {

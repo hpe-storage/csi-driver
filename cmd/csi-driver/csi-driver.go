@@ -144,7 +144,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 
 	d.Start(nodeService)
 	log.Infof("[%d] reply  : %v", pid, os.Args)
-	d.StartScrubber(nodeService, scrubberInterval) // Schedule scrubber task
+	chanDone := d.StartScrubber(nodeService) // Start scrubber task
 
 	// Handle signals
 	stop := make(chan os.Signal, 1)
@@ -154,8 +154,8 @@ func csiCliHandler(cmd *cobra.Command) error {
 
 	s := <-stop
 	log.Infof("Exiting due to signal [%v] notification for pid [%d]", s.String(), pid)
+	d.StopScrubber(nodeService, chanDone) // Stop scrubber task
 	d.Stop(nodeService)
-	d.StopScrubber(nodeService) // Stop scrubber task
 	log.Infof("Stopped [%d]", pid)
 	return nil
 }

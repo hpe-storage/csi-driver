@@ -1069,14 +1069,6 @@ func (driver *Driver) nodePublishEphemeralVolume(
 		log.Tracef("Ephemeral volume %s requested with size %s (%v)", volumeName, sizeStr, sizeInBytes)
 	}
 
-	// make accessProtocol mandatory for inline volume
-	_, ok := volumeContext["accessProtocol"]
-	if !ok {
-		return status.Error(codes.Internal,
-			fmt.Sprintf("accessProtocol is required. Failed to create ephemeral volume %s",
-				volumeName))
-	}
-
 	// Construct volume capabitilities to pass to createVolume()
 	volCapabilities := []*csi.VolumeCapability{
 		volumeCapability,

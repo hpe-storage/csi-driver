@@ -63,6 +63,14 @@ const (
 	// ephemeralDriverMode for ephmeral inline volume
 	ephemeralDriverMode = "ephemeral"
 
+	// Default scrubber interval for Ephemeral inline volumes on the node.
+	defaultInlineVolumeScrubberInterval = 3600 // Default value is 3600 seconds or 1 Hour
+	inlineVolumeScrubberIntervalKey     = "INLINE_VOLUMES_SCRUBBER_INTERVAL"
+
+	// Default pods directory path on the node for Kubernetes/Openshift
+	defaultPodsDirPath = "/var/lib/kubelet/pods"
+	podsDirPathKey     = "PODS_DIR_PATH"
+
 	// Pending :
 	Pending = "PENDING"
 
