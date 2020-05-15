@@ -29,6 +29,7 @@ import (
 	"github.com/hpe-storage/csi-driver/pkg/flavor"
 	"github.com/hpe-storage/csi-driver/pkg/flavor/kubernetes"
 	"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
+	"github.com/hpe-storage/csi-driver/pkg/monitor"
 )
 
 const (
@@ -45,7 +46,7 @@ type Driver struct {
 	storageProviders map[string]storageprovider.StorageProvider
 	flavor           flavor.Flavor
 	grpc             NonBlockingGRPCServer
-	nfsPodMonitor    *kubernetes.Monitor
+	podMonitor       *monitor.Monitor
 
 	controllerServiceCapabilities     []*csi.ControllerServiceCapability
 	nodeServiceCapabilities           []*csi.NodeServiceCapability
@@ -58,20 +59,24 @@ type Driver struct {
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
-func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, nfsMonitor bool, nfsMonitorInterval int64) (*Driver, error) {
+func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval int64) (*Driver, error) {
 
 	// Get CSI driver
 	driver := getDriver(name, version, endpoint)
 
 	// Configure flavor
 	if flavorName == flavor.Kubernetes {
-		flavor, err := kubernetes.NewKubernetesFlavor(nodeService, nfsMonitor, nfsMonitorInterval)
+		flavor, err := kubernetes.NewKubernetesFlavor(nodeService)
 		if err != nil {
 			return nil, err
 		}
 		driver.flavor = flavor
 	} else {
 		driver.flavor = &vanilla.Flavor{}
+	}
+
+	if podMonitor {
+		driver.podMonitor = monitor.NewMonitor(driver.flavor, podMonitorInterval)
 	}
 
 	// Init Controller Service Capabilities supported by the driver
@@ -141,15 +146,16 @@ func getDBClient(server string, port string) (*etcd.DBClient, error) {
 }
 
 // Start starts the gRPC server
-func (driver *Driver) Start(nodeService bool, nfsMonitor bool) error {
+func (driver *Driver) Start(nodeService bool) error {
 	go func() {
 		driver.grpc = NewNonBlockingGRPCServer()
 		if nodeService {
 			driver.grpc.Start(driver.endpoint, driver, nil, driver)
 		} else {
 			driver.grpc.Start(driver.endpoint, driver, driver, nil)
-			if nfsMonitor {
-				driver.flavor.StartNFSMonitor()
+			// start pod monitor along with controller plugin
+			if driver.podMonitor != nil {
+				driver.podMonitor.StartMonitor()
 			}
 		}
 	}()
@@ -157,13 +163,13 @@ func (driver *Driver) Start(nodeService bool, nfsMonitor bool) error {
 }
 
 // Stop stops the gRPC server
-func (driver *Driver) Stop(nodeService bool, nfsMonitor bool) error {
+func (driver *Driver) Stop(nodeService bool) error {
 	driver.grpc.GracefulStop()
 	if nodeService {
 		driver.flavor.UnloadNodeInfo()
 	}
-	if nfsMonitor {
-		driver.flavor.StopNFSMonitor()
+	if driver.podMonitor != nil {
+		driver.podMonitor.StopMonitor()
 	}
 	return nil
 }

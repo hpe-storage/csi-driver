@@ -17,8 +17,10 @@ import (
 	crd_client "github.com/hpe-storage/k8s-custom-resources/pkg/client/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
 	storage_v1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
@@ -31,7 +33,9 @@ import (
 )
 
 const (
-	allowOverrides = "allowOverrides"
+	allowOverrides       = "allowOverrides"
+	nodeUnreachableTaint = "node.kubernetes.io/unreachable"
+	nodeLostCondition    = "NodeLost"
 )
 
 var (
@@ -50,11 +54,10 @@ type Flavor struct {
 	claimStopChan chan struct{}
 
 	eventRecorder record.EventRecorder
-	nfsMonitor    *Monitor
 }
 
 // NewKubernetesFlavor creates a new k8s flavored CSI driver
-func NewKubernetesFlavor(nodeService bool, nfsMonitor bool, nfsMonitorInterval int64) (*Flavor, error) {
+func NewKubernetesFlavor(nodeService bool) (*Flavor, error) {
 	kubeConfig, err := rest.InClusterConfig()
 	if err != nil {
 		fmt.Printf("Error getting config cluster - %s\n", err.Error())
@@ -79,11 +82,6 @@ func NewKubernetesFlavor(nodeService bool, nfsMonitor bool, nfsMonitorInterval i
 	}
 
 	if !nodeService {
-		// initialize NFS pod monitor with controller service
-		if nfsMonitor {
-			flavor.nfsMonitor = &Monitor{IntervalSec: nfsMonitorInterval}
-		}
-
 		broadcaster := record.NewBroadcaster()
 		broadcaster.StartRecordingToSink(&core_v1.EventSinkImpl{Interface: kubeClient.CoreV1().Events(v1.NamespaceAll)})
 		flavor.eventRecorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: "csi.hpe.com"})
@@ -643,4 +641,122 @@ func (flavor *Flavor) DeleteVolumeAttachment(va string, force bool) error {
 		return err
 	}
 	return nil
+}
+
+// monitors pods with given labels for being in unknown state(node unreachable/lost) and assist them to move to different node
+func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
+	labelSelector := meta_v1.LabelSelector{MatchLabels: map[string]string{podLabelkey: podLabelvalue}}
+	listOptions := meta_v1.ListOptions{
+		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
+	}
+
+	podList, err := flavor.kubeClient.CoreV1().Pods(meta_v1.NamespaceAll).List(listOptions)
+	if err != nil {
+		log.Errorf("unable to list nfs pods for monitoring: %s", err.Error())
+		return err
+	}
+	if podList == nil || len(podList.Items) == 0 {
+		log.Errorf("cannot find any nfs pod with label %s=%s", podLabelkey, podLabelvalue)
+		return nil
+	}
+
+	for _, pod := range podList.Items {
+		podUnknownState := false
+		if pod.Status.Reason == nodeLostCondition {
+			podUnknownState = true
+		} else if pod.ObjectMeta.DeletionTimestamp != nil {
+			node, err := flavor.GetNodeByName(pod.Spec.NodeName)
+			if err != nil {
+				log.Warnf("unable to get node for monitoring pod %s: %s", pod.ObjectMeta.Name, err.Error())
+				// move on with other pods
+				continue
+			}
+
+			// Check if node has eviction taint
+			for _, taint := range node.Spec.Taints {
+				if taint.Key == nodeUnreachableTaint &&
+					taint.Effect == v1.TaintEffectNoExecute {
+					podUnknownState = true
+					break
+				}
+			}
+		}
+		// no further action required if pod is not in unknown state, continue with other pods
+		if !podUnknownState {
+			continue
+		}
+		// delete volume attachments if the node is down for this pod
+		log.Infof("Force deleting volume attachment for pod %s as it is in unknown state.", pod.ObjectMeta.Name)
+		err := flavor.cleanupVolumeAttachmentsByPod(&pod)
+		if err != nil {
+			log.Errorf("Error cleaning up volume attachments for pod %s: %s", pod.ObjectMeta.Name, err.Error())
+			// move on with other pods
+			continue
+		}
+
+		// force delete the pod
+		log.Infof("Force deleting pod %s as it's in unknown state.", pod.ObjectMeta.Name)
+		err = flavor.DeletePod(pod.Name, pod.ObjectMeta.Namespace, true)
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				log.Errorf("Error deleting pod %s: %s", pod.Name, err.Error())
+			}
+		}
+	}
+	return nil
+}
+
+func (flavor *Flavor) cleanupVolumeAttachmentsByPod(pod *v1.Pod) error {
+	log.Tracef(">>>>> cleanupVolumeAttachmentsByPod for pod %s", pod.Name)
+	defer log.Tracef("<<<<< cleanupVolumeAttachmentsByPod")
+
+	// Get all volume attachments
+	vaList, err := flavor.ListVolumeAttachments()
+	if err != nil {
+		return err
+	}
+
+	if len(vaList.Items) > 0 {
+		for _, va := range vaList.Items {
+			//check if this va refers to PV which is attached to this pod on same node
+			isAttached, err := flavor.isVolumeAttachedToPod(pod, &va)
+			if err != nil {
+				log.Warnf("unable to determine if va %s belongs to pod %s", va.Name, pod.ObjectMeta.Name)
+				continue
+			}
+			if isAttached {
+				err := flavor.DeleteVolumeAttachment(va.Name, false)
+				if err != nil {
+					return err
+				}
+				log.Infof("Deleted volume attachment: %s", va.Name)
+			}
+		}
+	}
+	return nil
+}
+
+// check if the volume attachment refers to PV claimed by the pod on same node
+func (flavor *Flavor) isVolumeAttachedToPod(pod *v1.Pod, va *storage_v1.VolumeAttachment) (bool, error) {
+	log.Tracef(">>>>> isVolumeAttachedToPod with pod %s, va %s", pod.ObjectMeta.Name, va.Name)
+	defer log.Tracef("<<<<< isVolumeAttachedToPod")
+
+	// check only va's attached to node where pod belongs to
+	if pod.Spec.NodeName != va.Spec.NodeName {
+		return false, nil
+	}
+	for _, vol := range pod.Spec.Volumes {
+		if vol.VolumeSource.PersistentVolumeClaim != nil {
+			// get claim from volumeattachment
+			claim, err := flavor.getClaimFromClaimName(*va.Spec.Source.PersistentVolumeName)
+			if err != nil {
+				return false, err
+			}
+			if claim != nil && claim.ObjectMeta.Name == vol.VolumeSource.PersistentVolumeClaim.ClaimName {
+				log.Tracef("volume %s of volumeattachment %s is attached to pod %s", *va.Spec.Source.PersistentVolumeName, va.Name, pod.ObjectMeta.Name)
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }

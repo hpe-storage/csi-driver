@@ -36,7 +36,6 @@ var (
 	dbServer           string
 	dbPort             string
 	flavorName         string
-	nfsMonitor         bool
 	nfsMonitorInterval string
 
 	// RootCmd is the main CSI command
@@ -152,7 +151,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 		return fmt.Errorf("Error instantiating plugin %v, Err: %v", driverName, err.Error())
 	}
 
-	d.Start(nodeService, nfsMonitor)
+	d.Start(nodeService)
 	log.Infof("[%d] reply  : %v", pid, os.Args)
 	chanDone := d.StartScrubber(nodeService) // Start scrubber task
 
@@ -165,7 +164,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 	s := <-stop
 	log.Infof("Exiting due to signal [%v] notification for pid [%d]", s.String(), pid)
 	d.StopScrubber(nodeService, chanDone) // Stop scrubber task
-	d.Stop(nodeService, nfsMonitor)
+	d.Stop(nodeService)
 	log.Infof("Stopped [%d]", pid)
 	return nil
 }

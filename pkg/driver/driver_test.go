@@ -32,7 +32,7 @@ func TestPluginSuite(t *testing.T) {
 	driver.grpc = NewNonBlockingGRPCServer()
 	// start node, controller and identity servers on same endpoint for tests
 	go driver.grpc.Start(driver.endpoint, driver, driver, driver)
-	defer driver.Stop(true, false)
+	defer driver.Stop(true)
 
 	stagingPath := "./csi-mnt"
 	targetPath := "./csi-mnt-stage"

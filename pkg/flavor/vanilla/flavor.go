@@ -91,10 +91,6 @@ func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
 	return nil, nil
 }
 
-func (flavor *Flavor) StartNFSMonitor() error {
-	return nil
-}
-
-func (flavor *Flavor) StopNFSMonitor() error {
+func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 	return nil
 }
