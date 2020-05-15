@@ -643,8 +643,11 @@ func (flavor *Flavor) DeleteVolumeAttachment(va string, force bool) error {
 	return nil
 }
 
-// monitors pods with given labels for being in unknown state(node unreachable/lost) and assist them to move to different node
+// MonitorPod monitors pods with given labels for being in unknown state(node unreachable/lost) and assist them to move to different node
 func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
+	log.Tracef(">>>>> MonitorPod with label %s=%s", podLabelkey, podLabelvalue)
+	defer log.Tracef("<<<<< MonitorPod")
+
 	labelSelector := meta_v1.LabelSelector{MatchLabels: map[string]string{podLabelkey: podLabelvalue}}
 	listOptions := meta_v1.ListOptions{
 		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
@@ -656,7 +659,7 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 		return err
 	}
 	if podList == nil || len(podList.Items) == 0 {
-		log.Errorf("cannot find any nfs pod with label %s=%s", podLabelkey, podLabelvalue)
+		log.Tracef("cannot find any nfs pod with label %s=%s", podLabelkey, podLabelvalue)
 		return nil
 	}
 

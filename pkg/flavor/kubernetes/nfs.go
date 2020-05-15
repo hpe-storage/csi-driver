@@ -347,7 +347,6 @@ func (flavor *Flavor) HandleNFSNodePublish(chapiDriver chapi.Driver, req *csi.No
 		// use default mount options, i.e (rw,relatime,vers=4.0,rsize=1048576,wsize=1048576,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,local_lock=none)
 		mountOptions = []string{
 			"nolock",
-			"nfs4",
 		}
 	}
 	mountOptions = append(mountOptions, fmt.Sprintf("addr=%s", clusterIP))
@@ -360,7 +359,7 @@ func (flavor *Flavor) HandleNFSNodePublish(chapiDriver chapi.Driver, req *csi.No
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	if err := chapiDriver.MountNFSVolume(source, target, mountOptions); err != nil {
+	if err := chapiDriver.MountNFSVolume(source, target, mountOptions, "nfs4"); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &csi.NodePublishVolumeResponse{}, nil
