@@ -90,3 +90,7 @@ func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
 func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
 	return nil, nil
 }
+
+func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
+	return nil
+}

@@ -51,7 +51,7 @@ func TestPluginSuite(t *testing.T) {
 
 // nolint: deadcode
 func realDriver(t *testing.T, endpoint string) *Driver {
-	driver, err := NewDriver("test-driver", "0.1", endpoint, flavor.Kubernetes, true, "", "")
+	driver, err := NewDriver("test-driver", "0.1", endpoint, flavor.Kubernetes, true, "", "", false, 0)
 
 	if err != nil {
 		t.Fatal("Failed to initialize driver")

@@ -35,6 +35,7 @@ const (
 	nfsResourceLimitsCPUKey    = "nfsResourceLimitsCpuM"
 	nfsResourceLimitsMemoryKey = "nfsResourceLimitsMemoryMi"
 	nfsMountOptionsKey         = "nfsMountOptions"
+	nfsResourceLabelKey        = "nfsResourceLabel"
 	nfsNodeSelectorKey         = "csi.hpe.com/hpe-nfs"
 	nfsNodeSelectorValue       = "true"
 	nfsParentVolumeIDKey       = "nfs-parent-volume-id"
@@ -44,6 +45,8 @@ const (
 	nfsConfigFile              = "ganesha.conf"
 	nfsConfigMap               = "hpe-nfs-config"
 	nfsServiceAccount          = "hpe-csi-nfs-sa"
+	defaultPodLabelKey         = "monitored-by"
+	defaultPodLabelValue       = "hpe-csi"
 )
 
 // NFSSpec for creating NFS resources
@@ -52,6 +55,8 @@ type NFSSpec struct {
 	resourceRequirements *core_v1.ResourceRequirements
 	nodeSelector         map[string]string
 	image                string
+	labelKey             string
+	labelValue           string
 }
 
 // CreateNFSVolume creates nfs volume abstracting underlying nfs pvc, deployment and service
@@ -354,7 +359,7 @@ func (flavor *Flavor) HandleNFSNodePublish(chapiDriver chapi.Driver, req *csi.No
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	if err := chapiDriver.MountNFSVolume(source, target, mountOptions); err != nil {
+	if err := chapiDriver.MountNFSVolume(source, target, mountOptions, "nfs4"); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -436,6 +441,18 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	nfsSpec.image = defaultNFSImage
 	if image, ok := scParams[nfsProvisionerImageKey]; ok {
 		nfsSpec.image = image
+	}
+
+	// initialize with default label
+	nfsSpec.labelKey = defaultPodLabelKey
+	nfsSpec.labelValue = defaultPodLabelValue
+	// apply override if provided by user
+	if label, ok := scParams[nfsResourceLabelKey]; ok {
+		items := strings.Split(label, "=")
+		if len(items) == 2 {
+			nfsSpec.labelKey = strings.TrimSpace(items[0])
+			nfsSpec.labelValue = strings.TrimSpace(items[1])
+		}
 	}
 	return &nfsSpec, nil
 }
@@ -726,7 +743,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	podSpec := core_v1.PodTemplateSpec{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:        name,
-			Labels:      map[string]string{"app": name},
+			Labels:      map[string]string{"app": name, nfsSpec.labelKey: nfsSpec.labelValue},
 			Annotations: map[string]string{"tags": name},
 		},
 		Spec: core_v1.PodSpec{

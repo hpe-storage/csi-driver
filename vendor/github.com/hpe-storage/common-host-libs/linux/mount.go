@@ -75,6 +75,7 @@ const (
 	fsext3command  = "mkfs.ext3"
 	fsext4command  = "mkfs.ext4"
 	fsbtrfscommand = "mkfs.btrfs"
+	defaultNFSType = "nfs4"
 )
 
 // HashMountID : get hash of the string
@@ -570,11 +571,16 @@ func MountDeviceWithFileSystem(devPath string, mountPoint string, options []stri
 	return mount, nil
 }
 
-func MountNFSShare(source string, targetPath string, options []string) error {
-	log.Tracef(">>>>> MountNFSShare called with source %s target %s", source, targetPath)
+func MountNFSShare(source string, targetPath string, options []string, nfsType string) error {
+	log.Tracef(">>>>> MountNFSShare called with source %s target %s type %s", source, targetPath, nfsType)
 	defer log.Tracef("<<<<< MountNFSShare")
 
-	args := []string{source, targetPath}
+	// default type as nfs4
+	if nfsType == "" {
+		nfsType = defaultNFSType
+	}
+
+	args := []string{fmt.Sprintf("-t%s", nfsType), source, targetPath}
 	optionArgs := []string{}
 	if len(options) != 0 {
 		optionArgs = append([]string{"-o"}, strings.Join(options, ","))

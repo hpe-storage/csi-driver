@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -30,11 +31,12 @@ const (
 
 var (
 	// Flag variables for the command options
-	name       string
-	endpoint   string
-	dbServer   string
-	dbPort     string
-	flavorName string
+	name               string
+	endpoint           string
+	dbServer           string
+	dbPort             string
+	flavorName         string
+	nfsMonitorInterval string
 
 	// RootCmd is the main CSI command
 	RootCmd = &cobra.Command{
@@ -73,6 +75,8 @@ func init() {
 	RootCmd.PersistentFlags().BoolP("node-service", "", false, "CSI node-plugin")
 	RootCmd.PersistentFlags().BoolP("help", "h", false, "Show help information")
 	RootCmd.PersistentFlags().StringVarP(&flavorName, "flavor", "f", "", "CSI driver flavor")
+	RootCmd.PersistentFlags().BoolP("nfs-monitor", "", false, "Enable monitoring of NFS pod statuses and manage them")
+	RootCmd.PersistentFlags().StringVarP(&nfsMonitorInterval, "nfs-monitor-interval", "", "30", "Interval in seconds to monitor NFS pods")
 }
 
 func csiCliHandler(cmd *cobra.Command) error {
@@ -86,6 +90,8 @@ func csiCliHandler(cmd *cobra.Command) error {
 	dbServer, _ := cmd.Flags().GetString("dbserver")
 	dbPort, _ := cmd.Flags().GetString("dbport")
 	flavorName, _ := cmd.Flags().GetString("flavor")
+	nfsMonitor, _ := cmd.Flags().GetBool("nfs-monitor")
+	nfsMonitorInterval, _ := cmd.Flags().GetString("nfs-monitor-interval")
 
 	// Parse the endpoint
 	_, addr, err := driver.ParseEndpoint(endpoint)
@@ -124,6 +130,11 @@ func csiCliHandler(cmd *cobra.Command) error {
 		}
 	}
 
+	monitorInterval, err := strconv.ParseInt(nfsMonitorInterval, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid interval %s provided for monitoring NFS pods", nfsMonitorInterval)
+	}
+
 	log.Tracef("About to start the CSI driver '%v'", driverName)
 	pid := os.Getpid()
 	d, err := driver.NewDriver(
@@ -133,7 +144,9 @@ func csiCliHandler(cmd *cobra.Command) error {
 		flavorName,
 		nodeService,
 		dbServer,
-		dbPort)
+		dbPort,
+		nfsMonitor,
+		monitorInterval)
 	if err != nil {
 		return fmt.Errorf("Error instantiating plugin %v, Err: %v", driverName, err.Error())
 	}

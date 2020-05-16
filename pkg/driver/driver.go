@@ -29,6 +29,7 @@ import (
 	"github.com/hpe-storage/csi-driver/pkg/flavor"
 	"github.com/hpe-storage/csi-driver/pkg/flavor/kubernetes"
 	"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
+	"github.com/hpe-storage/csi-driver/pkg/monitor"
 )
 
 const (
@@ -45,6 +46,7 @@ type Driver struct {
 	storageProviders map[string]storageprovider.StorageProvider
 	flavor           flavor.Flavor
 	grpc             NonBlockingGRPCServer
+	podMonitor       *monitor.Monitor
 
 	controllerServiceCapabilities     []*csi.ControllerServiceCapability
 	nodeServiceCapabilities           []*csi.NodeServiceCapability
@@ -57,7 +59,7 @@ type Driver struct {
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
-func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string) (*Driver, error) {
+func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval int64) (*Driver, error) {
 
 	// Get CSI driver
 	driver := getDriver(name, version, endpoint)
@@ -71,6 +73,10 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 		driver.flavor = flavor
 	} else {
 		driver.flavor = &vanilla.Flavor{}
+	}
+
+	if podMonitor {
+		driver.podMonitor = monitor.NewMonitor(driver.flavor, podMonitorInterval)
 	}
 
 	// Init Controller Service Capabilities supported by the driver
@@ -147,6 +153,10 @@ func (driver *Driver) Start(nodeService bool) error {
 			driver.grpc.Start(driver.endpoint, driver, nil, driver)
 		} else {
 			driver.grpc.Start(driver.endpoint, driver, driver, nil)
+			// start pod monitor along with controller plugin
+			if driver.podMonitor != nil {
+				driver.podMonitor.StartMonitor()
+			}
 		}
 	}()
 	return nil
@@ -157,6 +167,9 @@ func (driver *Driver) Stop(nodeService bool) error {
 	driver.grpc.GracefulStop()
 	if nodeService {
 		driver.flavor.UnloadNodeInfo()
+	}
+	if driver.podMonitor != nil {
+		driver.podMonitor.StopMonitor()
 	}
 	return nil
 }

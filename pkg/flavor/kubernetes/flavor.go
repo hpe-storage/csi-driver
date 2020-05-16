@@ -16,8 +16,11 @@ import (
 	crd_v1 "github.com/hpe-storage/k8s-custom-resources/pkg/apis/hpestorage/v1"
 	crd_client "github.com/hpe-storage/k8s-custom-resources/pkg/client/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
+	storage_v1 "k8s.io/api/storage/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apimachinery/pkg/watch"
@@ -30,7 +33,9 @@ import (
 )
 
 const (
-	allowOverrides = "allowOverrides"
+	allowOverrides       = "allowOverrides"
+	nodeUnreachableTaint = "node.kubernetes.io/unreachable"
+	nodeLostCondition    = "NodeLost"
 )
 
 var (
@@ -581,4 +586,180 @@ func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
 	}
 	log.Tracef("obtained k8s version as %s", versionInfo.String())
 	return versionInfo, nil
+}
+
+func (flavor *Flavor) GetNodeByName(nodeName string) (*v1.Node, error) {
+	log.Tracef(">>>>> GetNodeByName called with %s", nodeName)
+	defer log.Trace("<<<<< GetNodeByName")
+
+	node, err := flavor.kubeClient.CoreV1().Nodes().Get(nodeName, meta_v1.GetOptions{})
+	if err != nil {
+		log.Errorf("unable to get node with name %s, err %s", nodeName, err.Error())
+		return nil, err
+	}
+	return node, nil
+}
+
+func (flavor *Flavor) DeletePod(podName string, namespace string, force bool) error {
+	log.Tracef(">>>>> DeletePod called with pod %s in namespace %s", podName, namespace)
+	defer log.Trace("<<<<< DeletePod")
+
+	deleteOptions := meta_v1.DeleteOptions{}
+	if force {
+		gracePeriodSec := int64(0)
+		deleteOptions.GracePeriodSeconds = &gracePeriodSec
+	}
+	err := flavor.kubeClient.CoreV1().Pods(namespace).Delete(podName, &deleteOptions)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (flavor *Flavor) ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error) {
+	log.Trace(">>>>> ListVolumeAttachments")
+	defer log.Trace("<<<<< ListVolumeAttachments")
+
+	vaList, err := flavor.kubeClient.StorageV1().VolumeAttachments().List(meta_v1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return vaList, nil
+}
+
+func (flavor *Flavor) DeleteVolumeAttachment(va string, force bool) error {
+	log.Trace(">>>>> DeleteVolumeAttachment")
+	defer log.Trace("<<<<< DeleteVolumeAttachment")
+
+	deleteOptions := meta_v1.DeleteOptions{}
+	if force {
+		gracePeriodSec := int64(0)
+		deleteOptions.GracePeriodSeconds = &gracePeriodSec
+	}
+	err := flavor.kubeClient.StorageV1().VolumeAttachments().Delete(va, &deleteOptions)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// MonitorPod monitors pods with given labels for being in unknown state(node unreachable/lost) and assist them to move to different node
+func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
+	log.Tracef(">>>>> MonitorPod with label %s=%s", podLabelkey, podLabelvalue)
+	defer log.Tracef("<<<<< MonitorPod")
+
+	labelSelector := meta_v1.LabelSelector{MatchLabels: map[string]string{podLabelkey: podLabelvalue}}
+	listOptions := meta_v1.ListOptions{
+		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
+	}
+
+	podList, err := flavor.kubeClient.CoreV1().Pods(meta_v1.NamespaceAll).List(listOptions)
+	if err != nil {
+		log.Errorf("unable to list nfs pods for monitoring: %s", err.Error())
+		return err
+	}
+	if podList == nil || len(podList.Items) == 0 {
+		log.Tracef("cannot find any nfs pod with label %s=%s", podLabelkey, podLabelvalue)
+		return nil
+	}
+
+	for _, pod := range podList.Items {
+		podUnknownState := false
+		if pod.Status.Reason == nodeLostCondition {
+			podUnknownState = true
+		} else if pod.ObjectMeta.DeletionTimestamp != nil {
+			node, err := flavor.GetNodeByName(pod.Spec.NodeName)
+			if err != nil {
+				log.Warnf("unable to get node for monitoring pod %s: %s", pod.ObjectMeta.Name, err.Error())
+				// move on with other pods
+				continue
+			}
+
+			// Check if node has eviction taint
+			for _, taint := range node.Spec.Taints {
+				if taint.Key == nodeUnreachableTaint &&
+					taint.Effect == v1.TaintEffectNoExecute {
+					podUnknownState = true
+					break
+				}
+			}
+		}
+		// no further action required if pod is not in unknown state, continue with other pods
+		if !podUnknownState {
+			continue
+		}
+		// delete volume attachments if the node is down for this pod
+		log.Infof("Force deleting volume attachment for pod %s as it is in unknown state.", pod.ObjectMeta.Name)
+		err := flavor.cleanupVolumeAttachmentsByPod(&pod)
+		if err != nil {
+			log.Errorf("Error cleaning up volume attachments for pod %s: %s", pod.ObjectMeta.Name, err.Error())
+			// move on with other pods
+			continue
+		}
+
+		// force delete the pod
+		log.Infof("Force deleting pod %s as it's in unknown state.", pod.ObjectMeta.Name)
+		err = flavor.DeletePod(pod.Name, pod.ObjectMeta.Namespace, true)
+		if err != nil {
+			if !errors.IsNotFound(err) {
+				log.Errorf("Error deleting pod %s: %s", pod.Name, err.Error())
+			}
+		}
+	}
+	return nil
+}
+
+func (flavor *Flavor) cleanupVolumeAttachmentsByPod(pod *v1.Pod) error {
+	log.Tracef(">>>>> cleanupVolumeAttachmentsByPod for pod %s", pod.Name)
+	defer log.Tracef("<<<<< cleanupVolumeAttachmentsByPod")
+
+	// Get all volume attachments
+	vaList, err := flavor.ListVolumeAttachments()
+	if err != nil {
+		return err
+	}
+
+	if len(vaList.Items) > 0 {
+		for _, va := range vaList.Items {
+			//check if this va refers to PV which is attached to this pod on same node
+			isAttached, err := flavor.isVolumeAttachedToPod(pod, &va)
+			if err != nil {
+				log.Warnf("unable to determine if va %s belongs to pod %s", va.Name, pod.ObjectMeta.Name)
+				continue
+			}
+			if isAttached {
+				err := flavor.DeleteVolumeAttachment(va.Name, false)
+				if err != nil {
+					return err
+				}
+				log.Infof("Deleted volume attachment: %s", va.Name)
+			}
+		}
+	}
+	return nil
+}
+
+// check if the volume attachment refers to PV claimed by the pod on same node
+func (flavor *Flavor) isVolumeAttachedToPod(pod *v1.Pod, va *storage_v1.VolumeAttachment) (bool, error) {
+	log.Tracef(">>>>> isVolumeAttachedToPod with pod %s, va %s", pod.ObjectMeta.Name, va.Name)
+	defer log.Tracef("<<<<< isVolumeAttachedToPod")
+
+	// check only va's attached to node where pod belongs to
+	if pod.Spec.NodeName != va.Spec.NodeName {
+		return false, nil
+	}
+	for _, vol := range pod.Spec.Volumes {
+		if vol.VolumeSource.PersistentVolumeClaim != nil {
+			// get claim from volumeattachment
+			claim, err := flavor.getClaimFromClaimName(*va.Spec.Source.PersistentVolumeName)
+			if err != nil {
+				return false, err
+			}
+			if claim != nil && claim.ObjectMeta.Name == vol.VolumeSource.PersistentVolumeClaim.ClaimName {
+				log.Tracef("volume %s of volumeattachment %s is attached to pod %s", *va.Spec.Source.PersistentVolumeName, va.Name, pod.ObjectMeta.Name)
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
