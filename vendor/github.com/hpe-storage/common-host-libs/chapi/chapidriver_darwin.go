@@ -133,6 +133,6 @@ func (driver *MacDriver) ExpandDevice(targetPath string, volAccessType model.Vol
 }
 
 // MountNFSVolume mounts NFS share onto given target path
-func (driver *MacDriver) MountNFSVolume(source string, targetPath string, mountOptions []string) error {
+func (driver *MacDriver) MountNFSVolume(source string, targetPath string, mountOptions []string, nfsType string) error {
 	return nil
 }
