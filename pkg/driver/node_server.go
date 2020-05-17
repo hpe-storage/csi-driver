@@ -708,89 +708,36 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 
 	// If ephemeral volume request, then create new volume, add ACL and NodeStage/NodePublish
 	if ephemeral {
-		// Handle ephemeral volume request
-		log.Tracef("Processing request for ephemeral volume %s with access type %s",
-			request.VolumeId, volAccessType.String())
+		// Handle inline ephemeral volume request
+		podName := request.VolumeContext[csiEphemeralPodName]
+		log.Tracef("Processing request for ephemeral volume %s for pod %s with access type %s",
+			request.VolumeId, podName, volAccessType.String())
 
 		// For ephemeral volume, targetPath's parent directory will be used as 'stagingTargetPath'
 		// The device info file will be placed in this directory.
 		stagingTargetPath := filepath.Dir(request.TargetPath)
 
-		var secrets map[string]string
-
-		// Get the secrets from the volume attributes if secrets are unspecified or nil
-		if request.Secrets != nil {
-			log.Tracef("Referencing secrets from the request for %s", request.VolumeId)
-			secrets = request.Secrets
-		} else {
-			secretName := request.VolumeContext[secretNameKey]
-			secretNamespace := request.VolumeContext[secretNamespaceKey]
-
-			if secretName == "" || secretNamespace == "" {
-				errMsg := fmt.Sprintf("Failed to node publish ephemeral volume %s, Missing secrets in the request", request.VolumeId)
-				log.Errorf("err: %s", errMsg)
-				return nil, status.Error(codes.InvalidArgument, errMsg)
-			}
-
-			log.Tracef("Referencing secrets from volume attributes for %s, secretRef: %s/%s",
-				request.VolumeId, secretNamespace, secretName)
-			var err error
-			secrets, err = driver.flavor.GetCredentialsFromSecret(secretName, secretNamespace)
-			if err != nil {
-				errMsg := fmt.Sprintf("Failed to node publish ephemeral volume %s, err: %s", request.VolumeId, err.Error())
-				log.Errorf("err: %s", errMsg)
-				return nil, status.Error(codes.InvalidArgument, errMsg)
-			}
-		}
-
-		// Get/Construct ephemeral volume name
-		podName := request.VolumeContext[csiEphemeralPodName]
-		ephemeralVolName := getEphemeralVolName(
+		// Construct ephemeral volume name from the given volume handle and podName
+		volumeName := getEphemeralVolName(
 			podName,          // POD Name
 			request.VolumeId, // Ephemeral Volume Handle
 		)
-		log.Infof("Provisioning ephemeral volume %s (volumeHandle: %s) for pod %s",
-			ephemeralVolName, request.VolumeId, podName)
-
-		// Node publish
-		{
-			// serialize ephemeral NodePublish() requests
-			ephemeralPublishLock.Lock()
-			defer ephemeralPublishLock.Unlock()
-
-			err = driver.nodePublishEphemeralVolume(
-				request.VolumeId, // Ephemeral CSI Volume Handle
-				ephemeralVolName,
-				stagingTargetPath,
-				request.TargetPath,
-				request.VolumeCapability,
-				secrets,
-				request.Readonly,
-				request.VolumeContext,
-			)
-			if err != nil {
-				log.Errorf("Failed to node publish ephemeral volume %s, err: %s", request.VolumeId, err.Error())
-
-				rbErr := driver.retryRollbackEphemeralVolume(
-					request.VolumeId, // Ephemeral CSI Volume Handle
-					ephemeralVolName,
-					request.Secrets,
-					stagingTargetPath,
-					request.TargetPath,
-				)
-				if rbErr != nil {
-					log.Errorf("Failed to cleanup/rollback ephemeral volume %s, err: %s",
-						request.VolumeId, rbErr.Error())
-					// Returning both original error + rollback error
-					return nil, status.Error(codes.Internal,
-						fmt.Sprintf("%s, %s", err.Error(), rbErr.Error()))
-				}
-				log.Infof("Cleanup/Rollback of ephemeral volume %s successful", request.VolumeId)
-				return nil, err
-			}
+		err := driver.nodePublishEphemeralVolume(
+			request.VolumeId, // Ephemeral CSI Volume Handle
+			volumeName,
+			stagingTargetPath,
+			request.TargetPath,
+			request.VolumeCapability,
+			request.Secrets,
+			request.Readonly,
+			request.PublishContext,
+			request.VolumeContext,
+		)
+		if err != nil {
+			return nil, err
 		}
-		log.Infof("Successfully published the ephemeral volume %s (name: %s) to the target path %s",
-			request.VolumeId, ephemeralVolName, request.TargetPath)
+		log.Infof("Successfully published the ephemeral volume %s with name %s to the target path %s",
+			request.VolumeId, volumeName, request.TargetPath)
 		return &csi.NodePublishVolumeResponse{}, nil
 	}
 
@@ -969,7 +916,7 @@ func (driver *Driver) rollbackEphemeralVolume(
 		log.Errorf("Error node unpublishing the volume %s, err: %s", volumeHandle, err.Error())
 		return err
 	}
-	log.Infof("Successfully node unpublished volume %s from targetPath %s", volumeHandle, targetPath)
+	log.Tracef("Successfully node unpublished volume %s from targetPath %s", volumeHandle, targetPath)
 
 	// Node Unstage (remove device and staging unmount)
 	err = driver.nodeUnstageVolume(volumeHandle, stagingTargetPath)
@@ -977,6 +924,7 @@ func (driver *Driver) rollbackEphemeralVolume(
 		log.Errorf("Error node unstaging the volume %s, err: %s", volumeHandle, err.Error())
 		return err
 	}
+	log.Tracef("Successfully node unstaged volume %s from targetPath %s", volumeHandle, targetPath)
 
 	// Get the volume if exists
 	volume, err := driver.GetVolumeByName(volumeName, secrets)
@@ -985,7 +933,7 @@ func (driver *Driver) rollbackEphemeralVolume(
 		return err
 	}
 
-	// Remove ACK and then destroy volume
+	// Remove ACL and then destroy volume
 	if volume != nil {
 		// Get node info
 		nodeID, err := driver.nodeGetInfo()
@@ -999,14 +947,17 @@ func (driver *Driver) rollbackEphemeralVolume(
 			log.Errorf("Error controller unpublishing the volume %s, err: %s", volume.ID, err.Error())
 			return err
 		}
+		log.Tracef("Successfully controller unpublished volume %s from targetPath %s", volumeHandle, targetPath)
 
 		// Destroy volume permanently from the backend
+		log.Infof("Destroying the volume %s with id %s", volumeName, volume.ID)
 		err = driver.deleteVolume(volume.ID, secrets, true)
 		if err != nil {
 			log.Errorf("Error destroying the volume %s with ID %s, err: %s",
 				volumeName, volume.ID, err.Error())
 			return err
 		}
+		log.Tracef("Successfully destroyed volume %s with id %s from targetPath %s", volumeName, volume.ID, targetPath)
 	}
 	// Remove ephemeral data file as volume does not exists anymore
 	removeDataFile(stagingTargetPath, ephemeralDataFileName)
@@ -1015,115 +966,12 @@ func (driver *Driver) rollbackEphemeralVolume(
 	if err := driver.RemoveFromDB(volume.Name); err != nil {
 		return err
 	}
-
-	log.Infof("Rollback successful for the ephemeral volume handle %s", volumeHandle)
 	return nil
 }
 
-func (driver *Driver) nodePublishEphemeralVolume(
-	volumeHandle string,
-	volumeName string,
-	stagingTargetPath string,
-	targetPath string,
-	volumeCapability *csi.VolumeCapability,
-	secrets map[string]string,
-	readOnly bool,
-	volumeContext map[string]string) error {
-
-	log.Tracef(">>>>> nodePublishEphemeralVolume, volumeHandle: %s, volumeName: %s, targetPath: %s, volumeCapability: %v, volumeContext: %v",
-		volumeHandle, volumeName, targetPath, volumeCapability, volumeContext)
-	defer log.Trace("<<<<< nodePublishEphemeralVolume")
-
-	// Create DB entry
-	dbKey := volumeName
-	if err := driver.AddToDB(dbKey, Pending); err != nil {
-		return err
-	}
-	defer driver.RemoveFromDBIfPending(dbKey)
-
-	// Do the following for ephemeral inline volume:
-	// 		1) Create new volume using volume context parameters
-	// 		2) Controller publish volume (Add ACL)
-	// 		3) Stage volume on the node
-	//			-	Create device
-	//			- 	Mount to the target path using mount options and read-only flag)
-	//			-	Persist the staged device info within the POD directory path (targetPath's parent directory).
-	//		4) Publish volume on the node (Validates if device is mounted on the targetPath)
-
-	podUID := volumeContext[csiEphemeralPodUID]
-	// POD UID must be provided in the request
-	if podUID == "" {
-		log.Error("Missing POD uid in the volume context")
-		return status.Error(codes.InvalidArgument,
-			fmt.Sprintf("NodePublish of ephemeral volume %s failed due to missing POD uid in the request", volumeName))
-	}
-
-	// Volume size (Default value will be used if 'sizeInGiB' parameter is unspecified)
-	sizeInBytes := defaultVolumeSize
-
-	// Get the volume size from the volume context if specified
-	sizeStr := volumeContext[sizeKey]
-	if sizeStr != "" {
-		volSize := resource.MustParse(sizeStr)
-		sizeInBytes = volSize.Value()
-		log.Tracef("Ephemeral volume %s requested with size %s (%v)", volumeName, sizeStr, sizeInBytes)
-	}
-
-	// Construct volume capabitilities to pass to createVolume()
-	volCapabilities := []*csi.VolumeCapability{
-		volumeCapability,
-	}
-
-	// Check if the requested volume already exists on the backend.
-	// If yes, then we need to force re-create it (destroy and then create).
-	{
-		volume, err := driver.GetVolumeByName(volumeName, secrets)
-		if err != nil {
-			log.Errorf("Error while trying to check if ephemeral volume %s already exists, err: %s", volumeName, err.Error())
-			return status.Error(codes.Internal,
-				fmt.Sprintf("NodePublish of ephemeral volume %s failed, %s", volumeName, err.Error()))
-		}
-		// If volume found, then force destroy it.
-		if volume != nil {
-			log.Infof("Volume %s already exists, attempting to force destroy", volumeName)
-			err = driver.deleteVolume(volume.ID, secrets, true)
-			if err != nil {
-				return status.Error(codes.Internal,
-					fmt.Sprintf("NodePublish of ephemeral volume %s failed, unable to destroy pre-existing volume with id %s, %s",
-						volumeName, volume.ID, err.Error()))
-			}
-			log.Infof("Successfully destroyed the pre-existing ephemeral volume %s", volumeName)
-		}
-	}
-
-	// Create new volume
-	volume, err := driver.createVolume(
-		volumeName,
-		sizeInBytes,
-		volCapabilities,
-		secrets,
-		nil, /* No Volume Source */
-		volumeContext,
-	)
-	if err != nil {
-		log.Error("err: ", err.Error())
-		return status.Error(codes.Internal,
-			fmt.Sprintf("Failed to create ephemeral volume %s, err: %s",
-				volumeName, err.Error()))
-	}
-	log.Infof("Successfully created ephemeral volume %s with id %s", volumeName, volume.VolumeId)
-
-	// Update DB entry
-	if err := driver.UpdateDB(dbKey, volume); err != nil {
-		return err
-	}
-
-	// POD information
-	podData := &POD{
-		UID:       volumeContext[csiEphemeralPodUID],
-		Name:      volumeContext[csiEphemeralPodName],
-		Namespace: volumeContext[csiEphemeralPodNamespace],
-	}
+func (driver *Driver) getEphemeralVolumeSecret(volumeHandle string, volumeContext map[string]string) (map[string]string, *Secret, error) {
+	log.Tracef(">>>>> getEphemeralVolumeSecret, volumeHandle: %s, volumeContext: %v", volumeHandle, volumeContext)
+	defer log.Trace("<<<<< getEphemeralVolumeSecret")
 
 	var secretRef *Secret
 	// Get the secret reference from volume context if specified
@@ -1134,46 +982,158 @@ func (driver *Driver) nodePublishEphemeralVolume(
 			Namespace: volumeContext[secretNamespaceKey],
 		}
 	} else {
-		log.Tracef("Fetching the secret reference from POD for volume handle %s", volumeHandle)
-		// Store the secret reference from POD (Fetch from POD using volumeHandle) in the staging device
-		volSecretName, err := driver.flavor.GetEphemeralVolumeSecretFromPod(volumeHandle, podData.Name, podData.Namespace)
+		log.Tracef("Fetch the secret reference from POD for volume %s", volumeHandle)
+		// POD name and namespace
+		podName := volumeContext[csiEphemeralPodName]
+		podNamespace := volumeContext[csiEphemeralPodNamespace]
+
+		volSecretName, err := driver.flavor.GetEphemeralVolumeSecretFromPod(volumeHandle, podName, podNamespace)
 		if err != nil {
-			return status.Error(codes.Internal,
-				fmt.Sprintf("Failed to get secret for ephemeral volume %s from pod %s/%s, %s",
-					volumeHandle, podData.Name, podData.Namespace, err.Error()))
+			return nil, nil, status.Error(codes.InvalidArgument,
+				fmt.Sprintf("Failed to fetch secret for ephemeral volume %s from pod %s/%s, %s",
+					volumeHandle, podName, podNamespace, err.Error()))
 		}
 		secretRef = &Secret{
 			Name:      volSecretName,
-			Namespace: podData.Namespace,
+			Namespace: podNamespace,
 		}
 	}
-	// Store ephemeral data for the newly created volume
-	ephemeralData := Ephemeral{
-		VolumeHandle: volumeHandle,
-		VolumeID:     volume.VolumeId,
-		PodData:      podData,
-		SecretRef:    secretRef,
+	secrets, err := driver.flavor.GetCredentialsFromSecret(secretRef.Name, secretRef.Namespace)
+	if err != nil {
+		log.Errorf("Failed to fetch credentials from secret %s/%s for ephemeral volume %s, %s",
+			secretRef.Name, secretRef.Namespace, volumeHandle, err.Error())
+		return nil, nil, err
+	}
+	return secrets, secretRef, nil
+}
+
+func (driver *Driver) nodePublishEphemeralVolume(
+	volumeHandle string,
+	volumeName string,
+	stagingTargetPath string,
+	targetPath string,
+	volumeCapability *csi.VolumeCapability,
+	secrets map[string]string,
+	readOnly bool,
+	publishContext map[string]string,
+	volumeContext map[string]string) error {
+
+	log.Tracef(">>>>> nodePublishEphemeralVolume, volumeHandle: %s, targetPath: %s, volumeCapability: %v, readOnly: %v, volumeContext: %v, publishContext: %v",
+		volumeHandle, targetPath, volumeCapability, readOnly, volumeContext, publishContext)
+	defer log.Trace("<<<<< nodePublishEphemeralVolume")
+
+	// serialize inline ephemeral volume NodePublish() requests
+	ephemeralPublishLock.Lock()
+	defer ephemeralPublishLock.Unlock()
+
+	podUID := volumeContext[csiEphemeralPodUID]
+	// POD UID must be provided in the request
+	if podUID == "" {
+		log.Errorf("Missing POD uid in the volume context for volume %s", volumeName)
+		return status.Error(codes.InvalidArgument,
+			fmt.Sprintf("NodePublish of ephemeral volume %s failed due to missing POD uid in the request", volumeHandle))
 	}
 
-	// persist ephemeral data
-	if err := writeData(stagingTargetPath, ephemeralDataFileName, ephemeralData); err != nil {
-		return status.Error(codes.Internal,
-			fmt.Sprintf("failed to save ephemeral data: %v", err.Error()))
+	// Get Secret
+	secrets, secretRef, err := driver.getEphemeralVolumeSecret(volumeHandle, volumeContext)
+	if err != nil {
+		return status.Error(codes.InvalidArgument,
+			fmt.Sprintf("Failed to node publish ephemeral volume %s, %s", volumeHandle, err.Error()))
 	}
-	log.Tracef("Ephemeral data file [%s/%s] created successfully", stagingTargetPath, ephemeralDataFileName)
+
+	// Create and Publish inline ephemeral volume
+	log.Infof("Provisioning ephemeral volume %s with name %s for pod %s", volumeHandle, volumeName, podUID)
+	err = driver.createPublishEphemeralVolume(
+		volumeHandle,
+		volumeName,
+		stagingTargetPath,
+		targetPath,
+		volumeCapability,
+		secrets,
+		secretRef,
+		readOnly,
+		publishContext,
+		volumeContext,
+	)
+	if err != nil {
+		log.Errorf("Failed to node publish ephemeral volume %s, attempting to rollback, err: %s", volumeName, err.Error())
+		if status.Code(err) == codes.AlreadyExists {
+			log.Errorf("Failed to rollback ephemeral volume %s, err: %s", volumeName, err.Error())
+			return err
+		}
+		// Attempt rollback
+		rbErr := driver.retryRollbackEphemeralVolume(
+			volumeHandle,
+			volumeName,
+			secrets,
+			stagingTargetPath,
+			targetPath,
+		)
+		if rbErr != nil {
+			log.Errorf("Failed to rollback ephemeral volume %s, err: %s", volumeName, rbErr.Error())
+			// Returning both original error + rollback error
+			return status.Error(codes.Internal,
+				fmt.Sprintf("%s, %s", err.Error(), rbErr.Error()))
+		}
+		log.Infof("Rollback successful for ephemeral volume %s", volumeName)
+		return err
+	}
+	return nil
+}
+
+func (driver *Driver) createPublishEphemeralVolume(
+	volumeHandle string,
+	volumeName string,
+	stagingTargetPath string,
+	targetPath string,
+	volumeCapability *csi.VolumeCapability,
+	secrets map[string]string,
+	secretRef *Secret,
+	readOnly bool,
+	publishContext map[string]string,
+	volumeContext map[string]string) error {
+
+	log.Tracef(">>>>> createPublishEphemeralVolume, volumeName: %s, stagingTargetPath: %s, targetPath: %s",
+		volumeName, stagingTargetPath, targetPath)
+	defer log.Trace("<<<<< createPublishEphemeralVolume")
+
+	// Do the following for ephemeral inline volume:
+	// 		1) Create new volume using volume context parameters
+	// 		2) Controller publish volume (Add ACL)
+	// 		3) Stage volume on the node
+	//			-	Create device
+	//			- 	Mount to the target path using mount options and read-only flag)
+	//			-	Persist the staged device info within the POD directory path (targetPath's parent directory).
+	//		4) Publish volume on the node (Validates if device is mounted on the targetPath)
+
+	// Create new inline volume
+	volume, err := driver.createEphemeralVolume(
+		volumeHandle,
+		volumeName,
+		stagingTargetPath,
+		volumeCapability,
+		secrets,
+		secretRef,
+		volumeContext,
+	)
+	if err != nil {
+		log.Errorf("Failed to provision ephemeral volume %s with name %s, %s", volumeHandle, volumeName, err.Error())
+		return err
+	}
 
 	// Get Node Info
-	nodeID, err := driver.nodeGetInfo()
+	var nodeID string
+	nodeID, err = driver.nodeGetInfo()
 	if err != nil {
 		log.Tracef("Failed to get node info, err: %s", err.Error())
 		return status.Error(codes.Internal,
-			fmt.Sprintf("Failed to node publish ephemeral volume %s (id: %s), err: %s",
-				volumeName, volume.VolumeId, err.Error()))
+			fmt.Sprintf("Failed to node publish ephemeral volume %s with id %s, err: %s",
+				volumeName, volume.ID, err.Error()))
 	}
 
 	// Controller publish volume by adding ACL
-	publishContext, err := driver.controllerPublishVolume(
-		volume.VolumeId,
+	publishContext, err = driver.controllerPublishVolume(
+		volume.ID,
 		nodeID,
 		secrets,
 		volumeCapability,
@@ -1182,15 +1142,15 @@ func (driver *Driver) nodePublishEphemeralVolume(
 	)
 	if err != nil {
 		log.Errorf("Error controller publishing volume %s (id: %s), err: %s",
-			volumeName, volume.VolumeId, err.Error())
+			volumeName, volume.ID, err.Error())
 		return err
 	}
 	log.Infof("Successfully controller published ephemeral volume %s (id: %s) with publishContext %+v",
-		volumeName, volume.VolumeId, publishContext)
+		volumeName, volume.ID, publishContext)
 
 	// Node stage volume (Publish to Node)
 	err = driver.nodeStageVolume(
-		volume.VolumeId,
+		volume.ID,
 		stagingTargetPath,
 		targetPath, // Mountpoint
 		volumeCapability,
@@ -1200,15 +1160,15 @@ func (driver *Driver) nodePublishEphemeralVolume(
 	)
 	if err != nil {
 		log.Errorf("Failed to node stage volume %s (id: %s), err: %s",
-			volumeName, volume.VolumeId, err.Error())
+			volumeName, volume.ID, err.Error())
 		return err
 	}
 	log.Infof("Successfully node staged ephemeral volume %s (id: %s) on stagingTargetPath %s",
-		volumeName, volume.VolumeId, stagingTargetPath)
+		volumeName, volume.ID, stagingTargetPath)
 
 	// Node publish volume. This will ensure that the ephemeral volume is published to the node.
 	err = driver.nodePublishVolume(
-		volume.VolumeId,
+		volume.ID,
 		stagingTargetPath,
 		targetPath,
 		volumeCapability,
@@ -1219,11 +1179,11 @@ func (driver *Driver) nodePublishEphemeralVolume(
 	)
 	if err != nil {
 		log.Errorf("Failed to node publish volume %s (id: %s), err: %s",
-			volumeName, volume.VolumeId, err.Error())
+			volumeName, volume.ID, err.Error())
 		return err
 	}
 	log.Infof("Successfully node published ephemeral volume %s (id: %s) on targetPath %s",
-		volumeName, volume.VolumeId, targetPath)
+		volumeName, volume.ID, targetPath)
 	return nil
 }
 
@@ -1304,6 +1264,127 @@ func (driver *Driver) isVolumePublished(
 		// TODO: Check for fsOpts compatibility
 	}
 	return true, nil // Published
+}
+
+// If not exists, create a new volume.
+// If already exists, then it must match with the ephemeral data file contents. If mismatch, then force recreate.
+func (driver *Driver) createEphemeralVolume(
+	volumeHandle string,
+	volumeName string,
+	stagingTargetPath string,
+	volumeCapability *csi.VolumeCapability,
+	secrets map[string]string,
+	secretRef *Secret,
+	volumeContext map[string]string) (*model.Volume, error) {
+
+	log.Tracef(">>>>> createEphemeralVolume, volumeName: %s, stagingTargetPath: %s", volumeName, stagingTargetPath)
+	defer log.Trace("<<<<< createEphemeralVolume")
+
+	// Create DB entry
+	dbKey := volumeName
+	if err := driver.AddToDB(dbKey, Pending); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	defer driver.RemoveFromDBIfPending(dbKey)
+
+	// Volume size (Default value will be used if 'sizeInGiB' parameter is unspecified)
+	sizeInBytes := defaultVolumeSize
+
+	// Get the volume size from the volume context if specified
+	sizeStr := volumeContext[sizeKey]
+	if sizeStr != "" {
+		volSize := resource.MustParse(sizeStr)
+		sizeInBytes = volSize.Value()
+		log.Infof("Ephemeral volume %s requested with size %s (%v)", volumeName, sizeStr, sizeInBytes)
+	}
+
+	// Construct volume capabitilities to pass to createVolume()
+	volCapabilities := []*csi.VolumeCapability{
+		volumeCapability,
+	}
+
+	// POD information
+	podData := &POD{
+		UID:       volumeContext[csiEphemeralPodUID],
+		Name:      volumeContext[csiEphemeralPodName],
+		Namespace: volumeContext[csiEphemeralPodNamespace],
+	}
+
+	// Check if the volume with same name already exists
+	existingVolume, err := driver.GetVolumeByName(volumeName, secrets)
+	if err != nil {
+		log.Errorf("Error while trying to check if ephemeral volume %s already exists, err: %s", volumeName, err.Error())
+		return nil, status.Error(codes.Internal,
+			fmt.Sprintf("NodePublish of ephemeral volume %s failed, %s", volumeName, err.Error()))
+	}
+	if existingVolume != nil {
+		// If volume already exists, then match the ephemeral data from the staging path
+		ephemeralData, err := loadEphemeralData(stagingTargetPath, ephemeralDataFileName)
+		if err != nil {
+			return nil, status.Error(codes.Internal,
+				fmt.Sprintf("Failed to load ephemeral data from staging path %s/%s for volume %s, %s",
+					stagingTargetPath, ephemeralDataFileName, volumeHandle, err.Error()))
+		}
+		if ephemeralData != nil {
+			// Check if the ephemeralData matches with the requested volumeHandle
+			if ephemeralData.VolumeHandle == volumeHandle && ephemeralData.PodData.UID == podData.UID {
+				log.Infof("Volume %s already provisioned and the ephemeral data file exists, returning here", volumeName)
+				return existingVolume, nil // Already created and ephemeral data file is updated.
+			}
+		}
+		// Force destroy the pre-existing volume and continue to re-create new volume.
+		log.Infof("Volume with name %s already exists without ephemeral data file, attempting to force destroy", volumeName)
+		err = driver.deleteVolume(existingVolume.ID, secrets, true)
+		if err != nil {
+			return nil, status.Error(codes.AlreadyExists,
+				fmt.Sprintf("Failed to provision ephemeral volume %s, unable to destroy pre-existing volume with id %s, %s",
+					volumeName, existingVolume.ID, err.Error()))
+		}
+		log.Infof("Successfully destroyed the pre-existing ephemeral volume %s with id %s", volumeName, existingVolume.ID)
+	}
+
+	// Create a new volume
+	csiVolume, err := driver.createVolume(
+		volumeName,
+		sizeInBytes,
+		volCapabilities,
+		secrets,
+		nil, /* No Volume Source */
+		volumeContext,
+	)
+	if err != nil {
+		log.Errorf("Failed to create ephemeral volume %s with size %d, err: %s", volumeName, sizeInBytes, err.Error())
+		return nil, status.Error(codes.AlreadyExists,
+			fmt.Sprintf("Failed to create ephemeral volume %s with size %d, err: %s", volumeName, sizeInBytes, err.Error()))
+	}
+	log.Infof("Successfully created ephemeral volume %s with id %s and size %d", volumeName, csiVolume.VolumeId, sizeInBytes)
+
+	// Store ephemeral data for the newly created volume in the staging path
+	ephemeralData := Ephemeral{
+		VolumeHandle: volumeHandle,
+		VolumeID:     csiVolume.VolumeId,
+		PodData:      podData,
+		SecretRef:    secretRef,
+	}
+
+	// persist ephemeral data
+	if err := writeData(stagingTargetPath, ephemeralDataFileName, ephemeralData); err != nil {
+		return nil, status.Error(codes.Internal,
+			fmt.Sprintf("failed to save ephemeral data: %v", err.Error()))
+	}
+	log.Tracef("Ephemeral data file [%s/%s] created successfully", stagingTargetPath, ephemeralDataFileName)
+
+	// Get Volume using secrets
+	volume, err := driver.GetVolumeByID(csiVolume.VolumeId, secrets)
+	if err != nil {
+		log.Errorf("Failed to get volume %s with id %s, err: %s", volumeName, csiVolume.VolumeId, err.Error())
+		return nil, err
+	}
+	// Update DB entry
+	if err := driver.UpdateDB(dbKey, volume); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return volume, nil
 }
 
 // NodeUnpublishVolume ...
@@ -1397,9 +1478,9 @@ func (driver *Driver) isEphemeralTargetPath(targetPath string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if volData[driverModeKey] == ephemeralDriverMode {
+	if volData[driverModeKey] == ephemeralVolumeMode || volData[volumeLifecycleModeKey] == ephemeralVolumeMode {
 		// Ephemeral volume
-		log.Tracef("Found driver mode as 'ephemeral' in [%s]. This is ephemeral target path", volDataFileName)
+		log.Tracef("Found driverMode or volumeLifecycleMode as 'ephemeral' in [%s]. This is ephemeral target path", volDataFileName)
 		return true, nil
 	}
 
@@ -1452,7 +1533,7 @@ func (driver *Driver) nodeUnpublishEphemeralVolume(volumeHandle string, targetPa
 		log.Errorf("err: %s", err.Error())
 		return err
 	}
-	log.Infof("Successfully node unpublished ephemeral volume %s from targetPath %s", volumeHandle, targetPath)
+	log.Infof("Node unpublished ephemeral volume %s from targetPath %s", volumeHandle, targetPath)
 
 	// For ephemeral volume, targetPath's parent directory will be used as 'stagingTargetPath'
 	// The device info file is available in this directory.
@@ -1463,7 +1544,7 @@ func (driver *Driver) nodeUnpublishEphemeralVolume(volumeHandle string, targetPa
 		log.Errorf("Error node unstaging the ephemeral volume %s, err: %s", volumeHandle, err.Error())
 		return err
 	}
-	log.Infof("Successfully unstaged the ephemeral volume %s from stagingTargetPath %s",
+	log.Infof("Unstaged the ephemeral volume %s from stagingTargetPath %s",
 		volumeHandle, stagingTargetPath)
 
 	// Fetch the volume from the backend using data from ephemeral_data.json file
@@ -1533,7 +1614,7 @@ func (driver *Driver) nodeUnpublishEphemeralVolume(volumeHandle string, targetPa
 		log.Error("err: ", err.Error())
 		return err
 	}
-	log.Infof("Successfully controller unpublished the ephemeral volume %s with ID %s from nodeID %s",
+	log.Infof("Controller unpublished the ephemeral volume %s with ID %s from nodeID %s",
 		volumeHandle, volume.ID, nodeID)
 
 	// 4) Delete Volume
@@ -1546,7 +1627,7 @@ func (driver *Driver) nodeUnpublishEphemeralVolume(volumeHandle string, targetPa
 			fmt.Sprintf(" %s with ID %s from the backend, err: %s",
 				volumeHandle, volume.ID, err.Error()))
 	}
-	log.Infof("Successfully destroyed the ephemeral volume %s with ID %s", volumeHandle, volume.ID)
+	log.Infof("Destroyed the ephemeral volume %s with ID %s", volumeHandle, volume.ID)
 
 	// Remove ephemeral data file as volume does not exists anymore
 	removeDataFile(stagingTargetPath, ephemeralDataFileName)

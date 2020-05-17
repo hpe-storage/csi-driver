@@ -60,8 +60,11 @@ const (
 	// driverModeKey stored in the vol_data.json file
 	driverModeKey = "driverMode"
 
-	// ephemeralDriverMode for ephmeral inline volume
-	ephemeralDriverMode = "ephemeral"
+	// volumeLifecycleMode stored in the vol_data.json file
+	volumeLifecycleModeKey = "volumeLifecycleMode"
+
+	// ephemeralVolumeMode for ephmeral inline volume
+	ephemeralVolumeMode = "ephemeral"
 
 	// Default scrubber interval for Ephemeral inline volumes on the node.
 	defaultInlineVolumeScrubberInterval = 3600 // Default value is 3600 seconds or 1 Hour
