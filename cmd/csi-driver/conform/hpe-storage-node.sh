@@ -20,6 +20,10 @@ if [ -f /etc/os-release ]; then
     if [ $? -eq 0 ]; then
         CONFORM_TO=ubuntu
     fi
+    echo $os_name | egrep -i "CoreOS" >> /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        CONFORM_TO=coreos
+    fi
 fi
 
 if [ "$CONFORM_TO" = "ubuntu" ]; then
@@ -37,6 +41,15 @@ if [ "$CONFORM_TO" = "ubuntu" ]; then
         # exit with error to trigger restart of pod to mount newly installed iscisadm
         exit 1
     fi
+
+    if [ ! -f /sbin/mount.nfs4 ]; then
+        apt-get -qq update
+        apt-get -qq install -y nfs-common
+        exit_on_error $?
+        systemctl enable nfs-utils.service
+        systemctl start nfs-utils.service
+    fi
+
 elif [ "$CONFORM_TO" = "redhat" ]; then
     # Install device-mapper-multipath
     if [ ! -f /sbin/multipathd ]; then
@@ -50,6 +63,16 @@ elif [ "$CONFORM_TO" = "redhat" ]; then
         # exit with error to trigger restart of pod to mount newly installed iscisadm
         exit 1
     fi
+
+    # Install device-mapper-multipath
+    if [ ! -f /sbin/mount.nfs4 ]; then
+        yum -y install nfs-utils
+        exit_on_error $?
+        systemctl enable nfs-utils.service
+        systemctl start nfs-utils.service
+    fi
+elif [ "$CONFORM_TO" = "coreos" ]; then
+    echo "skipping package checks/installation on CoreOS"
 else
     echo "unsupported configuration for node package checks. os $os_name"
     exit 1
