@@ -530,11 +530,11 @@ func (flavor *Flavor) GetEphemeralVolumeSecretFromPod(volumeHandle string, podNa
 
 	pod, err := flavor.getPodByName(podName, namespace)
 	if err != nil {
-		log.Errorf("Unable to get pod %s/%s for volume %s, err: %v", podName, namespace, volumeHandle, err.Error())
+		log.Errorf("Unable to get pod %s/%s for volume %s, err: %v", namespace, podName, volumeHandle, err.Error())
 		return "", err
 	}
 	if pod == nil {
-		return "", fmt.Errorf("Pod %s/%s not found", podName, namespace)
+		return "", fmt.Errorf("Pod %s/%s not found", namespace, podName)
 	}
 
 	for _, vol := range pod.Spec.Volumes {

@@ -785,14 +785,16 @@ func (driver *Driver) ScrubEphemeralPods(podsDirPath string) error {
 			log.Infof("POD with UID %s does not exist. So, attempting to cleanup device(s) and associated ephemeral volume(s)", podUID)
 			// Perform nodeUnpublishEphemeralVolume() for each target path
 			for _, volumePath := range volumePaths {
-				log.Infof("Cleanup/nodeUnpublish ephemeral volume %s on target path %s", volumePath.VolumeHandle, volumePath.TargetPath)
+				log.Infof("Scrubber attempting to cleanup ephemeral volume %s on target path [%s]",
+					volumePath.VolumeHandle, volumePath.TargetPath)
 				err := driver.nodeUnpublishEphemeralVolume(volumePath.VolumeHandle, volumePath.TargetPath)
 				if err != nil {
 					log.Errorf("Failed to node unpublish ephemeral volume from targetPath [%s], err: %s",
 						volumePath.TargetPath, err.Error())
 					continue
 				}
-				log.Infof("Successfully node unpublished ephemeral volume from targetPath [%s]", volumePath.TargetPath)
+				log.Infof("Scrubber nodeUnpublished ephemeral volume %s from targetPath [%s] successfully",
+					volumePath.VolumeHandle, volumePath.TargetPath)
 			}
 		}
 	}
