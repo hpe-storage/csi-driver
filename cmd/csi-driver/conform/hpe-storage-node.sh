@@ -42,6 +42,7 @@ if [ "$CONFORM_TO" = "ubuntu" ]; then
         exit 1
     fi
 
+    # Install nfs client packages
     if [ ! -f /sbin/mount.nfs4 ]; then
         apt-get -qq update
         apt-get -qq install -y nfs-common
@@ -64,7 +65,7 @@ elif [ "$CONFORM_TO" = "redhat" ]; then
         exit 1
     fi
 
-    # Install device-mapper-multipath
+    # Install nfs client packages
     if [ ! -f /sbin/mount.nfs4 ]; then
         yum -y install nfs-utils
         exit_on_error $?
