@@ -3,7 +3,7 @@
 exit_on_error() {
     exit_code=$1
     if [ $exit_code -ne 0 ]; then
-        >&2 echo "command failed with exit code ${exit_code}."
+        echo "command failed with exit code ${exit_code}."
         exit $exit_code
     fi
 }
@@ -19,6 +19,10 @@ if [ -f /etc/os-release ]; then
     echo $os_name | egrep -i "Ubuntu|Debian" >> /dev/null 2>&1
     if [ $? -eq 0 ]; then
         CONFORM_TO=ubuntu
+    fi
+    echo $os_name | egrep -i "CoreOS" >> /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        CONFORM_TO=coreos
     fi
 fi
 
@@ -37,6 +41,16 @@ if [ "$CONFORM_TO" = "ubuntu" ]; then
         # exit with error to trigger restart of pod to mount newly installed iscisadm
         exit 1
     fi
+
+    # Install nfs client packages
+    if [ ! -f /sbin/mount.nfs4 ]; then
+        apt-get -qq update
+        apt-get -qq install -y nfs-common
+        systemctl enable nfs-utils.service
+        systemctl start nfs-utils.service
+        exit_on_error $?
+    fi
+
 elif [ "$CONFORM_TO" = "redhat" ]; then
     # Install device-mapper-multipath
     if [ ! -f /sbin/multipathd ]; then
@@ -50,6 +64,16 @@ elif [ "$CONFORM_TO" = "redhat" ]; then
         # exit with error to trigger restart of pod to mount newly installed iscisadm
         exit 1
     fi
+
+    # Install nfs client packages
+    if [ ! -f /sbin/mount.nfs4 ]; then
+        yum -y install nfs-utils
+        systemctl enable nfs-utils.service
+        systemctl start nfs-utils.service
+        exit_on_error $?
+    fi
+elif [ "$CONFORM_TO" = "coreos" ]; then
+    echo "skipping package checks/installation on CoreOS"
 else
     echo "unsupported configuration for node package checks. os $os_name"
     exit 1
