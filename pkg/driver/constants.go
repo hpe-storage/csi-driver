@@ -63,7 +63,7 @@ const (
 	// volumeLifecycleMode stored in the vol_data.json file
 	volumeLifecycleModeKey = "volumeLifecycleMode"
 
-	// ephemeralVolumeMode for ephmeral inline volume
+	// ephemeralVolumeMode for ephemeral inline volume
 	ephemeralVolumeMode = "ephemeral"
 
 	// Default scrubber interval for Ephemeral inline volumes on the node.
