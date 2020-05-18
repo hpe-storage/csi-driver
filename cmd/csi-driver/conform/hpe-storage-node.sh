@@ -3,7 +3,7 @@
 exit_on_error() {
     exit_code=$1
     if [ $exit_code -ne 0 ]; then
-        >&2 echo "command failed with exit code ${exit_code}."
+        echo "command failed with exit code ${exit_code}."
         exit $exit_code
     fi
 }
@@ -46,9 +46,9 @@ if [ "$CONFORM_TO" = "ubuntu" ]; then
     if [ ! -f /sbin/mount.nfs4 ]; then
         apt-get -qq update
         apt-get -qq install -y nfs-common
-        exit_on_error $?
         systemctl enable nfs-utils.service
         systemctl start nfs-utils.service
+        exit_on_error $?
     fi
 
 elif [ "$CONFORM_TO" = "redhat" ]; then
@@ -68,9 +68,9 @@ elif [ "$CONFORM_TO" = "redhat" ]; then
     # Install nfs client packages
     if [ ! -f /sbin/mount.nfs4 ]; then
         yum -y install nfs-utils
-        exit_on_error $?
         systemctl enable nfs-utils.service
         systemctl start nfs-utils.service
+        exit_on_error $?
     fi
 elif [ "$CONFORM_TO" = "coreos" ]; then
     echo "skipping package checks/installation on CoreOS"
