@@ -735,39 +735,46 @@ func (driver *Driver) ScrubEphemeralPods(podsDirPath string) error {
 	// Fetch all ephemeral pods and populate it
 	//ephemeralPods := map[string][]*StagingDeviceEphemeralData{}
 	ephemeralPods := map[string][]*VolumeHandleTargetPath{}
-	err = filepath.Walk(podsDirPath, func(fileFullPath string, info os.FileInfo, err error) error {
-		if !info.IsDir() {
-			if info.Name() == ephemeralDataFileName {
-				log.Tracef("Found Ephemeral data file [%s]", fileFullPath)
-				targetDirPath := filepath.Dir(fileFullPath)
-				targetPath := fmt.Sprintf("%s/%s", targetDirPath, "mount")
+	err = filepath.Walk(podsDirPath, func(fileFullPath string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			log.Errorf("Error while processing the path [%s], %s", fileFullPath, walkErr.Error())
+			return walkErr
+		}
+		if info == nil {
+			log.Warnf("FileInfo is nil, Skipping directory path [%s]", fileFullPath)
+			return filepath.SkipDir /* Skip processing current directory and continue processing other directories */
+		}
 
-				// Load Ephemeral Data
-				ephemeralData, err := loadEphemeralData(targetDirPath, ephemeralDataFileName)
-				if err != nil {
-					log.Errorf("Failed to load ephemeral data from %s, %s", ephemeralDataFileName, err.Error())
-					return nil
-				}
-				if ephemeralData == nil {
-					log.Infof("Missing ephemeral data in %s, skip processing", fileFullPath)
-					return nil
-				}
+		// Process only 'ephemeral_data.json' files
+		if !info.IsDir() && info.Name() == ephemeralDataFileName {
+			log.Tracef("Found Ephemeral data file [%s]", fileFullPath)
+			targetDirPath := filepath.Dir(fileFullPath)
+			targetPath := fmt.Sprintf("%s/%s", targetDirPath, "mount")
 
-				// Add volumePath to the pod list
-				volHandleTargetPath := &VolumeHandleTargetPath{
-					VolumeHandle: ephemeralData.VolumeHandle,
-					TargetPath:   targetPath,
-				}
-				log.Tracef("Scrub ephemeral inline volume, [POD: %s], [VolumeHandle: %s], [VolumeID: %s], [TargetPath: %s]",
-					ephemeralData.PodData.UID, ephemeralData.VolumeHandle, ephemeralData.VolumeID, targetPath)
-				ephemeralPods[ephemeralData.PodData.UID] = append(ephemeralPods[ephemeralData.PodData.UID], volHandleTargetPath)
+			// Load Ephemeral Data
+			ephemeralData, err := loadEphemeralData(targetDirPath, ephemeralDataFileName)
+			if err != nil {
+				log.Errorf("Failed to load ephemeral data from %s, %s", ephemeralDataFileName, err.Error())
 				return nil
 			}
+			if ephemeralData == nil {
+				log.Infof("Missing ephemeral data in %s, skip processing", fileFullPath)
+				return nil
+			}
+
+			// Add volumePath to the pod list
+			volHandleTargetPath := &VolumeHandleTargetPath{
+				VolumeHandle: ephemeralData.VolumeHandle,
+				TargetPath:   targetPath,
+			}
+			log.Tracef("Scrub ephemeral inline volume, [POD: %s], [VolumeHandle: %s], [VolumeID: %s], [TargetPath: %s]",
+				ephemeralData.PodData.UID, ephemeralData.VolumeHandle, ephemeralData.VolumeID, targetPath)
+			ephemeralPods[ephemeralData.PodData.UID] = append(ephemeralPods[ephemeralData.PodData.UID], volHandleTargetPath)
 		}
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("Error processing the pods directory %s, %s", podsDirPath, err.Error())
+		return fmt.Errorf("Error processing the pods directory [%s], %s", podsDirPath, err.Error())
 	}
 
 	if len(ephemeralPods) == 0 {
