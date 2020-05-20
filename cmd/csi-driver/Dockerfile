@@ -37,7 +37,8 @@ RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/multipathd \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/umount \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/ip \
-    && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmidecode
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmidecode \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/dnsdomainname
 
 ENV PATH="/chroot:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 

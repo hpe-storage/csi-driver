@@ -24,6 +24,7 @@ var (
 	up                     = "UP"
 	unknown                = "UNKNOWN"
 	ethtool                = "ethtool"
+	dnsDomainName          = "dnsdomainname"
 	maskFmt                = "%d.%d.%d.%d"
 	linkStatusPattern      = "\\s+Link detected:\\s+yes"
 )
@@ -51,8 +52,17 @@ func GetHostNameAndDomain() ([]string, error) {
 	return []string{hostname, domainname}, nil
 }
 
-//GetDomainName : of the host
+//GetDomainName : returns domain name of the host
 func getDomainName() (string, error) {
+	// attempt using dnsdomainname when available.
+	args := []string{}
+	domain, _, err := util.ExecCommandOutput(dnsDomainName, args)
+	if err == nil {
+		// remove any ending dot
+		return strings.TrimSuffix(strings.TrimSpace(domain), "."), nil
+	}
+
+	// fall back to logic using reverse lookup of IPv4 addresses.
 	var addr string
 	interfaces, err := getNetworkInterfaces()
 	if err != nil {
@@ -71,7 +81,8 @@ func getDomainName() (string, error) {
 			break
 		}
 	}
-	return addr, nil
+	// trim  hostname and just return domain name
+	return addr[strings.Index(addr, ".")+1:], nil
 }
 
 // GetIPV4NetworkAddress returns network address for given ipv4 address and netmask
