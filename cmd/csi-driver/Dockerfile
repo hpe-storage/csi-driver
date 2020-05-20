@@ -1,7 +1,7 @@
 FROM registry.access.redhat.com/ubi7/ubi-minimal:7.7-238
 
 RUN microdnf update -y && rm -rf /var/cache/yum
-RUN microdnf install -y systemd hostname
+RUN microdnf install -y systemd
 
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \
@@ -37,7 +37,8 @@ RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/multipathd \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/umount \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/ip \
-    && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmidecode
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmidecode \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/dnsdomainname
 
 ENV PATH="/chroot:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
