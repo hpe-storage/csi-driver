@@ -66,7 +66,7 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 
 	// Configure flavor
 	if flavorName == flavor.Kubernetes {
-		flavor, err := kubernetes.NewKubernetesFlavor(nodeService)
+		flavor, err := kubernetes.NewKubernetesFlavor(nodeService, driver.chapiDriver)
 		if err != nil {
 			return nil, err
 		}

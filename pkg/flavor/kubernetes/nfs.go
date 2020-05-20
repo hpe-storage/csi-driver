@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/hpe-storage/common-host-libs/chapi"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"golang.org/x/mod/semver"
 	"google.golang.org/grpc/codes"
@@ -368,8 +367,7 @@ func (flavor *Flavor) HandleNFSNodePublish(req *csi.NodePublishVolumeRequest) (*
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	chapiDriver := &chapi.LinuxDriver{}
-	if err := chapiDriver.MountNFSVolume(source, target, mountOptions, "nfs4"); err != nil {
+	if err := flavor.chapiDriver.MountNFSVolume(source, target, mountOptions, "nfs4"); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -411,8 +409,7 @@ func (flavor *Flavor) getNFSHostDomain() (string, error) {
 	defer log.Tracef("<<<<< getNFSHostDomain")
 
 	// obtain an array of  {hostname, domainname}
-	chapiDriver := &chapi.LinuxDriver{}
-	hostNameAndDomain, err := chapiDriver.GetHostNameAndDomain()
+	hostNameAndDomain, err := flavor.chapiDriver.GetHostNameAndDomain()
 	if err != nil {
 		return "", fmt.Errorf("Failed to obtain host name and domain to provision NFS volume, %s", err.Error())
 	}

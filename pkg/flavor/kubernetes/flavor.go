@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hpe-storage/common-host-libs/chapi"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	crd_v1 "github.com/hpe-storage/k8s-custom-resources/pkg/apis/hpestorage/v1"
@@ -45,9 +46,10 @@ var (
 
 // Flavor of the CSI driver
 type Flavor struct {
-	crdClient  *crd_client.Clientset
-	nodeName   string
-	kubeClient kubernetes.Interface
+	crdClient   *crd_client.Clientset
+	nodeName    string
+	kubeClient  kubernetes.Interface
+	chapiDriver chapi.Driver
 
 	claimInformer cache.SharedIndexInformer
 	claimIndexer  cache.Indexer
@@ -57,7 +59,7 @@ type Flavor struct {
 }
 
 // NewKubernetesFlavor creates a new k8s flavored CSI driver
-func NewKubernetesFlavor(nodeService bool) (*Flavor, error) {
+func NewKubernetesFlavor(nodeService bool, chapiDriver chapi.Driver) (*Flavor, error) {
 	kubeConfig, err := rest.InClusterConfig()
 	if err != nil {
 		fmt.Printf("Error getting config cluster - %s\n", err.Error())
@@ -103,6 +105,9 @@ func NewKubernetesFlavor(nodeService bool) (*Flavor, error) {
 		flavor.claimStopChan = make(chan struct{})
 		go flavor.claimInformer.Run(flavor.claimStopChan)
 	}
+
+	// add reference to chapi driver
+	flavor.chapiDriver = chapiDriver
 
 	return flavor, nil
 }
