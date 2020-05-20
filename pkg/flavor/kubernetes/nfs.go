@@ -27,8 +27,6 @@ const (
 	defaultNFSNamespace = "hpe-nfs"
 	defaultNFSImage     = "hpestorage/nfs-provisioner:2.8.3-4"
 
-	deletionInterval           = 30 // 60s with sleep interval of 2s
-	deletionDelay              = 2 * time.Second
 	creationInterval           = 60 // 120s with sleep interval of 2s
 	creationDelay              = 2 * time.Second
 	defaultExportPath          = "/export"
@@ -60,7 +58,7 @@ type NFSSpec struct {
 }
 
 // CreateNFSVolume creates nfs volume abstracting underlying nfs pvc, deployment and service
-func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
+func (flavor *Flavor) CreateNFSVolume(chapiDriver chapi.Driver, pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
 	log.Tracef(">>>>> CreateNFSVolume with %s", pvName)
 	defer log.Tracef("<<<<< CreateNFSVolume")
 
@@ -113,8 +111,17 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 		return nil, true, err
 	}
 
+	// obtain an array of  {hostname, domainname}
+	hostNameAndDomain, err := chapiDriver.GetHostNameAndDomain()
+	if err != nil {
+		return nil, true, fmt.Errorf("Failed to obtain host name and domain to provision NFS volume, %s", err.Error())
+	}
+	if len(hostNameAndDomain) != 2 || hostNameAndDomain[1] == "unknown" {
+		return nil, true, fmt.Errorf("Unable to obtain host domain name to provision NFS volume %s", pvName)
+	}
+	log.Tracef("Host domain name obtained as %s", hostNameAndDomain[1])
 	// create nfs configmap
-	err = flavor.createNFSConfigMap(nfsResourceNamespace)
+	err = flavor.createNFSConfigMap(nfsResourceNamespace, hostNameAndDomain[1])
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
 		return nil, true, err
@@ -179,32 +186,15 @@ func (flavor *Flavor) createServiceAccount(nfsNamespace string) error {
 	return nil
 }
 
-func (flavor *Flavor) createNFSConfigMap(nfsNamespace string) error {
-	log.Tracef(">>>>> createNFSConfigMap with namespace %s", nfsNamespace)
+func (flavor *Flavor) createNFSConfigMap(nfsNamespace, hostDomain string) error {
+	log.Tracef(">>>>> createNFSConfigMap with namespace %s, domain %s", nfsNamespace, hostDomain)
 	defer log.Tracef("<<<<< createNFSConfigMap")
 
-	nfsGaneshaConfig := `
-NFS_Core_Param
-{
-  NFS_Protocols= 4;
-  NFS_Port = 2049;
-  fsid_device = false;
-}
-
-EXPORT
-{
-  Export_Id = 716;
-  Path = /export;
-  Pseudo = /export;
-  Access_Type = RW;
-  Squash = No_Root_Squash;
-  Transports = TCP;
-  Protocols = 4;
-  SecType = "sys";
-  FSAL {
-	  Name = VFS;
-  }
-}`
+	// Format for pretty display with configmap
+	nfsCoreParamBlock := "NFS_Core_Param" + "\n" + "{" + "\n" + "NFS_Protocols= 4;" + "\n" + "NFS_Port = 2049;" + "\n" + "fsid_device = false;" + "\n" + "}" + "\n"
+	nfs4Block := "NFSv4" + "\n" + "{" + "\n" + "Graceless = true;" + "\n" + "UseGetpwnam = true;" + "\n" + "DomainName = " + hostDomain + ";" + "\n" + "}" + "\n"
+	exportBlock := "EXPORT" + "\n" + "{" + "\n" + "Export_Id = 716;" + "\n" + "Path = /export;" + "\n" + "Pseudo = /export;" + "\n" + "Access_Type = RW;" + "\n" + "Squash = No_Root_Squash;" + "\n" + "Transports = TCP;" + "\n" + "Protocols = 4;" + "\n" + "SecType = \"sys\";" + "\n" + "FSAL" + "\n" + "{" + "\n" + "Name = VFS;" + "\n" + "}" + "\n" + "}" + "\n"
+	nfsGaneshaConfig := nfsCoreParamBlock + nfs4Block + exportBlock
 
 	configMap := &core_v1.ConfigMap{
 		ObjectMeta: meta_v1.ObjectMeta{
@@ -338,7 +328,6 @@ func (flavor *Flavor) HandleNFSNodePublish(chapiDriver chapi.Driver, req *csi.No
 	}
 	clusterIP := service.Spec.ClusterIP
 
-	// TODO: add nfs mount support in chapi
 	source := fmt.Sprintf("%s:%s", clusterIP, defaultExportPath)
 	target := req.GetTargetPath()
 	log.Debugf("mounting nfs volume %s to %s", source, target)
@@ -347,6 +336,7 @@ func (flavor *Flavor) HandleNFSNodePublish(chapiDriver chapi.Driver, req *csi.No
 		// use default mount options, i.e (rw,relatime,vers=4.0,rsize=1048576,wsize=1048576,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,local_lock=none)
 		mountOptions = []string{
 			"nolock",
+			"vers=4",
 		}
 	}
 	mountOptions = append(mountOptions, fmt.Sprintf("addr=%s", clusterIP))
@@ -859,33 +849,19 @@ func (flavor *Flavor) deleteNFSService(svcName string, nfsNamespace string) erro
 	log.Tracef(">>>>> deleteNFSService with service %s", svcName)
 	defer log.Tracef("<<<<< deleteNFSService")
 
-	// check if service  exists
-	getAction := func() error {
-		_, err := flavor.kubeClient.CoreV1().Services(nfsNamespace).Get(svcName, meta_v1.GetOptions{})
-		return err
-	}
-	exists, err := flavor.resourceExists(getAction, "service", svcName)
-	if err != nil {
-		return fmt.Errorf("failed to detect if there is a NFS service to delete. %+v", err)
-	}
-	if !exists {
-		log.Infof("nfs service %s does not exist in %s namespace", svcName, nfsNamespace)
-		return nil
-	}
-
 	log.Infof("Deleting nfs service %s from %s namespace", svcName, nfsNamespace)
 
-	var gracePeriod int64
-	propagation := meta_v1.DeletePropagationForeground
-	options := &meta_v1.DeleteOptions{GracePeriodSeconds: &gracePeriod, PropagationPolicy: &propagation}
+	propagation := meta_v1.DeletePropagationBackground
+	options := &meta_v1.DeleteOptions{PropagationPolicy: &propagation}
 
 	// Delete the nfs service
-	err = flavor.kubeClient.CoreV1().Services(nfsNamespace).Delete(svcName, options)
+	err := flavor.kubeClient.CoreV1().Services(nfsNamespace).Delete(svcName, options)
 	if err != nil && !errors.IsNotFound(err) {
 		log.Errorf("failed to delete nfs service %s, err %+v", svcName, err)
+		return err
 	}
 
-	log.Infof("Completed deletion of nfs service %s", svcName)
+	log.Infof("Triggered deletion of nfs service %s", svcName)
 	return nil
 }
 
@@ -894,18 +870,16 @@ func (flavor *Flavor) deleteNFSDeployment(name string, nfsNamespace string) erro
 	log.Tracef(">>>>> deleteNFSDeployment with %s", name)
 	defer log.Tracef("<<<<< deleteNFSDeployment")
 
-	deleteAction := func(options *meta_v1.DeleteOptions) error {
-		return flavor.kubeClient.AppsV1().Deployments(nfsNamespace).Delete(name, options)
-	}
-	getAction := func() error {
-		_, err := flavor.kubeClient.AppsV1().Deployments(nfsNamespace).Get(name, meta_v1.GetOptions{})
+	propagation := meta_v1.DeletePropagationBackground
+	options := &meta_v1.DeleteOptions{PropagationPolicy: &propagation}
+
+	err := flavor.kubeClient.AppsV1().Deployments(nfsNamespace).Delete(name, options)
+	if err != nil && !errors.IsNotFound(err) {
+		log.Errorf("failed to delete nfs deployment %s, err %+v", name, err)
 		return err
 	}
-	err := flavor.deleteResourceAndWait(nfsNamespace, name, "deployment", deleteAction, getAction)
-	if err != nil {
-		return err
-	}
-	log.Infof("Completed deletion of nfs deployment %s", name)
+
+	log.Infof("Triggered deletion of nfs deployment %s", name)
 	return nil
 }
 
@@ -914,19 +888,15 @@ func (flavor *Flavor) deleteNFSPVC(claimName string, nfsNamespace string) error 
 	log.Tracef(">>>>> deleteNFSPVC with %s", claimName)
 	defer log.Tracef("<<<<< deleteNFSPVC")
 
+	propagation := meta_v1.DeletePropagationBackground
+	options := &meta_v1.DeleteOptions{PropagationPolicy: &propagation}
 	// Delete the pvc
-	deleteAction := func(options *meta_v1.DeleteOptions) error {
-		return flavor.kubeClient.CoreV1().PersistentVolumeClaims(nfsNamespace).Delete(claimName, options)
-	}
-	getAction := func() error {
-		_, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(nfsNamespace).Get(claimName, meta_v1.GetOptions{})
+	err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(nfsNamespace).Delete(claimName, options)
+	if err != nil && !errors.IsNotFound(err) {
+		log.Errorf("failed to delete nfs pvc %s, err %+v", claimName, err)
 		return err
 	}
-	err := flavor.deleteResourceAndWait(nfsNamespace, claimName, "persistentvolumeclaim", deleteAction, getAction)
-	if err != nil {
-		return err
-	}
-	log.Infof("Completed deletion of PVC %s", claimName)
+	log.Infof("Triggered deletion of PVC %s", claimName)
 	return nil
 }
 
@@ -943,83 +913,6 @@ func (flavor *Flavor) resourceExists(getAction func() error, resourceType string
 		return false, fmt.Errorf("failed to get %s %s, err %+v", resourceType, resourceName, err)
 	}
 	return true, nil
-}
-
-func (flavor *Flavor) deploymentExists(deploymentName string, nfsNamespace string) (bool, error) {
-	log.Tracef(">>>>> deploymentExists with %s", deploymentName)
-	defer log.Tracef("<<<<< deploymentExists")
-
-	_, err := flavor.kubeClient.AppsV1().Deployments(nfsNamespace).Get(deploymentName, meta_v1.GetOptions{})
-	if err == nil {
-		// the deployment was found
-		return true, nil
-	}
-	if !errors.IsNotFound(err) {
-		return false, err
-	}
-
-	// deployment not found
-	return false, nil
-}
-
-// Check if the NFS service exists
-func (flavor *Flavor) serviceExists(svcName string, nfsNamespace string) (bool, error) {
-	log.Tracef(">>>>> serviceExists with %s", svcName)
-	defer log.Tracef("<<<<< serviceExists")
-
-	_, err := flavor.kubeClient.CoreV1().Services(nfsNamespace).Get(svcName, meta_v1.GetOptions{})
-	if err == nil {
-		// the deployment was found
-		return true, nil
-	}
-	if !errors.IsNotFound(err) {
-		return false, err
-	}
-
-	// service not found
-	return false, err
-}
-
-// deleteResourceAndWait will delete a resource, then wait for it to be purged from the system
-func (flavor *Flavor) deleteResourceAndWait(namespace, name, resourceType string,
-	deleteAction func(*meta_v1.DeleteOptions) error,
-	getAction func() error,
-) error {
-	log.Tracef(">>>>> deleteResourceAndWait with %s %s", resourceType, name)
-	defer log.Tracef("<<<<< deleteResourceAndWait")
-
-	var gracePeriod int64
-	propagation := meta_v1.DeletePropagationForeground
-	options := &meta_v1.DeleteOptions{GracePeriodSeconds: &gracePeriod, PropagationPolicy: &propagation}
-
-	// Delete the resource if it exists
-	log.Infof("removing %s %s if it exists", resourceType, name)
-	err := deleteAction(options)
-	if err != nil {
-		if !errors.IsNotFound(err) {
-			return fmt.Errorf("failed to delete %s %s, err %+v", resourceType, name, err)
-		}
-		return nil
-	}
-	log.Infof("Removed %s %s", resourceType, name)
-
-	// wait for the resource to be deleted
-	sleepTime := deletionDelay
-	for i := 0; i < deletionInterval; i++ {
-		// check for the existence of the resource
-		err = getAction()
-		if err != nil {
-			if errors.IsNotFound(err) {
-				log.Infof("confirmed %s %s does not exist", resourceType, name)
-				return nil
-			}
-			return fmt.Errorf("failed to get %s %s. %+v", resourceType, name, err)
-		}
-
-		log.Infof("%s %s still found. waiting(try %d)...", resourceType, name, i+1)
-		time.Sleep(sleepTime)
-	}
-	return fmt.Errorf("gave up waiting for %s %s to be terminated", resourceType, name)
 }
 
 func (flavor *Flavor) waitForPVCCreation(claimName, nfsNamespace string) error {

@@ -1,4 +1,4 @@
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2020 Hewlett Packard Enterprise Development LP
 
 package logger
 
@@ -330,6 +330,17 @@ func (hook *FileHook) Fire(entry *log.Entry) error {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not read log entry. %v", err)
 		return err
+	}
+
+	// For Windows only, insert '/r' in front of any tailing '/n'.  Windows text files end
+	// lines with CRLF while other platforms just end with LF.
+	if runtime.GOOS == "windows" {
+		for i := len(lineBytes) - 1; i > 0; i-- {
+			if (lineBytes[i] != '\n') || (i > 0 && lineBytes[i-1] == '\r') {
+				break
+			}
+			lineBytes = append(lineBytes[:i], append([]byte{'\r'}, lineBytes[i:]...)...)
+		}
 	}
 
 	hook.logWriter.Write(lineBytes)

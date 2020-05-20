@@ -96,7 +96,7 @@ func TestCreateServiceAccount(t *testing.T) {
 }
 
 func TestCreateConfigMap(t *testing.T) {
-	err := flavor.createNFSConfigMap(defaultNFSNamespace)
+	err := flavor.createNFSConfigMap(defaultNFSNamespace, "testdomain.com")
 	assert.Nil(t, err)
 	configMap, err := flavor.kubeClient.CoreV1().ConfigMaps(defaultNFSNamespace).Get(nfsConfigMap, metav1.GetOptions{})
 	assert.Nil(t, err)
