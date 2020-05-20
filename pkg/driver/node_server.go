@@ -703,7 +703,7 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	// Check if volume is requested with NFS resources and intercept here
 	if driver.IsNFSResourceRequest(request.VolumeContext) {
 		log.Infof("NodePublish requested with NFS resources for %s", request.VolumeId)
-		return driver.flavor.HandleNFSNodePublish(driver.chapiDriver, request)
+		return driver.flavor.HandleNFSNodePublish(request)
 	}
 
 	// If ephemeral volume request, then create new volume, add ACL and NodeStage/NodePublish

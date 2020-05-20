@@ -309,7 +309,7 @@ func (driver *Driver) createVolume(
 			return nil, status.Error(codes.InvalidArgument, "NFS volume provisioning is not supported with block access type")
 		}
 
-		volume, rollback, err := driver.flavor.CreateNFSVolume(driver.chapiDriver, name, size, createParameters, volumeContentSource)
+		volume, rollback, err := driver.flavor.CreateNFSVolume(name, size, createParameters, volumeContentSource)
 		if err == nil {
 			// Return multi-node volume
 			return volume, nil

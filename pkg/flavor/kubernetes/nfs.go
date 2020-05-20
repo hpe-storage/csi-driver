@@ -58,7 +58,7 @@ type NFSSpec struct {
 }
 
 // CreateNFSVolume creates nfs volume abstracting underlying nfs pvc, deployment and service
-func (flavor *Flavor) CreateNFSVolume(chapiDriver chapi.Driver, pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
+func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
 	log.Tracef(">>>>> CreateNFSVolume with %s", pvName)
 	defer log.Tracef("<<<<< CreateNFSVolume")
 
@@ -111,17 +111,12 @@ func (flavor *Flavor) CreateNFSVolume(chapiDriver chapi.Driver, pvName string, r
 		return nil, true, err
 	}
 
-	// obtain an array of  {hostname, domainname}
-	hostNameAndDomain, err := chapiDriver.GetHostNameAndDomain()
+	nfsHostDomain, err := flavor.getNFSHostDomain()
 	if err != nil {
-		return nil, true, fmt.Errorf("Failed to obtain host name and domain to provision NFS volume, %s", err.Error())
+		return nil, true, err
 	}
-	if len(hostNameAndDomain) != 2 || hostNameAndDomain[1] == "unknown" {
-		return nil, true, fmt.Errorf("Unable to obtain host domain name to provision NFS volume %s", pvName)
-	}
-	log.Tracef("Host domain name obtained as %s", hostNameAndDomain[1])
 	// create nfs configmap
-	err = flavor.createNFSConfigMap(nfsResourceNamespace, hostNameAndDomain[1])
+	err = flavor.createNFSConfigMap(nfsResourceNamespace, nfsHostDomain)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
 		return nil, true, err
@@ -190,11 +185,35 @@ func (flavor *Flavor) createNFSConfigMap(nfsNamespace, hostDomain string) error 
 	log.Tracef(">>>>> createNFSConfigMap with namespace %s, domain %s", nfsNamespace, hostDomain)
 	defer log.Tracef("<<<<< createNFSConfigMap")
 
-	// Format for pretty display with configmap
-	nfsCoreParamBlock := "NFS_Core_Param" + "\n" + "{" + "\n" + "NFS_Protocols= 4;" + "\n" + "NFS_Port = 2049;" + "\n" + "fsid_device = false;" + "\n" + "}" + "\n"
-	nfs4Block := "NFSv4" + "\n" + "{" + "\n" + "Graceless = true;" + "\n" + "UseGetpwnam = true;" + "\n" + "DomainName = " + hostDomain + ";" + "\n" + "}" + "\n"
-	exportBlock := "EXPORT" + "\n" + "{" + "\n" + "Export_Id = 716;" + "\n" + "Path = /export;" + "\n" + "Pseudo = /export;" + "\n" + "Access_Type = RW;" + "\n" + "Squash = No_Root_Squash;" + "\n" + "Transports = TCP;" + "\n" + "Protocols = 4;" + "\n" + "SecType = \"sys\";" + "\n" + "FSAL" + "\n" + "{" + "\n" + "Name = VFS;" + "\n" + "}" + "\n" + "}" + "\n"
-	nfsGaneshaConfig := nfsCoreParamBlock + nfs4Block + exportBlock
+	nfsGaneshaConfig := `
+NFS_Core_Param
+{
+  NFS_Protocols= 4;
+  NFS_Port = 2049;
+  fsid_device = false;
+}
+NFSv4
+{
+  Graceless = true;
+  UseGetpwnam = true;
+  DomainName = REPLACE_DOMAIN;
+}
+EXPORT
+{
+  Export_Id = 716;
+  Path = /export;
+  Pseudo = /export;
+  Access_Type = RW;
+  Squash = No_Root_Squash;
+  Transports = TCP;
+  Protocols = 4;
+  SecType = "sys";
+  FSAL {
+      Name = VFS;
+  }
+}`
+
+	nfsGaneshaConfig = strings.Replace(nfsGaneshaConfig, "REPLACE_DOMAIN", hostDomain, 1)
 
 	configMap := &core_v1.ConfigMap{
 		ObjectMeta: meta_v1.ObjectMeta{
@@ -304,7 +323,7 @@ func getNFSMountOptions(volumeContext map[string]string) (mountOptions []string)
 	return nil
 }
 
-func (flavor *Flavor) HandleNFSNodePublish(chapiDriver chapi.Driver, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+func (flavor *Flavor) HandleNFSNodePublish(req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log.Tracef(">>>>> HandleNFSNodePublish with volume %s target path %s", req.VolumeId, req.TargetPath)
 	defer log.Tracef("<<<<< HandleNFSNodePublish")
 
@@ -349,6 +368,7 @@ func (flavor *Flavor) HandleNFSNodePublish(chapiDriver chapi.Driver, req *csi.No
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	chapiDriver := &chapi.LinuxDriver{}
 	if err := chapiDriver.MountNFSVolume(source, target, mountOptions, "nfs4"); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
@@ -384,6 +404,23 @@ func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
 		return "", nil
 	}
 	return pv.Spec.PersistentVolumeSource.CSI.VolumeHandle, nil
+}
+
+func (flavor *Flavor) getNFSHostDomain() (string, error) {
+	log.Tracef(">>>>> getNFSHostDomain")
+	defer log.Tracef("<<<<< getNFSHostDomain")
+
+	// obtain an array of  {hostname, domainname}
+	chapiDriver := &chapi.LinuxDriver{}
+	hostNameAndDomain, err := chapiDriver.GetHostNameAndDomain()
+	if err != nil {
+		return "", fmt.Errorf("Failed to obtain host name and domain to provision NFS volume, %s", err.Error())
+	}
+	if len(hostNameAndDomain) != 2 || hostNameAndDomain[1] == "unknown" {
+		return "", fmt.Errorf("Unable to obtain valid host domain name to provision NFS volume")
+	}
+	log.Tracef("Host domain name obtained as %s", hostNameAndDomain[1])
+	return strings.TrimSuffix(hostNameAndDomain[1], "."), nil
 }
 
 func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
