@@ -26,8 +26,8 @@ const (
 	defaultNFSNamespace = "hpe-nfs"
 	defaultNFSImage     = "hpestorage/nfs-provisioner:2.8.3-4"
 
-	creationInterval           = 60 // 120s with sleep interval of 2s
-	creationDelay              = 2 * time.Second
+	creationInterval           = 60 // 300s with sleep interval of 5s
+	creationDelay              = 5 * time.Second
 	defaultExportPath          = "/export"
 	nfsResourceLimitsCPUKey    = "nfsResourceLimitsCpuM"
 	nfsResourceLimitsMemoryKey = "nfsResourceLimitsMemoryMi"
@@ -681,7 +681,6 @@ func (flavor *Flavor) createNFSDeployment(deploymentName string, nfsSpec *NFSSpe
 			return fmt.Errorf("failed to create nfs deployment %s, err %+v", deploymentName, err)
 		}
 		log.Infof("nfs deployment %s already exists", deploymentName)
-		return nil
 	}
 	// make sure its available
 	err := flavor.waitForDeployment(deploymentName, nfsNamespace)
@@ -965,6 +964,9 @@ func (flavor *Flavor) waitForPVCCreation(claimName, nfsNamespace string) error {
 			log.Infof("pvc %s still not bound to pv, current state %s. waiting(try %d)...", claimName, claim.Status.Phase, i+1)
 			time.Sleep(sleepTime)
 			continue
+		} else if !claim.ObjectMeta.DeletionTimestamp.IsZero() {
+			log.Warnf("rollback of an existing pvc %s is under progress, returning error", claimName)
+			return fmt.Errorf("rollback of an existing pvc %s is under progress", claimName)
 		}
 		// successfully bound
 		return nil
@@ -985,7 +987,7 @@ func (flavor *Flavor) waitForDeployment(deploymentName string, nfsNamespace stri
 			return fmt.Errorf("failed to get deployment %s, err %+v", deploymentName, err)
 		}
 		if deployment.Status.AvailableReplicas != 1 {
-			log.Infof("pvc %s still not bound to pv. waiting(try %d)...", deploymentName, i+1)
+			log.Infof("deployment %s is still not available. waiting(try %d)...", deploymentName, i+1)
 			time.Sleep(sleepTime)
 			continue
 		}
