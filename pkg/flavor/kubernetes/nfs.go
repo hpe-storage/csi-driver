@@ -26,8 +26,8 @@ const (
 	defaultNFSNamespace = "hpe-nfs"
 	defaultNFSImage     = "hpestorage/nfs-provisioner:2.8.3-4"
 
-	creationInterval           = 150 // 300s with sleep interval of 2s
-	creationDelay              = 2 * time.Second
+	creationInterval           = 60 // 300s with sleep interval of 5s
+	creationDelay              = 5 * time.Second
 	defaultExportPath          = "/export"
 	nfsResourceLimitsCPUKey    = "nfsResourceLimitsCpuM"
 	nfsResourceLimitsMemoryKey = "nfsResourceLimitsMemoryMi"
@@ -965,7 +965,7 @@ func (flavor *Flavor) waitForPVCCreation(claimName, nfsNamespace string) error {
 			time.Sleep(sleepTime)
 			continue
 		} else if !claim.ObjectMeta.DeletionTimestamp.IsZero() {
-			log.Errorf("existing pvc %s is under deletion, return error to retry later...", claimName)
+			log.Warnf("rollback of an existing pvc %s is under progress, returning error", claimName)
 			return fmt.Errorf("rollback of an existing pvc %s is under progress", claimName)
 		}
 		// successfully bound
