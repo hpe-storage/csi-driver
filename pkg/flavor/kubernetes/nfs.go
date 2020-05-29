@@ -904,7 +904,8 @@ func (flavor *Flavor) deleteNFSDeployment(name string, nfsNamespace string) erro
 	defer log.Tracef("<<<<< deleteNFSDeployment")
 
 	propagation := meta_v1.DeletePropagationBackground
-	options := &meta_v1.DeleteOptions{PropagationPolicy: &propagation}
+	gracePeriod := int64(5)
+	options := &meta_v1.DeleteOptions{PropagationPolicy: &propagation, GracePeriodSeconds: &gracePeriod}
 
 	err := flavor.kubeClient.AppsV1().Deployments(nfsNamespace).Delete(name, options)
 	if err != nil && !errors.IsNotFound(err) {
