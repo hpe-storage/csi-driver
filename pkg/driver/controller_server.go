@@ -300,10 +300,8 @@ func (driver *Driver) createVolume(
 			filesystem = defaultFileSystem
 			log.Trace("Using default filesystem type: ", filesystem)
 		}
-		// Assume nfsResources for multi-access mode and mount type
-		// NOTE: When we support backend with NFS, this check has to be handled accordingly.
-		if driver.IsSupportedMultiNodeAccessMode(volumeCapabilities) {
-			createParameters[nfsResourcesKey] = trueKey
+		if driver.IsSupportedMultiNodeAccessMode(volumeCapabilities) && !driver.IsNFSResourceRequest(createParameters) {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("StorageClass parameter %s=%s is missing for creation of volumes with multi-node access", nfsResourcesKey, trueKey))
 		}
 	}
 
