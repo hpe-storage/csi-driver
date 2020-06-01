@@ -72,7 +72,7 @@ func (provider *StorageProvider) CreateVolumeGroup(name, description string, opt
 }
 
 // CreateSnapshotGroup returns a fake volume group
-func (provider *StorageProvider) CreateSnapshotGroup(name, sourceVolumeGroupID string) (*model.SnapshotGroup, error) {
+func (provider *StorageProvider) CreateSnapshotGroup(name, sourceVolumeGroupID string, opts map[string]interface{}) (*model.SnapshotGroup, error) {
 	if _, ok := provider.snapshotGroups[name]; ok {
 		return nil, fmt.Errorf("Snapshot Group named %s already exists", name)
 	}
