@@ -263,6 +263,64 @@ func (provider *ContainerStorageProvider) CreateVolume(name, description string,
 	return response, err
 }
 
+// CreateSnapshotGroup creates a snapshot group on the CSP
+func (provider *ContainerStorageProvider) CreateSnapshotGroup(name, sourceVolumeGroupID string, opts map[string]interface{}) (*model.SnapshotGroup, error) {
+	log.Tracef(">>>>> CreateSnapshotGroup, name: %s, sourceVolumeGroupID: %s", name, sourceVolumeGroupID)
+	defer log.Trace("<<<<< CreateSnapshotGroup")
+
+	response := &model.SnapshotGroup{}
+	var errorResponse *ErrorsPayload
+
+	// TODO: convert opts to any parameters needed for snapshotGroup
+	snapshot_group := &model.SnapshotGroup{
+		Name:                name,
+		SourceVolumeGroupID: sourceVolumeGroupID,
+	}
+
+	// Create the snapshot group on the array
+	status, err := provider.invoke(
+		&connectivity.Request{
+			Action:        "POST",
+			Path:          "/containers/v1/snapshot_groups",
+			Payload:       &snapshot_group,
+			Response:      &response,
+			ResponseError: &errorResponse,
+		},
+	)
+	if errorResponse != nil {
+		return nil, handleError(status, errorResponse)
+	}
+
+	return response, err
+}
+
+// DeleteSnapshotGroup deletes a snapshot group on the CSP
+func (provider *ContainerStorageProvider) DeleteSnapshotGroup(id string) error {
+	log.Tracef(">>>>> DeleteSnapshotGroup, id: %s", id)
+	defer log.Trace("<<<<< DeleteSnapshotGroup")
+
+	var errorResponse *ErrorsPayload
+
+	// Delete the snapshot group on the array
+	status, err := provider.invoke(
+		&connectivity.Request{
+			Action:        "DELETE",
+			Path:          fmt.Sprintf("/containers/v1/snapshot_groups/%s", id),
+			Payload:       nil,
+			Response:      nil,
+			ResponseError: &errorResponse,
+		},
+	)
+	if errorResponse != nil {
+		return handleError(status, errorResponse)
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // CreateVolumeGroup creates a volume group on the CSP
 func (provider *ContainerStorageProvider) CreateVolumeGroup(name, description string, opts map[string]interface{}) (*model.VolumeGroup, error) {
 	log.Tracef(">>>>> CreateVolumeGroup, name: %s, opts: %+v", name, opts)

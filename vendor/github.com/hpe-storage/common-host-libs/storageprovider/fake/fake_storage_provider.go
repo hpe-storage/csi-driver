@@ -11,17 +11,19 @@ import (
 
 // StorageProvider is an implementor of the StorageProvider interface
 type StorageProvider struct {
-	volumes      map[string]model.Volume
-	snapshots    map[string]model.Snapshot
-	volumeGroups map[string]model.VolumeGroup
+	volumes        map[string]model.Volume
+	snapshots      map[string]model.Snapshot
+	volumeGroups   map[string]model.VolumeGroup
+	snapshotGroups map[string]model.SnapshotGroup
 }
 
 // NewFakeStorageProvider returns a fake storage provider
 func NewFakeStorageProvider() *StorageProvider {
 	return &StorageProvider{
-		volumes:      make(map[string]model.Volume),
-		snapshots:    make(map[string]model.Snapshot),
-		volumeGroups: make(map[string]model.VolumeGroup),
+		volumes:        make(map[string]model.Volume),
+		snapshots:      make(map[string]model.Snapshot),
+		volumeGroups:   make(map[string]model.VolumeGroup),
+		snapshotGroups: make(map[string]model.SnapshotGroup),
 	}
 }
 
@@ -55,7 +57,7 @@ func (provider *StorageProvider) CreateVolume(name, description string, size int
 	return &fakeVolume, nil
 }
 
-// CreateVolume returns a fake volume group
+// CreateVolumeGroup returns a fake volume group
 func (provider *StorageProvider) CreateVolumeGroup(name, description string, opts map[string]interface{}) (*model.VolumeGroup, error) {
 	if _, ok := provider.volumeGroups[name]; ok {
 		return nil, fmt.Errorf("Volume Group named %s already exists", name)
@@ -67,6 +69,20 @@ func (provider *StorageProvider) CreateVolumeGroup(name, description string, opt
 	}
 	provider.volumeGroups[name] = fakeVolumeGroup
 	return &fakeVolumeGroup, nil
+}
+
+// CreateSnapshotGroup returns a fake volume group
+func (provider *StorageProvider) CreateSnapshotGroup(name, sourceVolumeGroupID string) (*model.SnapshotGroup, error) {
+	if _, ok := provider.snapshotGroups[name]; ok {
+		return nil, fmt.Errorf("Snapshot Group named %s already exists", name)
+	}
+	fakeSnapshotGroup := model.SnapshotGroup{
+		ID:                  name,
+		Name:                name,
+		SourceVolumeGroupID: sourceVolumeGroupID,
+	}
+	provider.snapshotGroups[name] = fakeSnapshotGroup
+	return &fakeSnapshotGroup, nil
 }
 
 // CloneVolume returns a fake volume
@@ -123,6 +139,15 @@ func (provider *StorageProvider) DeleteVolumeGroup(id string) error {
 		return nil
 	}
 	return fmt.Errorf("Could not find volume group with id %s", id)
+}
+
+// DeleteSnapshotGroup removes a fake snapshotGroup
+func (provider *StorageProvider) DeleteSnapshotGroup(id string) error {
+	if _, ok := provider.snapshotGroups[id]; ok {
+		delete(provider.snapshotGroups, id)
+		return nil
+	}
+	return fmt.Errorf("Could not find snapshot group with id %s", id)
 }
 
 // PublishVolume returns fake publish data

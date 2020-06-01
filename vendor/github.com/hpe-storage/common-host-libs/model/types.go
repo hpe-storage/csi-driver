@@ -252,6 +252,16 @@ type VolumeGroup struct {
 	Config       map[string]interface{} `json:"config,omitempty"`
 }
 
+type SnapshotGroup struct {
+	ID                    string                 `json:"id,omitempty"`
+	Name                  string                 `json:"name,omitempty"`
+	SourceVolumeGroupID   string                 `json:"volume_group_id,omitempty"`
+	SourceVolumeGroupName string                 `json:"volume_group_name,omitempty"`
+	Snapshots             []*Snapshot            `json:"snapshots,omitempty"`
+	CreationTime          int64                  `json:"creation_time,omitempty"`
+	Config                map[string]interface{} `json:"config,omitempty"`
+}
+
 // PublishOptions are the options needed to publish a volume
 type PublishOptions struct {
 	HostUUID       string `json:"host_uuid,omitempty"`
