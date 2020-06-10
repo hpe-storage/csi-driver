@@ -838,7 +838,7 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 		Env: []core_v1.EnvVar{
 			{
 				Name:  "GANESHA_OPTIONS",
-				Value: getEnv("GANESHA_OPTIONS", "-N NIV_EVENT"),
+				Value: getEnv("GANESHA_OPTIONS", "-N NIV_WARN"),
 			},
 		},
 		Ports: []core_v1.ContainerPort{
