@@ -40,6 +40,15 @@ The CSI driver is designed to be used with Kubernetes. It has not been tested wi
       <td><a href="release-notes/v1.1.0.md">v1.1.0</a></td>
     </tr>
   </tbody>
+  <tbody>
+    <tr>
+      <td>v1.2.0</td>
+      <td>no</td>
+      <td>no</td>
+      <td>yes</td>
+      <td><a href="release-notes/v1.2.0.md">v1.2.0</a></td>
+    </tr>
+  </tbody>
 </table>
 
 **Note:** Support matrix for each release can be found on SCOD: [Compatability and support](https://scod.hpedev.io/csi_driver/index.html#compatibility_and_support).
