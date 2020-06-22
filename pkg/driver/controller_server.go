@@ -420,7 +420,8 @@ func (driver *Driver) createVolume(
 				fmt.Sprintf("Volume %s with size %v already exists but different size %v being requested.",
 					name, existingVolume.Size, size))
 		}
-
+		// update volume context with volume parameters
+		updateVolumeContext(respVolContext, existingVolume)
 		// Return existing volume with volume context info
 		log.Tracef("Returning the existing volume '%s' with size %d", existingVolume.Name, existingVolume.Size)
 		return &csi.Volume{
@@ -497,7 +498,8 @@ func (driver *Driver) createVolume(
 				log.Tracef("Clone creation failed, err: %s", err.Error())
 				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
 			}
-
+			// update volume context with cloned volume parameters
+			updateVolumeContext(respVolContext, volume)
 			// Return newly cloned volume (clone from snapshot)
 			return &csi.Volume{
 				VolumeId:      volume.ID,
@@ -536,7 +538,8 @@ func (driver *Driver) createVolume(
 				log.Tracef("Clone creation failed, err: %s", err.Error())
 				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
 			}
-
+			// update volume context with cloned volume parameters
+			updateVolumeContext(respVolContext, volume)
 			// Return newly cloned volume (clone from volume)
 			return &csi.Volume{
 				VolumeId:      volume.ID,
@@ -555,7 +558,8 @@ func (driver *Driver) createVolume(
 		log.Trace("Volume creation failed, err: " + err.Error())
 		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create volume %s, %s", name, err.Error()))
 	}
-
+	// update volume context with volume parameters
+	updateVolumeContext(respVolContext, volume)
 	// Return newly created volume with volume context info
 	return &csi.Volume{
 		VolumeId:      volume.ID,
@@ -1496,4 +1500,16 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 		CapacityBytes:         updatedVolume.Size,
 		NodeExpansionRequired: nodeExpansionRequired,
 	}, nil
+}
+
+func updateVolumeContext(volumeContext map[string]string, volume *model.Volume) error {
+	for k, v := range volume.Config {
+		switch value := v.(type) {
+		case string:
+			volumeContext[util.ToCamelCase(k)] = value
+		default:
+			volumeContext[util.ToCamelCase(k)] = fmt.Sprintf("%v", value)
+		}
+	}
+	return nil
 }
