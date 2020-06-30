@@ -863,7 +863,10 @@ func (driver *Driver) controllerPublishVolume(
 	publishContext[accessProtocolKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
 	publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
 	publishContext[targetScopeKey] = requestedTargetScope
-	publishContext[lunIDKey] = util.ConvertArrayOfIntToString(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID)
+	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
+	if len(publishInfo.AccessInfo.BlockDeviceAccessInfo.PeerLunIDs) > 0 {
+		publishContext[peerLunIDs] = util.ConvertArrayOfIntToString(publishInfo.AccessInfo.BlockDeviceAccessInfo.PeerLunIDs)
+	}
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
 		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIPs, ",")
 		publishContext[chapUsernameKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapUser

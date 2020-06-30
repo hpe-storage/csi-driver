@@ -40,6 +40,7 @@ const (
 	targetNamesKey        = "targetNames"
 	targetScopeKey        = "targetScope"
 	lunIDKey              = "lunId"
+	peerLunIDs            = "peer_lun_ids"
 	discoveryIPsKey       = "discoveryIps"
 	chapUsernameKey       = "chapUsername"
 	chapPasswordKey       = "chapPassword"

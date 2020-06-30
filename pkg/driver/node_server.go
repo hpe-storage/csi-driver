@@ -444,6 +444,7 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 		Iqns:           iqns,
 		TargetScope:    publishContext[targetScopeKey],
 		LunID:          publishContext[lunIDKey],
+		PeerLunIDs:     publishContext[peerLunIDs],
 		DiscoveryIPs:   discoveryIps,
 		ConnectionMode: defaultConnectionMode,
 	}
