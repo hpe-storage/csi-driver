@@ -439,14 +439,16 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 	iqns := strings.Split(publishContext[targetNamesKey], ",")
 
 	volume := &model.Volume{
-		SerialNumber:   publishContext[serialNumberKey],
-		AccessProtocol: publishContext[accessProtocolKey],
-		Iqns:           iqns,
-		TargetScope:    publishContext[targetScopeKey],
-		LunID:          publishContext[lunIDKey],
-		PeerLunIDs:     publishContext[peerLunIDs],
-		DiscoveryIPs:   discoveryIps,
-		ConnectionMode: defaultConnectionMode,
+		SerialNumber:         publishContext[serialNumberKey],
+		AccessProtocol:       publishContext[accessProtocolKey],
+		Iqns:                 iqns,
+		TargetScope:          publishContext[targetScopeKey],
+		LunID:                publishContext[lunIDKey],
+		DiscoveryIPs:         discoveryIps,
+		ConnectionMode:       defaultConnectionMode,
+		SecondaryDiscoverIps: publishContext[secondaryDiscoveryIpKey],
+		SecondaryLunIDs:      publishContext[secondaryLunIDKey],
+		SecondaryTargetNames: publishContext[secondaryTargetNamesKey],
 	}
 	if publishContext[accessProtocolKey] == iscsi {
 		chapInfo := &model.ChapInfo{

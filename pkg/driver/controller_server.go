@@ -864,13 +864,37 @@ func (driver *Driver) controllerPublishVolume(
 	publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
 	publishContext[targetScopeKey] = requestedTargetScope
 	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
-	if len(publishInfo.AccessInfo.BlockDeviceAccessInfo.PeerLunIDs) > 0 {
-		publishContext[peerLunIDs] = util.ConvertArrayOfIntToString(publishInfo.AccessInfo.BlockDeviceAccessInfo.PeerLunIDs)
+
+	// Start of population of target array details
+	log.Tracef("\n PUBLISH INFO ::::: %v", publishInfo)
+	numberOfSecondaryBackends := len(publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails)
+	log.Tracef("\n NO OF BACKENDS: %d", numberOfSecondaryBackends)
+	var secondaryLunIds []int32 = make([]int32, numberOfSecondaryBackends)
+	var secondaryTargetNames []string
+	var secondaryDiscoveryIps []string
+
+	// Populate the list of secondary luns
+	for i := 0; i < numberOfSecondaryBackends; i++ {
+		// Populate the list of secondary target names
+		secondaryLunIds[i] = publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails[i].LunID
+		for _, targetName := range publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails[i].TargetNames {
+			secondaryTargetNames = append(secondaryTargetNames, targetName)
+		}
+		// Populate the list of secondary discovery ips
+		for _, discoveryIp := range publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails[i].DiscoveryIPs {
+			secondaryDiscoveryIps = append(secondaryDiscoveryIps, discoveryIp)
+		}
 	}
+	publishContext[secondaryTargetNamesKey] = strings.Join(secondaryTargetNames, ",")
+	publishContext[secondaryLunIDKey] = util.ConvertArrayOfIntToString(secondaryLunIds)
+
+	// End of population of target array details
+
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
 		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIPs, ",")
 		publishContext[chapUsernameKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapUser
 		publishContext[chapPasswordKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapPassword
+		publishContext[secondaryDiscoveryIpKey] = strings.Join(secondaryDiscoveryIps, ",")
 	}
 
 	if readOnlyAccessMode == true {

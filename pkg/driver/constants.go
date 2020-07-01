@@ -35,12 +35,16 @@ const (
 	targetScopeGroup = "group"
 
 	// Volume Publish params
-	serialNumberKey       = "serialNumber"
-	accessProtocolKey     = "accessProtocol"
-	targetNamesKey        = "targetNames"
-	targetScopeKey        = "targetScope"
-	lunIDKey              = "lunId"
-	peerLunIDs            = "peer_lun_ids"
+	serialNumberKey   = "serialNumber"
+	accessProtocolKey = "accessProtocol"
+	targetNamesKey    = "targetNames"
+	targetScopeKey    = "targetScope"
+	lunIDKey          = "lunId"
+
+	secondaryLunIDKey       = "secondaryLunIdKey"
+	secondaryTargetNamesKey = "secondaryTargetNamesKey"
+	secondaryDiscoveryIpKey = "secondaryDiscoveryIpKey"
+
 	discoveryIPsKey       = "discoveryIps"
 	chapUsernameKey       = "chapUsername"
 	chapPasswordKey       = "chapPassword"
