@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"k8s.io/kubernetes/pkg/volume"
+	"k8s.io/utils/mount"
 	"os"
 	"path"
 	"path/filepath"
@@ -1653,7 +1655,72 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 	log.Trace(">>>>> NodeGetVolumeStats")
 	defer log.Trace("<<<<< NodeGetVolumeStats")
 
-	return nil, status.Error(codes.Unimplemented, "")
+	volumePath := in.GetVolumePath()
+	if volumePath == "" {
+		err := fmt.Errorf("volume path %s is empty", volumePath)
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	// check if it is a mount point
+	dummy := mount.New("")
+	notMount, err := dummy.IsLikelyNotMountPoint(volumePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, status.Errorf(codes.InvalidArgument, "volume path %s does not exist", volumePath)
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if notMount {
+		return nil, status.Errorf(codes.InvalidArgument, "volume path %s is not mounted", volumePath)
+	}
+
+	hpeMetricsProvider := volume.NewMetricsStatFS(volumePath)
+	metrics, err := hpeMetricsProvider.GetMetrics()
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	available, ok := (*(metrics.Available)).AsInt64()
+	if !ok {
+		log.WithContext(ctx).Error("failed to fetch available bytes")
+	}
+	capacity, ok := (*(metrics.Capacity)).AsInt64()
+	if !ok {
+		log.WithContext(ctx).Error("failed to fetch capacity bytes")
+		return nil, status.Error(codes.Unknown, "failed to fetch capacity bytes")
+	}
+	used, ok := (*(metrics.Used)).AsInt64()
+	if !ok {
+		log.WithContext(ctx).Error("failed to fetch used bytes")
+	}
+	inodes, ok := (*(metrics.Inodes)).AsInt64()
+	if !ok {
+		log.WithContext(ctx).Error("failed to fetch available inodes")
+	}
+	inodesFree, ok := (*(metrics.InodesFree)).AsInt64()
+	if !ok {
+		log.WithContext(ctx).Error("failed to fetch free inodes")
+	}
+	inodesUsed, ok := (*(metrics.InodesUsed)).AsInt64()
+	if !ok {
+		log.WithContext(ctx).Error("failed to fetch used inodes")
+	}
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			{
+				Available: available,
+				Total:     capacity,
+				Used:      used,
+				Unit:      csi.VolumeUsage_BYTES,
+			},
+			{
+				Available: inodesFree,
+				Total:     inodes,
+				Used:      inodesUsed,
+				Unit:      csi.VolumeUsage_INODES,
+			},
+		},
+	}, nil
 }
 
 // NodeExpandVolume ...
