@@ -871,28 +871,6 @@ func (driver *Driver) controllerPublishVolume(
 	numberOfSecondaryBackends := len(publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails)
 	log.Tracef("\n NO OF BACKENDS: %d", numberOfSecondaryBackends)
 
-	//var secondaryLunIds []int32 = make([]int32, numberOfSecondaryBackends)
-	//var secondaryTargetNames []string
-	//var secondaryDiscoveryIps []string
-
-	/*
-		// Populate the list of secondary luns
-		for i := 0; i < numberOfSecondaryBackends; i++ {
-			// Populate the list of secondary target names
-			secondaryLunIds[i] = publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails[i].LunID
-			for _, targetName := range publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails[i].TargetNames {
-				secondaryTargetNames = append(secondaryTargetNames, targetName)
-			}
-			// Populate the list of secondary discovery ips
-			for _, discoveryIp := range publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails[i].DiscoveryIPs {
-				secondaryDiscoveryIps = append(secondaryDiscoveryIps, discoveryIp)
-			}
-		}
-		publishContext[secondaryTargetNamesKey] = strings.Join(secondaryTargetNames, ",")
-		publishContext[secondaryLunIDKey] = util.ConvertArrayOfIntToString(secondaryLunIds)
-
-		// End of population of target array details
-	*/
 
 	if numberOfSecondaryBackends > 0 {
 		secondaryArrayMarshalledStr, err := json.Marshal(&publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails)
@@ -908,7 +886,6 @@ func (driver *Driver) controllerPublishVolume(
 		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIPs, ",")
 		publishContext[chapUsernameKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapUser
 		publishContext[chapPasswordKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapPassword
-		//publishContext[secondaryDiscoveryIpKey] = strings.Join(secondaryDiscoveryIps, ",")
 	}
 
 	if readOnlyAccessMode == true {

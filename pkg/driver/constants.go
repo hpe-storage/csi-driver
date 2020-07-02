@@ -43,10 +43,6 @@ const (
 
 	secondaryArrayDetailsKey = "secondArrayDetailsKey"
 
-	secondaryLunIDKey       = "secondaryLunIdKey"
-	secondaryTargetNamesKey = "secondaryTargetNamesKey"
-	secondaryDiscoveryIpKey = "secondaryDiscoveryIpKey"
-
 	discoveryIPsKey       = "discoveryIps"
 	chapUsernameKey       = "chapUsername"
 	chapPasswordKey       = "chapPassword"
