@@ -41,6 +41,8 @@ const (
 	targetScopeKey    = "targetScope"
 	lunIDKey          = "lunId"
 
+	secondaryArrayDetailsKey = "secondArrayDetailsKey"
+
 	secondaryLunIDKey       = "secondaryLunIdKey"
 	secondaryTargetNamesKey = "secondaryTargetNamesKey"
 	secondaryDiscoveryIpKey = "secondaryDiscoveryIpKey"
