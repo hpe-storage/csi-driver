@@ -33,6 +33,10 @@ var (
 	unstageLock            sync.Mutex
 	ephemeralPublishLock   sync.Mutex
 	ephemeralUnpublishLock sync.Mutex
+	// ChapUsername username to be read from hpe-linux-config configMap
+	ChapUsername = ""
+	// ChapPassword to be read from configMap if present
+	ChapPassword = ""
 )
 var isWatcherEnabled bool = false
 
@@ -448,11 +452,15 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 		ConnectionMode: defaultConnectionMode,
 	}
 	if publishContext[accessProtocolKey] == iscsi {
-		chapInfo := &model.ChapInfo{
-			Name:     publishContext[chapUsernameKey],
-			Password: publishContext[chapPasswordKey],
+		// ChapPassword may not be returned from publishContext
+		// Validate the username from configMap and compare it from that returned from publishContext, and use the password from configMap
+		if publishContext[chapUsernameKey] == ChapUsername {
+			chapInfo := &model.ChapInfo{
+				Name:     ChapUsername,
+				Password: ChapPassword,
+			}
+			volume.Chap = chapInfo
 		}
-		volume.Chap = chapInfo
 	}
 
 	// Cleanup any stale device existing before stage
@@ -1852,6 +1860,13 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 				if initiator.Chap != nil {
 					chapUsername = initiator.Chap.Name
 					chapPassword = initiator.Chap.Password
+				} else {
+					// check if configMap has chap information set
+					if ChapUsername != "" && ChapPassword != "" {
+						log.Infof("setting chap Information for user %s from configMap", ChapUsername)
+						chapUsername = ChapUsername
+						chapPassword = ChapPassword
+					}
 				}
 			}
 		} else {
