@@ -868,11 +868,8 @@ func (driver *Driver) controllerPublishVolume(
 
 	// Start of population of target array details
 	log.Tracef("\n PUBLISH INFO ::::: %v", publishInfo)
-	numberOfSecondaryBackends := len(publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails)
-	log.Tracef("\n NO OF BACKENDS: %d", numberOfSecondaryBackends)
 
-
-	if numberOfSecondaryBackends > 0 {
+	if publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails != nil {
 		secondaryArrayMarshalledStr, err := json.Marshal(&publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails)
 		if err != nil {
 			log.Errorf("Error in marshalling secondary details %s", err.Error())
