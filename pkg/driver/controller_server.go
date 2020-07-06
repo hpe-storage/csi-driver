@@ -867,12 +867,12 @@ func (driver *Driver) controllerPublishVolume(
 	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
 
 	// Start of population of target array details
-	log.Tracef("\n PUBLISH INFO ::::: %v", publishInfo)
-
 	if publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails != nil {
 		secondaryArrayMarshalledStr, err := json.Marshal(&publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails)
 		if err != nil {
 			log.Errorf("Error in marshalling secondary details %s", err.Error())
+			return nil, status.Error(codes.Internal,
+				fmt.Sprintf("error in marshalling secondary array details %s", err.Error()))
 		} else {
 			log.Tracef("\n Marshalled secondary array str :%v", secondaryArrayMarshalledStr)
 			publishContext[secondaryArrayDetailsKey] = string(secondaryArrayMarshalledStr)
