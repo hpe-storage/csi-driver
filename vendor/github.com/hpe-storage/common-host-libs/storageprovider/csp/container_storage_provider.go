@@ -29,7 +29,8 @@ const (
 	tokenHeader    = "x-auth-token"
 	arrayIPHeader  = "x-array-ip"
 
-	descriptionKey = "description"
+	descriptionKey   = "description"
+	volumeGroupIdKey = "volumeGroupId"
 )
 
 var (
@@ -590,9 +591,15 @@ func (provider *ContainerStorageProvider) EditVolume(id string, opts map[string]
 		ID: id,
 	}
 
+	// description is part of volume object and should be removed from opts
+	if desc, ok := opts[descriptionKey]; ok {
+		delete(opts, descriptionKey)
+		volume.Description = desc.(string)
+	}
+
 	// volumeGroupId is part of volume object and should be removed from opts
-	if val, ok := opts["volumeGroupId"]; ok {
-		delete(opts, "volumeGroupId")
+	if val, ok := opts[volumeGroupIdKey]; ok {
+		delete(opts, volumeGroupIdKey)
 		volume.VolumeGroupId = val.(string)
 	}
 	volume.Config = opts
