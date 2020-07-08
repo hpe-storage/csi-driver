@@ -47,6 +47,8 @@ const (
 	volumeAccessModeKey   = "volumeAccessMode"
 	multiInitiatorKey     = "multiInitiator"
 	defaultConnectionMode = "manual"
+	chapUserEnvKey        = "CHAP_USER"
+	chapPasswordEnvKey    = "CHAP_PASSWORD"
 
 	// deviceInfoFileName is used to store the device details in a JSON file
 	deviceInfoFileName = "deviceInfo.json"

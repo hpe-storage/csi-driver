@@ -123,13 +123,6 @@ func csiCliHandler(cmd *cobra.Command) error {
 			return fmt.Errorf("Unable to configure iscsid service, err %v", err.Error())
 		}
 
-		// check if chapSecret is set in chap.json
-		driver.ChapUsername, driver.ChapPassword, err = tunelinux.GetIscsiChapSettings()
-		if err != nil {
-			// log error but proceed ahead
-			log.Warnf("unable to retrieve chap secrets ", err.Error())
-		}
-
 		// configure multipath
 		err = tunelinux.ConfigureMultipath()
 		if err != nil {

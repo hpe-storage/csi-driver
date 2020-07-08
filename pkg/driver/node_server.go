@@ -33,10 +33,6 @@ var (
 	unstageLock            sync.Mutex
 	ephemeralPublishLock   sync.Mutex
 	ephemeralUnpublishLock sync.Mutex
-	// ChapUsername username to be read from hpe-linux-config configMap
-	ChapUsername = ""
-	// ChapPassword to be read from configMap if present
-	ChapPassword = ""
 )
 var isWatcherEnabled bool = false
 
@@ -452,15 +448,11 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 		ConnectionMode: defaultConnectionMode,
 	}
 	if publishContext[accessProtocolKey] == iscsi {
-		// ChapPassword may not be returned from publishContext
-		// Validate the username from configMap and compare it from that returned from publishContext, and use the password from configMap
-		if publishContext[chapUsernameKey] == ChapUsername {
-			chapInfo := &model.ChapInfo{
-				Name:     ChapUsername,
-				Password: ChapPassword,
-			}
-			volume.Chap = chapInfo
+		chapInfo := &model.ChapInfo{
+			Name:     publishContext[chapUsernameKey],
+			Password: publishContext[chapPasswordKey],
 		}
+		volume.Chap = chapInfo
 	}
 
 	// Cleanup any stale device existing before stage
@@ -1857,16 +1849,12 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 			for i := 0; i < len(initiator.Init); i++ {
 				iqns = append(iqns, &initiator.Init[i])
 				// we support only single host initiator
-				if initiator.Chap != nil {
-					chapUsername = initiator.Chap.Name
-					chapPassword = initiator.Chap.Password
-				} else {
-					// check if configMap has chap information set
-					if ChapUsername != "" && ChapPassword != "" {
-						log.Infof("setting chap Information for user %s from configMap", ChapUsername)
-						chapUsername = ChapUsername
-						chapPassword = ChapPassword
-					}
+				// check if CHAP credentials is set through configMap, ignore iscsid.conf reference
+				envChapUser := os.Getenv(chapUserEnvKey)
+				envChapPassword := os.Getenv(chapPasswordEnvKey)
+				if envChapUser != "" && envChapPassword != "" {
+					chapUsername = envChapUser
+					chapPassword = envChapPassword
 				}
 			}
 		} else {
