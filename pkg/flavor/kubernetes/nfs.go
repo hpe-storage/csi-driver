@@ -24,7 +24,7 @@ import (
 const (
 	nfsPrefix           = "hpe-nfs-"
 	defaultNFSNamespace = "hpe-nfs"
-	defaultNFSImage     = "hpestorage/nfs-provisioner:2.8.3-4"
+	defaultNFSImage     = "hpestorage/nfs-provisioner:v1.0.0"
 
 	creationInterval           = 60 // 300s with sleep interval of 5s
 	creationDelay              = 5 * time.Second
@@ -833,12 +833,12 @@ func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Conta
 	cont := core_v1.Container{
 		Name:            name,
 		Image:           nfsSpec.image,
-		ImagePullPolicy: core_v1.PullAlways,
+		ImagePullPolicy: core_v1.PullIfNotPresent,
 		SecurityContext: securityContext,
 		Env: []core_v1.EnvVar{
 			{
 				Name:  "GANESHA_OPTIONS",
-				Value: getEnv("GANESHA_OPTIONS", "-N NIV_EVENT"),
+				Value: getEnv("GANESHA_OPTIONS", "-N NIV_WARN"),
 			},
 		},
 		Ports: []core_v1.ContainerPort{
