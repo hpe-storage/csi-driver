@@ -41,7 +41,7 @@ const (
 	targetScopeKey    = "targetScope"
 	lunIDKey          = "lunId"
 
-	secondaryArrayDetailsKey = "secondArrayDetailsKey"
+	secondaryArrayDetailsKey = "secondaryArrayDetailsKey"
 
 	discoveryIPsKey       = "discoveryIps"
 	chapUsernameKey       = "chapUsername"
