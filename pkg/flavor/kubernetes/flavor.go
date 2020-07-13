@@ -196,7 +196,7 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			return node.UUID, nil
 		}
 		log.Infof("updating Node %s with iqns %v wwpns %v networks %v",
-			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.Networks, nodeInfo.Spec.WWPNs)
+			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.WWPNs, nodeInfo.Spec.Networks)
 		_, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
 		if err != nil {
 			log.Errorf("Error updating the node %s - %s\n", nodeInfo.Name, err.Error())

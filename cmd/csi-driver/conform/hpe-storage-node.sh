@@ -20,7 +20,7 @@ if [ -f /etc/os-release ]; then
     if [ $? -eq 0 ]; then
         CONFORM_TO=ubuntu
     fi
-    echo $os_name | egrep -i "CoreOS" >> /dev/null 2>&1
+    echo $os_name | egrep -i "CoreOS|Fedora" >> /dev/null 2>&1
     if [ $? -eq 0 ]; then
         CONFORM_TO=coreos
     fi

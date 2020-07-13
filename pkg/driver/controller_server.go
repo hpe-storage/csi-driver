@@ -881,8 +881,14 @@ func (driver *Driver) controllerPublishVolume(
 
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
 		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIPs, ",")
-		publishContext[chapUsernameKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapUser
-		publishContext[chapPasswordKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapPassword
+		// validate chapuser from storage provider and node
+		if node.ChapUser != "" && !strings.EqualFold(publishContext[chapUsernameKey], node.ChapUser) {
+			err := fmt.Errorf("Failed to publish volume. chapuser expected :%s got :%s", node.ChapUser, publishContext[chapUsernameKey])
+			log.Errorf(err.Error())
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		publishContext[chapUsernameKey] = node.ChapUser
+		publishContext[chapPasswordKey] = node.ChapPassword
 	}
 
 	if readOnlyAccessMode == true {
