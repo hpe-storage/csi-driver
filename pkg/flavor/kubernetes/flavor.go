@@ -35,6 +35,7 @@ import (
 
 const (
 	allowOverrides       = "allowOverrides"
+	allowMutations       = "allowMutations"
 	nodeUnreachableTaint = "node.kubernetes.io/unreachable"
 	nodeLostCondition    = "NodeLost"
 )
@@ -123,7 +124,10 @@ func (flavor *Flavor) ConfigureAnnotations(name string, parameters map[string]st
 	}
 	log.Infof("Configuring annotations on PVC %v", pvc)
 
-	overrideKeys := flavor.getClassOverrideOptions(parameters)
+	overrideKeys, err := flavor.getClassOverrideOptions(parameters)
+	if err != nil {
+		return nil, err
+	}
 
 	// get updated options map for handling overrides and annotations
 	parameters, err = flavor.getClaimOverrideOptions(pvc, overrideKeys, parameters, "csi.hpe.com")
@@ -377,28 +381,40 @@ func (flavor *Flavor) getClaimFromClaimName(name string) (*v1.PersistentVolumeCl
 	return claims[0].(*v1.PersistentVolumeClaim), nil
 }
 
-func (flavor *Flavor) getClassOverrideOptions(optionsMap map[string]string) []string {
+func (flavor *Flavor) getClassOverrideOptions(optionsMap map[string]string) ([]string, error) {
 	log.Trace(">>>> getClassOverrideOptions")
 	defer log.Trace("<<<<< getClassOverrideOptions")
 
-	var overridekeys []string
-	if val, ok := optionsMap[allowOverrides]; ok {
-		log.Infof("allowOverrides %s", val)
+	overrideKey := ""
+	if _, ok := optionsMap[allowOverrides]; ok {
+		overrideKey = allowOverrides
+	}
+
+	if _, ok := optionsMap[allowMutations]; ok {
+		if overrideKey != "" {
+			return nil, fmt.Errorf("Duplicate override keys are specified in StorageClass. Please use only '%s' key to specify parameters allowed to be overridden by the PVC", allowMutations)
+		}
+		overrideKey = allowMutations
+	}
+
+	var overrideParams []string
+	if val, ok := optionsMap[overrideKey]; ok {
+		log.Infof("allowed overrides in sc are %s", val)
 		for _, v := range strings.Split(val, ",") {
 			// remove leading and trailing spaces from value before Trim (needed to support multiline overrides e.g ", ")
 			v = strings.TrimSpace(v)
 			if len(v) > 0 && v != "" {
 				log.Infof("processing key: %v", v)
-				overridekeys = append(overridekeys, v)
+				overrideParams = append(overrideParams, v)
 			}
 		}
 	}
 
 	// Always let nfsPVC option to be overridden for underlying PVC in case of NFS provisioning
-	overridekeys = append(overridekeys, "nfsPVC")
+	overrideParams = append(overrideParams, "nfsPVC")
 
-	log.Infof("resulting override keys :%#v", overridekeys)
-	return overridekeys
+	log.Infof("resulting override parameters :%#v", overrideParams)
+	return overrideParams, nil
 }
 
 func (flavor *Flavor) getClaimOverrideOptions(claim *v1.PersistentVolumeClaim, overrides []string, optionsMap map[string]string, provisioner string) (map[string]string, error) {

@@ -221,8 +221,9 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 
 	createParameters, err := driver.flavor.ConfigureAnnotations(request.Name, request.Parameters)
 	if err != nil {
-		log.Errorf("Failed to configure create parameters from PVC annotations. err=%v", err)
-		return nil, status.Error(codes.Internal, "Failed to configure create parameters from PVC annotations")
+		errMessage := fmt.Sprintf("Failed to configure create parameters from PVC annotations, err = %s", err.Error())
+		log.Errorf(errMessage)
+		return nil, status.Error(codes.Internal, errMessage)
 	}
 
 	// Create volume
