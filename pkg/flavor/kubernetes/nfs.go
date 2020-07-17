@@ -804,6 +804,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 			},
 			Template: podSpec,
 			Replicas: int32toPtr(1),
+			Strategy: apps_v1.DeploymentStrategy{Type: apps_v1.RecreateDeploymentStrategyType},
 		},
 	}
 	return d
