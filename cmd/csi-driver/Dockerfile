@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi7/ubi-minimal:7.7-238
+FROM registry.access.redhat.com/ubi7/ubi-minimal:7.8-328
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 RUN microdnf install -y systemd
@@ -6,7 +6,7 @@ RUN microdnf install -y systemd
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \
       vendor="HPE" \
-      version="1.1.0" \
+      version="1.3.0" \
       summary="HPE CSI Driver for Kubernetes" \
       description="The HPE CSI Driver for Kubernetes enables container orchestrators, such as Kubernetes and OpenShift, to manage the life-cycle of persistent storage." \
       io.k8s.display-name="HPE CSI Driver for Kubernetes" \
