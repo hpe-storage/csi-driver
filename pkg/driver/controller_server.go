@@ -1405,6 +1405,8 @@ func (driver *Driver) ListSnapshots(ctx context.Context, request *csi.ListSnapsh
 				for _, snapshot := range snapshots {
 					allSnapshots = append(allSnapshots, snapshot)
 				}
+				// Snapshots found on the storage provider associated with the volume or snapshot ID.  No need to check the next one
+				break
 			}
 		}
 	}
