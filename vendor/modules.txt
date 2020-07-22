@@ -2,7 +2,7 @@
 github.com/BurntSushi/toml
 # github.com/Scalingo/go-etcd-lock v3.0.1+incompatible
 github.com/Scalingo/go-etcd-lock/lock
-# github.com/container-storage-interface/spec v1.2.0
+# github.com/container-storage-interface/spec v1.3.0
 github.com/container-storage-interface/spec/lib/go/csi
 # github.com/coreos/etcd v3.3.17+incompatible
 github.com/coreos/etcd/auth/authpb

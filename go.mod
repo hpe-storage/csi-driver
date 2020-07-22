@@ -1,10 +1,10 @@
 module github.com/hpe-storage/csi-driver
 
-go 1.12
+go 1.13
 
 require (
 	github.com/Scalingo/go-etcd-lock v3.0.1+incompatible
-	github.com/container-storage-interface/spec v1.2.0
+	github.com/container-storage-interface/spec v1.3.0
 	github.com/coreos/bbolt v1.3.3 // indirect
 	github.com/coreos/etcd v3.3.17+incompatible // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
