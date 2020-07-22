@@ -16,6 +16,7 @@ import (
 
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
+	"github.com/hpe-storage/common-host-libs/storageprovider"
 	"github.com/hpe-storage/common-host-libs/util"
 )
 
@@ -1091,6 +1092,24 @@ func (driver *Driver) ListVolumes(ctx context.Context, request *csi.ListVolumesR
 	}, nil
 }
 
+// ControllerGetVolume ...
+//
+// ALPHA FEATURE
+//
+// This optional RPC MAY be called by the CO to fetch current information about a volume.  A Controller Plugin MUST implement this
+// ControllerGetVolume RPC call if it has GET_VOLUME capability.  A Controller Plugin MUST provide a non-empty volume_condition field in
+// ControllerGetVolumeResponse if it has VOLUME_CONDITION capability.
+// ControllerGetVolumeResponse should contain current information of a volume if it exists. If the volume does not exist any more,
+// ControllerGetVolume should return gRPC error code NOT_FOUND
+func (driver *Driver) ControllerGetVolume(ctx context.Context, request *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
+	log.Trace(">>>>> ControllerGetVolume")
+	defer log.Trace("<<<<< ControllerGetVolume")
+
+	// TODO: Implement this
+
+	return nil, status.Error(codes.Unimplemented, "")
+}
+
 // GetCapacity ...
 //
 // A Controller Plugin MUST implement this RPC call if it has GET_CAPACITY controller capability. The RPC allows the CO to query the capacity of
@@ -1350,28 +1369,43 @@ func (driver *Driver) ListSnapshots(ctx context.Context, request *csi.ListSnapsh
 	// request.StartingToken <- use me
 	// request.MaxEntries <- use me
 
-	// If driver doesn't know any storage providers yet, then return empty list with success
-	if len(driver.storageProviders) == 0 {
-		log.Info("No storage providers are known to the CSI driver yet.")
-		return &csi.ListSnapshotsResponse{
-			Entries: []*csi.ListSnapshotsResponse_Entry{},
-		}, nil
-	}
-
-	// TODO: ListSnapshots does not provide Secrets nor a NodeId so it simply needs to return information about all of the
-	// snapshots it knows about.  This can be implemented by reading all snapshots from every array known to the driver.  We can do this
-	// at initialization time and keep them in memory.
 	var allSnapshots []*model.Snapshot
-	for _, storageProvider := range driver.storageProviders {
-		// TODO: skip storage providers that are not of the same vendor... or not.  Need to think through this
-		snapshots, err := storageProvider.GetSnapshots(request.SourceVolumeId)
+
+	// Secrets are optional
+	if request.Secrets != nil {
+		storageProvider, err := driver.GetStorageProvider(request.Secrets)
 		if err != nil {
-			log.Trace("err: ", err.Error())
-			return nil, status.Error(codes.Internal, "Error while attempting to list snapshots")
+			log.Error("err: ", err.Error())
+			return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 		}
-		log.Tracef("Read %d snapshots from a storage provider", len(snapshots))
-		for _, snapshot := range snapshots {
-			allSnapshots = append(allSnapshots, snapshot)
+		allSnapshots, err = getSnapshotsForStorageProvider(ctx, request, storageProvider)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// In the event that ListSnapshots does not provide Secrets it simply needs to return information about all of the
+		// snapshots it knows about.  This can be implemented by reading all snapshots from every array known to the driver.  We can do this
+		// at initialization time and keep them in memory.
+
+		// If driver doesn't know any storage providers yet, then return empty list with success
+		if len(driver.storageProviders) == 0 {
+			log.Info("No storage providers are known to the CSI driver yet.")
+			return &csi.ListSnapshotsResponse{
+				Entries: []*csi.ListSnapshotsResponse_Entry{},
+			}, nil
+		}
+
+		for _, storageProvider := range driver.storageProviders {
+			snapshots, err := getSnapshotsForStorageProvider(ctx, request, storageProvider)
+			if err != nil {
+				return nil, err
+			}
+
+			if len(snapshots) > 0 {
+				for _, snapshot := range snapshots {
+					allSnapshots = append(allSnapshots, snapshot)
+				}
+			}
 		}
 	}
 	log.Tracef("Total snapshots: %d", len(allSnapshots))
@@ -1518,4 +1552,35 @@ func updateVolumeContext(volumeContext map[string]string, volume *model.Volume) 
 		}
 	}
 	return nil
+}
+
+// Returns all snapshots for the given storage provider given the list request
+func getSnapshotsForStorageProvider(ctx context.Context, request *csi.ListSnapshotsRequest, storageProvider storageprovider.StorageProvider) ([]*model.Snapshot, error) {
+	log.Trace(">>>>> getSnapshotsForStorageProvider")
+	defer log.Trace("<<<<< getSnapshotsForStorageProvider")
+
+	var allSnapshots []*model.Snapshot
+
+	if request.SnapshotId != "" {
+		snapshot, err := storageProvider.GetSnapshot(request.SnapshotId)
+		if err != nil {
+			// Error while retrieving the snapshot using id and secrets
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get snapshot with ID %s", request.SnapshotId))
+		}
+		if snapshot != nil {
+			allSnapshots = append(allSnapshots, snapshot)
+		}
+	} else if request.SourceVolumeId != "" {
+		snapshots, err := storageProvider.GetSnapshots(request.SourceVolumeId)
+		if err != nil {
+			log.Trace("err: ", err.Error())
+			return nil, status.Error(codes.Internal, "Error while attempting to list snapshots")
+		}
+		log.Tracef("Read %d snapshots from a storage provider", len(snapshots))
+		for _, snapshot := range snapshots {
+			allSnapshots = append(allSnapshots, snapshot)
+		}
+	}
+
+	return allSnapshots, nil
 }
