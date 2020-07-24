@@ -218,8 +218,7 @@ func (driver *LinuxDriver) GetFilesystemFromDevice(device *model.Device) (*model
 func (driver *LinuxDriver) GetMounts(serialNumber string) ([]*model.Mount, error) {
 	log.Trace(">>>>> GetMounts, serialNumber: ", serialNumber)
 	defer log.Trace("<<<<< GetMounts")
-
-	devices, err := linux.GetLinuxDmDevices(false, serialNumber, "")
+	devices, err := linux.GetLinuxDmDevices(false, util.GetVolumeObject(serialNumber, ""))
 	if err != nil {
 		return nil, err
 	}

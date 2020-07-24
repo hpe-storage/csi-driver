@@ -5,6 +5,7 @@ package driver
 
 import (
 	b64 "encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -865,6 +866,20 @@ func (driver *Driver) controllerPublishVolume(
 	publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
 	publishContext[targetScopeKey] = requestedTargetScope
 	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
+
+	// Start of population of target array details
+	if publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails != nil {
+		secondaryArrayMarshalledStr, err := json.Marshal(&publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails)
+		if err != nil {
+			log.Errorf("Error in marshalling secondary details %s", err.Error())
+			return nil, status.Error(codes.Internal,
+				fmt.Sprintf("error in marshalling secondary array details %s", err.Error()))
+		} else {
+			log.Tracef("\n Marshalled secondary array str :%v", secondaryArrayMarshalledStr)
+			publishContext[secondaryArrayDetailsKey] = string(secondaryArrayMarshalledStr)
+		}
+	}
+
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
 		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIPs, ",")
 		// validate chapuser from storage provider and node

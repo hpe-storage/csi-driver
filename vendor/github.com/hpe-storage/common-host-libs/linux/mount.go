@@ -212,7 +212,7 @@ func CreateFileSystemOnDevice(serialnumber string, fileSystemType string) (dev *
 	log.Tracef("CreateFileSystemOnDevice called with :%s %s", serialnumber, fileSystemType)
 	var devices []*model.Device
 	for i := 1; i <= countdownTicker; i++ {
-		devices, err = GetLinuxDmDevices(true, serialnumber, "")
+		devices, err = GetLinuxDmDevices(true, util.GetVolumeObject(serialnumber, ""))
 		if err != nil {
 			log.Debugf("error to retrieve active paths for %s, retrying, count=%d", serialnumber, i)
 			continue

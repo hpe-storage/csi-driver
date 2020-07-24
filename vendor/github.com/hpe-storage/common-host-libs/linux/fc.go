@@ -119,6 +119,7 @@ func RescanFcTarget(lunID string) (err error) {
 				log.Debugf("error writing to file %s : %s", fcHostScanPath, err.Error())
 			}
 		} else {
+			log.Tracef("\n SCANNING fc lun id %s", lunID)
 			err = ioutil.WriteFile(fcHostScanPath, []byte("- - "+lunID), 0644)
 			if err != nil {
 				log.Debugf("error writing to file %s : %s", fcHostScanPath, err.Error())

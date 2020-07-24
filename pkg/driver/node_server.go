@@ -446,6 +446,7 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 		LunID:          publishContext[lunIDKey],
 		DiscoveryIPs:   discoveryIps,
 		ConnectionMode: defaultConnectionMode,
+		SecondaryArrayDetails: publishContext[secondaryArrayDetailsKey],
 	}
 	if publishContext[accessProtocolKey] == iscsi {
 		chapInfo := &model.ChapInfo{
