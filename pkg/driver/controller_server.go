@@ -874,10 +874,10 @@ func (driver *Driver) controllerPublishVolume(
 			log.Errorf("Error in marshalling secondary details %s", err.Error())
 			return nil, status.Error(codes.Internal,
 				fmt.Sprintf("error in marshalling secondary array details %s", err.Error()))
-		} else {
-			log.Tracef("\n Marshalled secondary array str :%v", secondaryArrayMarshalledStr)
-			publishContext[secondaryArrayDetailsKey] = string(secondaryArrayMarshalledStr)
 		}
+		log.Tracef("\n Marshalled secondary array str :%v", secondaryArrayMarshalledStr)
+		publishContext[secondaryArrayDetailsKey] = string(secondaryArrayMarshalledStr)
+
 	}
 
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
