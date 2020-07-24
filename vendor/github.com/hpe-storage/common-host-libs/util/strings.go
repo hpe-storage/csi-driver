@@ -3,6 +3,8 @@
 package util
 
 import (
+	"bytes"
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -29,4 +31,18 @@ func ToCamelCase(str string) string {
 		return ""
 	}
 	return strings.ToLower(camelCase[:1]) + camelCase[1:]
+}
+
+// ConvertArrayOfIntToString converts a given list of integer to comma separated string value
+func ConvertArrayOfIntToString(lun_ids []int32) string {
+	var buffer bytes.Buffer
+
+	for i := 0; i < len(lun_ids); i++ {
+		if i == (len(lun_ids) - 1) {
+			buffer.WriteString(fmt.Sprintf("%d", lun_ids[i]))
+		} else {
+			buffer.WriteString(fmt.Sprintf("%d,", lun_ids[i]))
+		}
+	}
+	return buffer.String()
 }

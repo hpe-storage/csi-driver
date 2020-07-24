@@ -16,6 +16,7 @@ import (
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/tunelinux"
+	"github.com/hpe-storage/common-host-libs/util"
 )
 
 var (
@@ -137,7 +138,8 @@ func getChapInfo(w http.ResponseWriter, r *http.Request) {
 //@Router /hosts/{id}/devices [get]
 func getDevices(w http.ResponseWriter, r *http.Request) {
 	function := func() (interface{}, error) {
-		return linux.GetLinuxDmDevices(false, "", "")
+
+		return linux.GetLinuxDmDevices(false, util.GetVolumeObject("", ""))
 	}
 	handleRequest(function, "getDevices", w, r)
 }
@@ -280,7 +282,7 @@ func getDeviceForSerialNumber(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	devices, err := linux.GetLinuxDmDevices(false, serialnumber, "")
+	devices, err := linux.GetLinuxDmDevices(false, util.GetVolumeObject(serialnumber, ""))
 	if err != nil {
 		handleError(w, chapiResp, err, http.StatusInternalServerError)
 		return
@@ -317,7 +319,7 @@ func getPartitionsForDevice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	devices, err := linux.GetLinuxDmDevices(false, serialnumber, "")
+	devices, err := linux.GetLinuxDmDevices(false, util.GetVolumeObject(serialnumber, ""))
 	if err != nil {
 		handleError(w, chapiResp, err, http.StatusInternalServerError)
 		return
@@ -395,7 +397,7 @@ func getMountForDevice(w http.ResponseWriter, r *http.Request) {
 	mountid := vars["mountid"]
 	serialNumber := vars["serialNumber"]
 
-	devices, err := linux.GetLinuxDmDevices(false, serialNumber, "")
+	devices, err := linux.GetLinuxDmDevices(false, util.GetVolumeObject(serialNumber, ""))
 	if err != nil {
 		handleError(w, chapiResp, err, http.StatusInternalServerError)
 		return
