@@ -829,7 +829,7 @@ func (driver *Driver) controllerPublishVolume(
 		if err = storageProvider.SetNodeContext(node); err != nil {
 			log.Error("err: ", err.Error())
 			return nil, status.Error(codes.Unavailable,
-				fmt.Sprintf("Failed to provide node context %v to CSP", node))
+				fmt.Sprintf("Failed to provide node context %v to CSP err: %s", node, err.Error()))
 		}
 	}
 
