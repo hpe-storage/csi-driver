@@ -72,7 +72,7 @@ github.com/hpcloud/tail/ratelimiter
 github.com/hpcloud/tail/util
 github.com/hpcloud/tail/watch
 github.com/hpcloud/tail/winfile
-# github.com/hpe-storage/common-host-libs v4.2.1-0.20200724035537-cf0f6aa92d3d+incompatible
+# github.com/hpe-storage/common-host-libs v4.2.1-0.20200817142457-c83686f6a7ce+incompatible
 github.com/hpe-storage/common-host-libs/chapi
 github.com/hpe-storage/common-host-libs/concurrent
 github.com/hpe-storage/common-host-libs/connectivity
