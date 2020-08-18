@@ -339,7 +339,6 @@ func isReachable(initiatorIP, targetIP string) (reachable bool, err error) {
 		log.Tracef("Received %d bytes from %s: icmp_seq=%d time=%v ttl=%v\n",
 			pkt.Nbytes, pkt.Addr, pkt.Seq, pkt.Rtt, pkt.Ttl)
 		reachable = true
-		pinger.Stop()
 	}
 
 	// Perform the ping test; if we received any ICMP packet back, stop the test
