@@ -196,7 +196,7 @@ func (provider *ContainerStorageProvider) SetNodeContext(node *model.Node) error
 		},
 	)
 	if errorResponse != nil {
-		handleError(status, errorResponse)
+		return handleError(status, errorResponse)
 	}
 	return err
 }
