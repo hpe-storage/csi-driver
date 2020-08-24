@@ -24,6 +24,10 @@ if [ -f /etc/os-release ]; then
     if [ $? -eq 0 ]; then
         CONFORM_TO=coreos
     fi
+    echo $os_name | egrep -i "SLES" >> /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        CONFORM_TO=sles
+    fi
 fi
 
 if [ "$CONFORM_TO" = "ubuntu" ]; then
@@ -68,6 +72,26 @@ elif [ "$CONFORM_TO" = "redhat" ]; then
     # Install nfs client packages
     if [ ! -f /sbin/mount.nfs4 ]; then
         yum -y install nfs-utils
+        systemctl enable nfs-utils.service
+        systemctl start nfs-utils.service
+        exit_on_error $?
+    fi
+elif [ "$CONFORM_TO" = "sles" ]; then
+    # Install device-mapper-multipath
+    if [ ! -f /sbin/multipathd ]; then
+        zypper -n install multipath-tools
+        exit_on_error $?
+    fi
+
+    # Install iscsi packages
+    if [ ! -f /sbin/iscsid ]; then
+        zypper -n install open-iscsi
+        exit_on_error $?
+    fi
+
+    # Install nfs client packages
+    if [ ! -f /sbin/mount.nfs4 ]; then
+        zypper -n install nfs-client
         systemctl enable nfs-utils.service
         systemctl start nfs-utils.service
         exit_on_error $?
