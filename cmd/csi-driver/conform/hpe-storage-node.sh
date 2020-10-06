@@ -12,7 +12,7 @@ exit_on_error() {
 if [ -f /etc/os-release ]; then
     os_name=$(cat /etc/os-release | egrep "^NAME=" | awk -F"NAME=" '{print $2}')
     echo "os name obtained as $os_name"
-    echo $os_name | egrep -i "Red Hat|CentOS" >> /dev/null 2>&1
+    echo $os_name | egrep -i "Red Hat|CentOS|Amazon Linux" >> /dev/null 2>&1
     if [ $? -eq 0 ]; then
         CONFORM_TO=redhat
     fi
