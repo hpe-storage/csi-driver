@@ -22,6 +22,11 @@ func (flavor *Flavor) ConfigureAnnotations(claimName string, parameters map[stri
 	return parameters, nil
 }
 
+// GetGroupSnapshotNameFromSnapshotName does nothing in vanilla case
+func (flavor *Flavor) GetGroupSnapshotNameFromSnapshotName(snapName string) (string, error) {
+	return "", nil
+}
+
 // LoadNodeInfo loads a Node object into JSON in the vanilla case.  Note this might hit the 128 character limit
 // in some other CO.  A new flavor will likely need to be added in that case.
 func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {

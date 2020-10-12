@@ -35,4 +35,5 @@ type Flavor interface {
 	GetNFSVolumeID(volumeID string) (string, error)
 	GetOrchestratorVersion() (*version.Info, error)
 	MonitorPod(podLabelkey, podLabelvalue string) error
+	GetGroupSnapshotNameFromSnapshotName(snapshotName string) (string, error)
 }

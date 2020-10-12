@@ -1240,6 +1240,16 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 		delete(createOptions, descriptionKey)
 	}
 
+	// check if this snapshot is from group snapshotter
+	groupSnapshotName, err := driver.flavor.GetGroupSnapshotNameFromSnapshotName(request.Name)
+	if err == nil && groupSnapshotName != "" {
+		log.Infof("groupSnapshot found with name %s", groupSnapshotName)
+		request.Name = groupSnapshotName // update the request.Name only if its a valid csi groupSnapshot
+	}
+	if err != nil {
+		log.Tracef("unable to retrieve groupSnapshot, falling back to volume snapshot. error: %s", err.Error())
+	}
+
 	// Check if snapshot with the name for the given source ID already exists
 	existingSnapshot, err := storageProvider.GetSnapshotByName(request.Name, request.SourceVolumeId)
 	if err != nil {
