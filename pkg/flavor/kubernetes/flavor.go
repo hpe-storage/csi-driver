@@ -16,6 +16,8 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	crd_v1 "github.com/hpe-storage/k8s-custom-resources/pkg/apis/hpestorage/v1"
 	crd_client "github.com/hpe-storage/k8s-custom-resources/pkg/client/clientset/versioned"
+	v1beta1 "github.com/kubernetes-csi/external-snapshotter/v2/pkg/apis/volumesnapshot/v1beta1"
+	snapclientset "github.com/kubernetes-csi/external-snapshotter/v2/pkg/client/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
 	storage_v1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -49,11 +51,15 @@ type Flavor struct {
 	crdClient   *crd_client.Clientset
 	nodeName    string
 	kubeClient  kubernetes.Interface
+	snapClient  snapclientset.Interface
 	chapiDriver chapi.Driver
 
-	claimInformer cache.SharedIndexInformer
-	claimIndexer  cache.Indexer
-	claimStopChan chan struct{}
+	claimInformer    cache.SharedIndexInformer
+	claimIndexer     cache.Indexer
+	snapshotInformer cache.SharedIndexInformer
+	snapshotIndexer  cache.Indexer
+	claimStopChan    chan struct{}
+	snapshotStopChan chan struct{}
 
 	eventRecorder record.EventRecorder
 }
@@ -78,9 +84,16 @@ func NewKubernetesFlavor(nodeService bool, chapiDriver chapi.Driver) (*Flavor, e
 		os.Exit(1)
 	}
 
+	snapClient, err := snapclientset.NewForConfig(kubeConfig)
+	if err != nil {
+		fmt.Printf("Error getting snapshot client %s", err.Error())
+		os.Exit(1)
+	}
+
 	flavor := &Flavor{
 		kubeClient: kubeClient,
 		crdClient:  crdClient,
+		snapClient: snapClient,
 	}
 
 	if !nodeService {
@@ -104,6 +117,24 @@ func NewKubernetesFlavor(nodeService bool, chapiDriver chapi.Driver) (*Flavor, e
 		flavor.claimIndexer = flavor.claimInformer.GetIndexer()
 		flavor.claimStopChan = make(chan struct{})
 		go flavor.claimInformer.Run(flavor.claimStopChan)
+
+		// snapshot indexer and informer
+		snapshotListWatch := &cache.ListWatch{
+			ListFunc:  flavor.listAllSnapshots,
+			WatchFunc: flavor.watchAllSnapshots,
+		}
+
+		flavor.snapshotInformer = cache.NewSharedIndexInformer(
+			snapshotListWatch,
+			&v1beta1.VolumeSnapshot{},
+			resyncPeriod,
+			cache.Indexers{
+				"uid": MetaUIDFunc,
+			},
+		)
+		flavor.snapshotIndexer = flavor.snapshotInformer.GetIndexer()
+		flavor.snapshotStopChan = make(chan struct{})
+		go flavor.snapshotInformer.Run(flavor.snapshotStopChan)
 	}
 
 	// add reference to chapi driver
@@ -331,12 +362,91 @@ func (flavor *Flavor) newClaimIndexer() cache.Indexer {
 	return informer.GetIndexer()
 }
 
+//newSnapshotIndexer provides a controller that watches for VolumeSnapshots and takes action on them
+//nolint: dupl
+func (flavor *Flavor) newSnapshotIndexer() cache.Indexer {
+	snapshotListWatch := &cache.ListWatch{
+		ListFunc:  flavor.listAllSnapshots,
+		WatchFunc: flavor.watchAllSnapshots,
+	}
+
+	informer := cache.NewSharedIndexInformer(
+		snapshotListWatch,
+		&v1beta1.VolumeSnapshot{},
+		resyncPeriod,
+		cache.Indexers{
+			"uid": MetaUIDFunc,
+		},
+	)
+
+	return informer.GetIndexer()
+}
+
+func (flavor *Flavor) listAllSnapshots(options meta_v1.ListOptions) (runtime.Object, error) {
+	return flavor.snapClient.SnapshotV1beta1().VolumeSnapshots(meta_v1.NamespaceAll).List(options)
+}
+
+func (flavor *Flavor) watchAllSnapshots(options meta_v1.ListOptions) (watch.Interface, error) {
+	return flavor.snapClient.SnapshotV1beta1().VolumeSnapshots(meta_v1.NamespaceAll).Watch(options)
+}
+
 func (flavor *Flavor) listAllClaims(options meta_v1.ListOptions) (runtime.Object, error) {
 	return flavor.kubeClient.CoreV1().PersistentVolumeClaims(meta_v1.NamespaceAll).List(options)
 }
 
 func (flavor *Flavor) watchAllClaims(options meta_v1.ListOptions) (watch.Interface, error) {
 	return flavor.kubeClient.CoreV1().PersistentVolumeClaims(meta_v1.NamespaceAll).Watch(options)
+}
+
+func (flavor *Flavor) getSnapshotFromSnapshotName(name string) (*v1beta1.VolumeSnapshot, error) {
+	log.Tracef(">>>>> getSnapshotFromSnapshotName called with %s", name)
+	defer log.Tracef("<<<<< getSnapshotFromSnapshotName")
+
+	if flavor.snapshotIndexer == nil {
+		return nil, fmt.Errorf("requested snapshot %s was not found because snapshotIndexer was nil", name)
+	}
+
+	if !strings.HasPrefix(name, "snapshot-") {
+		return nil, fmt.Errorf("%s is not a valid group snapshot", name)
+	}
+
+	uid := name[9:len(name)] // snapshot-<uid>
+	log.Infof("Looking up VolumeSnapshot with uid %s", uid)
+
+	snapshots, err := flavor.snapshotIndexer.ByIndex("uid", uid)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to retrieve snapshot by uid %s", uid)
+	} else if len(snapshots) == 0 {
+		return nil, fmt.Errorf("Requested snapshot %s was not found with uid %s", name, uid)
+	}
+
+	if len(snapshots) > 1 {
+		return nil, fmt.Errorf("more than 1 snapshots found with uid %s", uid)
+	}
+
+	log.Tracef("Found the following snapshot: %#v", snapshots[0]) // should be 1
+
+	return snapshots[0].(*v1beta1.VolumeSnapshot), nil
+}
+
+func (flavor *Flavor) GetGroupSnapshotNameFromSnapshotName(name string) (string, error) {
+	log.Tracef(">>>>> GetGroupSnapshotNameFromSnapshotName called with snapshot %s", name)
+	defer log.Tracef("<<<<< GetGroupSnapshotNameFromSnapshotName")
+
+	snapshot, err := flavor.getSnapshotFromSnapshotName(name)
+	if err != nil {
+		return "", err
+	}
+
+	groupSnapshotterName, ok := snapshot.Annotations["csi.hpe.com/groupsnapshotter"]
+	if !ok || groupSnapshotterName == "" {
+		return "", fmt.Errorf("not a valid groupsnapshotter found for %s", snapshot.Name)
+	}
+	snapshotName, ok := snapshot.Annotations["csi.hpe.com/snapshotname"]
+	if !ok || snapshotName == "" {
+		return "", fmt.Errorf("no valid snapshot found")
+	}
+	return snapshotName, nil
 }
 
 // get the pv corresponding to this pvc and substitute with pv (docker/csi volume name)
