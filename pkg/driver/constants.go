@@ -83,7 +83,8 @@ const (
 	Pending = "PENDING"
 
 	// common properties
-	descriptionKey = "description"
+	descriptionKey        = "description"
+	protectionTemplateKey = "protectionTemplate"
 
 	// csiEphemeral attribute to be used to specify ephemeral inline volume request type
 	csiEphemeral = "csi.storage.k8s.io/ephemeral"

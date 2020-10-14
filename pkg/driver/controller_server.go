@@ -341,6 +341,11 @@ func (driver *Driver) createVolume(
 		return nil, status.Error(codes.Internal, errStr)
 	}
 
+	if val, ok := createParameters[protectionTemplateKey]; ok {
+		log.Infof("protectionTemplate parameter is moved and volumeGroups are used instead, removing %s=%s from the request", protectionTemplateKey, val)
+		delete(createParameters, protectionTemplateKey)
+	}
+
 	// TODO: use additional properties here to configure the volume further... these might come in from doryd
 	createOptions := make(map[string]interface{})
 	for k, v := range createParameters {
