@@ -73,6 +73,30 @@ if [ -d $directory ]; then
     #HPE Logs
 	cp -r /var/log/hpe-*.log $directory > /dev/null 2>&1
 
+    #Nimble logs, including CSP
+	cp -r /var/log/nimble-*.log $directory > /dev/null 2>&1
+
+    #Collect CSI sidecar container logs, if kubectl is available
+    podlist=`kubectl get pods -l app=hpe-csi-controller -A -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.namespace}{"\n"}{end}' 2>/dev/null`
+    if [[ $? -eq 0 ]]
+    then
+        while read -r podname podnamespace
+        do
+            containerlist=`kubectl get pod $podname -n $podnamespace -o jsonpath={.spec.containers[*].name} 2>/dev/null`
+            if [[ $? -eq 0 ]]
+            then
+                for containername in $containerlist
+                do
+                    # The hpe-csi-driver log is collected separately
+                    if [[ "$containername" != "hpe-csi-driver" ]]
+                    then
+                        timeout 30 kubectl logs $podname -n $podnamespace -c $containername > $directory/$podname.$podnamespace.$containername.log 2>&1
+                    fi
+                done
+            fi
+        done < <(printf '%s\n' "$podlist")
+    fi
+
 	#copy messages  for RHEL systems
 	cp /var/log/messages* $directory > /dev/null 2>&1
 
@@ -80,14 +104,13 @@ if [ -d $directory ]; then
 	cp /var/log/syslog* $directory > /dev/null 2>&1
 
 	#Nimble Config files
-	cp /etc/multipath.conf $directory
+	cp /etc/multipath.conf $directory > /dev/null 2>&1
 	cp /etc/iscsi/iscsid.conf $directory > /dev/null 2>&1
 
-
-	#dmsetup table  output
+	#dmsetup table output
 	cp $destinationDir/dmsetup $directory
 
-	#dmsetup table  output
+	#dmsetup table output
 	cp $destinationDir/mounts $directory
 
 	#rpm/dpkg package output
@@ -97,10 +120,10 @@ if [ -d $directory ]; then
 	   cp $destinationDir/dpkg $directory
 	fi
 
-	#multipath   output
+	#multipath output
 	cp $destinationDir/multipath $directory
 
-	#multipathd   output
+	#multipathd output
 	cp $destinationDir/multipathd $directory
 
 	#Iscsiadm logs
@@ -127,24 +150,24 @@ if [ -d $directory ]; then
 		exit 1
 	fi
 else
-		echo "$directory not created , try again"
-		exit 1
+	echo "$directory not created, try again"
+	exit 1
 fi
 
 }
 
 display_usage() {
-echo "Diagnostic LogCollector Script to collect HPE Storage logs"
-echo -e "\nUsage: hpe-logcollector"
+    echo "Diagnostic LogCollector Script to collect HPE Storage logs"
+    echo -e "\nUsage: hpe-logcollector"
 }
 
 #Main Function
 # check whether user had supplied -h or --help . If yes display usage
-	if [[ ( $1 == "--help") ||  $1 == "-h" ]]
-	then
-		display_usage
-		exit 0
-	fi
+if [[ ( $1 == "--help") ||  $1 == "-h" ]]
+then
+	display_usage
+	exit 0
+fi
 
 echo "======================================"
 echo "Collecting the Diagnostic Information"
