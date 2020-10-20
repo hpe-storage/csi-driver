@@ -8,3 +8,5 @@ parameters:
   description: "Snapshot create by the HPE CSI Driver"
   csi.storage.k8s.io/snapshotter-secret-name: primera3par-secret
   csi.storage.k8s.io/snapshotter-secret-namespace: kube-system
+  csi.storage.k8s.io/snapshotter-list-secret-name: primera3par-secret
+  csi.storage.k8s.io/snapshotter-list-secret-namespace: kube-system
