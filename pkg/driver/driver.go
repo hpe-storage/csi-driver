@@ -96,6 +96,7 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 	driver.AddNodeServiceCapabilities([]csi.NodeServiceCapability_RPC_Type{
 		csi.NodeServiceCapability_RPC_STAGE_UNSTAGE_VOLUME,
 		csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+		csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
 	})
 
 	// Init Volume Expansion Capabilities supported by the driver

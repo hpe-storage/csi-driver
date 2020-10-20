@@ -22,6 +22,8 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/resource"
 
+	"k8s.io/utils/mount"
+
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/stringformat"
@@ -439,13 +441,13 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 	iqns := strings.Split(publishContext[targetNamesKey], ",")
 
 	volume := &model.Volume{
-		SerialNumber:   publishContext[serialNumberKey],
-		AccessProtocol: publishContext[accessProtocolKey],
-		Iqns:           iqns,
-		TargetScope:    publishContext[targetScopeKey],
-		LunID:          publishContext[lunIDKey],
-		DiscoveryIPs:   discoveryIps,
-		ConnectionMode: defaultConnectionMode,
+		SerialNumber:          publishContext[serialNumberKey],
+		AccessProtocol:        publishContext[accessProtocolKey],
+		Iqns:                  iqns,
+		TargetScope:           publishContext[targetScopeKey],
+		LunID:                 publishContext[lunIDKey],
+		DiscoveryIPs:          discoveryIps,
+		ConnectionMode:        defaultConnectionMode,
 		SecondaryArrayDetails: publishContext[secondaryArrayDetailsKey],
 	}
 	if publishContext[accessProtocolKey] == iscsi {
@@ -1654,7 +1656,62 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 	log.Trace(">>>>> NodeGetVolumeStats")
 	defer log.Trace("<<<<< NodeGetVolumeStats")
 
-	return nil, status.Error(codes.Unimplemented, "")
+	volumePath := in.GetVolumePath()
+	if volumePath == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "volume path %s is empty", volumePath)
+	}
+
+	// check if it is a mount point
+	dummy := mount.New("")
+	notMount, err := dummy.IsLikelyNotMountPoint(volumePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, status.Errorf(codes.InvalidArgument, "volume path %s does not exist", volumePath)
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if notMount {
+		return nil, status.Errorf(codes.InvalidArgument, "volume path %s is not mounted", volumePath)
+	}
+
+	folders := strings.Split(in.VolumePath, "/")
+	pvName := folders[len(folders)-2]
+	credentials, err := driver.flavor.GetCredentialsFromVolume(pvName)
+	if err != nil {
+		log.Error("err: ", err.Error())
+		return nil, status.Errorf(codes.Unavailable, "Failed to get credentials from volume with name %s, err: %s",
+			pvName, err.Error())
+	}
+
+	// Get storage provider using secrets
+	storageProvider, err := driver.GetStorageProvider(credentials)
+	if err != nil {
+		log.Error("err: ", err.Error())
+		return nil, status.Errorf(codes.Unavailable, "Failed to get storage provider from secrets for volume with id %s, err: %s",
+			in.VolumeId, err.Error())
+	}
+	// Fetch the volume using volume ID
+	volume, err := storageProvider.GetVolume(in.VolumeId)
+	if err != nil {
+		log.Error("err: ", err.Error())
+		return nil, status.Errorf(codes.Internal, "Error while retrieving volume with id %s from the backend, err: %s",
+			in.VolumeId, err.Error())
+	}
+	if volume == nil {
+		log.Infof("Volume with ID %s not found on the backend, return ",
+			in.VolumeId)
+		return nil, nil
+	}
+	return &csi.NodeGetVolumeStatsResponse{
+		Usage: []*csi.VolumeUsage{
+			{
+				Available: volume.FreeBytes,
+				Total:     volume.Size,
+				Used:      volume.UsedBytes,
+				Unit:      csi.VolumeUsage_BYTES,
+			},
+		},
+	}, nil
 }
 
 // NodeExpandVolume ...

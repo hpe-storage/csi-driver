@@ -3,6 +3,7 @@ module github.com/hpe-storage/csi-driver
 go 1.13
 
 require (
+	github.com/Azure/go-autorest v11.1.2+incompatible // indirect
 	github.com/Scalingo/go-etcd-lock v3.0.1+incompatible
 	github.com/container-storage-interface/spec v1.3.0
 	github.com/coreos/bbolt v1.3.3 // indirect
@@ -11,10 +12,13 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
+	github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153 // indirect
+	github.com/gogo/protobuf v1.3.1 // indirect
 	github.com/golang/groupcache v0.0.0-20191027212112-611e8accdfc9 // indirect
 	github.com/golang/protobuf v1.3.2
 	github.com/google/btree v1.0.0 // indirect
 	github.com/google/go-cmp v0.3.1 // indirect
+	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/gorilla/mux v1.7.3 // indirect
 	github.com/gorilla/websocket v1.4.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.1.0 // indirect
@@ -25,8 +29,10 @@ require (
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20190828052325-42886f48215c
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
-	github.com/kubernetes-csi/csi-lib-utils v0.6.1
+	github.com/kubernetes-csi/csi-lib-utils v0.7.1
 	github.com/kubernetes-csi/csi-test v2.1.0+incompatible
+	github.com/kubernetes-csi/external-snapshotter/v2 v2.1.2
+	github.com/onsi/ginkgo v1.11.0 // indirect
 	github.com/onsi/gomega v1.7.1 // indirect
 	github.com/prometheus/client_golang v1.2.1 // indirect
 	github.com/satori/go.uuid v1.2.0 // indirect
@@ -42,18 +48,19 @@ require (
 	go.uber.org/zap v1.12.0 // indirect
 	golang.org/x/crypto v0.0.0-20191105034135-c7e5f84aec59 // indirect
 	golang.org/x/mod v0.2.0
-	golang.org/x/net v0.0.0-20191105084925-a882066a44e0
+	golang.org/x/net v0.0.0-20191209160850-c0dbc17a3553
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45 // indirect
-	golang.org/x/sys v0.0.0-20191105231009-c1f44814a5cd // indirect
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
 	google.golang.org/appengine v1.6.5 // indirect
-	google.golang.org/genproto v0.0.0-20191028173616-919d9bdd9fe6 // indirect
-	google.golang.org/grpc v1.24.0
+	google.golang.org/grpc v1.26.0
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/errgo.v1 v1.0.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
-	k8s.io/api v0.0.0-20200313112439-9768e51d191a
-	k8s.io/apimachinery v0.0.0-20200307122051-2b7fa1cb5395
-	k8s.io/client-go v0.0.0-20190722143104-cea58bd85b8c
-	k8s.io/utils v0.0.0-20190712204705-3dccf664f023 // indirect
+	k8s.io/api v0.17.0
+	k8s.io/apimachinery v0.17.1-beta.0
+	k8s.io/client-go v0.17.0
+	k8s.io/kube-openapi v0.0.0-20200121204235-bf4fb3bd569c // indirect
+	k8s.io/utils v0.0.0-20201015054608-420da100c033
+	sigs.k8s.io/structured-merge-diff/v3 v3.0.0 // indirect
+	sigs.k8s.io/yaml v1.2.0 // indirect
 )

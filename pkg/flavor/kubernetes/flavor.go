@@ -36,9 +36,11 @@ import (
 )
 
 const (
-	allowOverrides       = "allowOverrides"
-	nodeUnreachableTaint = "node.kubernetes.io/unreachable"
-	nodeLostCondition    = "NodeLost"
+	allowOverrides                = "allowOverrides"
+	nodeUnreachableTaint          = "node.kubernetes.io/unreachable"
+	nodeLostCondition             = "NodeLost"
+	provisionerSecretNameKey      = "csi.storage.k8s.io/provisioner-secret-name"
+	provisionerSecretNamespaceKey = "csi.storage.k8s.io/provisioner-secret-namespace"
 )
 
 var (
@@ -579,6 +581,36 @@ func (flavor *Flavor) getNodeInfoByName(name string) (*crd_v1.HPENodeInfo, error
 	}
 
 	return nil, nil
+}
+
+// GetCredentialsFromVolume retrieves the credentials from volume
+func (flavor *Flavor) GetCredentialsFromVolume(name string) (map[string]string, error) {
+	log.Tracef(">>>>> GetCredentialsFromVolume, name: %s ", name)
+	defer log.Trace("<<<<< GetCredentialsFromVolume")
+
+	credentials := map[string]string{}
+	pv, err := flavor.kubeClient.CoreV1().PersistentVolumes().Get(name, meta_v1.GetOptions{})
+	if err != nil {
+		log.Errorf("Error retrieving pv from name %s, err: %v", name, err.Error())
+		return credentials, err
+	}
+
+	storageClass, err := flavor.kubeClient.StorageV1().StorageClasses().Get(pv.Spec.StorageClassName, meta_v1.GetOptions{})
+	if err != nil {
+		return credentials, fmt.Errorf("error getting storage classes: %v", err.Error())
+	}
+
+	var secretName string
+	var secretNamespace string
+	for key, value := range storageClass.Parameters {
+		if key == provisionerSecretNameKey {
+			secretName = value
+		} else if key == provisionerSecretNamespaceKey {
+			secretNamespace = value
+		}
+	}
+	credentials, err = flavor.GetCredentialsFromSecret(secretName, secretNamespace)
+	return credentials, nil
 }
 
 // GetCredentialsFromSecret retrieves the secrets map for the given secret name and namespace if exists, else returns nil
