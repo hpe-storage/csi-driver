@@ -1675,6 +1675,11 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 	}
 
 	folders := strings.Split(in.VolumePath, "/")
+	if len(folders) < 2 {
+		log.Infof("Volume name could not be retrieved from path %s , return ",
+			in.VolumePath)
+		return nil, nil
+	}
 	pvName := folders[len(folders)-2]
 	credentials, err := driver.flavor.GetCredentialsFromVolume(pvName)
 	if err != nil {
