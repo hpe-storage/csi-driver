@@ -21,7 +21,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/resource"
-
+	vol "k8s.io/kubernetes/pkg/volume"
 	"k8s.io/utils/mount"
 
 	log "github.com/hpe-storage/common-host-libs/logger"
@@ -1702,6 +1702,24 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 			in.VolumeId)
 		return nil, nil
 	}
+	hpeMetricsProvider := vol.NewMetricsStatFS(in.VolumePath)
+	metrics, err := hpeMetricsProvider.GetMetrics()
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	inodes, ok := (*(metrics.Inodes)).AsInt64()
+	if !ok {
+		log.WithContext(ctx).Error("failed to fetch available inodes")
+	}
+	inodesFree, ok := (*(metrics.InodesFree)).AsInt64()
+	if !ok {
+		log.WithContext(ctx).Error("failed to fetch free inodes")
+	}
+	inodesUsed, ok := (*(metrics.InodesUsed)).AsInt64()
+	if !ok {
+		log.WithContext(ctx).Error("failed to fetch used inodes")
+	}
+
 	return &csi.NodeGetVolumeStatsResponse{
 		Usage: []*csi.VolumeUsage{
 			{
@@ -1709,6 +1727,12 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 				Total:     volume.Size,
 				Used:      volume.UsedBytes,
 				Unit:      csi.VolumeUsage_BYTES,
+			},
+			{
+				Available: inodesFree,
+				Total:     inodes,
+				Used:      inodesUsed,
+				Unit:      csi.VolumeUsage_INODES,
 			},
 		},
 	}, nil
