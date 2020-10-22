@@ -54,6 +54,11 @@ func (flavor *Flavor) GetEphemeralVolumeSecretFromPod(volumeHandle string, podNa
 	return "", nil
 }
 
+// GetCredentialsFromVolume :
+func (flavor *Flavor) GetCredentialsFromVolume(name string) (map[string]string, error) {
+	return nil, nil
+}
+
 // GetCredentialsFromSecret :
 func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (map[string]string, error) {
 	return nil, nil
