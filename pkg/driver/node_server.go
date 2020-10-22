@@ -1715,7 +1715,12 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		// figure out if volumePath is actually a staging path
 		stagedDevice, err := readStagedDeviceInfo(request.GetVolumePath())
 		if err != nil {
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Cannot get staging device info from volume path %s", err.Error()))
+			// See if the "staging_target_path contains the deviceInfo.json
+			// This behaviour is peculiar to only k8s 1.19
+			stagedDevice, err = readStagedDeviceInfo(request.GetStagingTargetPath())
+			if err != nil {
+				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Cannot get staging device info from volume path %s, staged location %s, Error : %s", request.GetVolumePath(), request.GetStagingTargetPath(), err.Error()))
+			}
 		}
 		if stagedDevice == nil || stagedDevice.Device == nil {
 			return nil, status.Error(codes.Internal,
