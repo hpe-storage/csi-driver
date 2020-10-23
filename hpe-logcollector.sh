@@ -21,9 +21,9 @@
 #   containers are also collected from kubectl logs into a local file.
 #
 
-# Finds a node that matches the $node_name value in $namespace and
-# updates $node_name to the name from kubectl.  If the node is not
-# found, the return value is non-zero.
+# Finds a node that matches the $node_name and updates $node_name
+# value to the name from kubectl.  If the node is not found, the
+# return value is non-zero.
 sanitize_node_name() {
 if [[ ! -z $node_name ]]; then
 	node_from_kubectl=$(kubectl get nodes --field-selector=metadata.name=$node_name -o jsonpath='{.items..metadata.name}')
@@ -40,7 +40,7 @@ if [[ ! -z $node_name ]]; then
 	if [[ ! -z $pod_name ]]; then
 	     kubectl exec -it $pod_name -c hpe-csi-driver -n $namespace -- hpe-logcollector.sh
 	else
-	     echo "hpe-csi-node pod in namespace $namespace is not running on node $node_name."
+	     echo "Pod hpe-csi-node in namespace $namespace is not running on node $node_name."
 	fi
 else
 	# collect the diagnostic logs from all the nodes where the hpe-csi-node pod is running
