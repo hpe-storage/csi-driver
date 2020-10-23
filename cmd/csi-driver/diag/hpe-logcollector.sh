@@ -29,7 +29,7 @@ destinationDir="/var/log/tmp"
 #Destination Hpe logs directory
 mkdir -p $destinationDir
 logDir="/var/log"
-directory="$destinationDir/hpestorage-logs-$today"
+directory="$destinationDir/hpestorage-logs-$timestamp"
 
 # Writing to  destinationDir/
 echo "Command :iscsiadm -m session -P 3" > $destinationDir/iscsiadm-m-P3
@@ -76,27 +76,6 @@ if [ -d $directory ]; then
     #Nimble logs, including CSP
 	cp -r /var/log/nimble-*.log $directory > /dev/null 2>&1
 
-    #Collect CSI sidecar container logs, if kubectl is available
-    podlist=`kubectl get pods -l app=hpe-csi-controller -A -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.metadata.namespace}{"\n"}{end}' 2>/dev/null`
-    if [[ $? -eq 0 ]]
-    then
-        while read -r podname podnamespace
-        do
-            containerlist=`kubectl get pod $podname -n $podnamespace -o jsonpath={.spec.containers[*].name} 2>/dev/null`
-            if [[ $? -eq 0 ]]
-            then
-                for containername in $containerlist
-                do
-                    # The hpe-csi-driver log is collected separately
-                    if [[ "$containername" != "hpe-csi-driver" ]]
-                    then
-                        timeout 30 kubectl logs $podname -n $podnamespace -c $containername > $directory/$podname.$podnamespace.$containername.log 2>&1
-                    fi
-                done
-            fi
-        done < <(printf '%s\n' "$podlist")
-    fi
-
 	#copy messages  for RHEL systems
 	cp /var/log/messages* $directory > /dev/null 2>&1
 
@@ -136,7 +115,7 @@ if [ -d $directory ]; then
 	cp $destinationDir/host-info $directory
 
 	#tar the files
-	tar -cvzf $filename -C $directory . &> /dev/null
+	tar -czf $filename -C $directory . &> /dev/null
 	mv $filename $logDir/  &> /dev/null
 
 	#Clean up after Tar
@@ -146,7 +125,7 @@ if [ -d $directory ]; then
 	if [[ -f "$logDir/$filename" ]]; then
 		echo "Diagnostic dump file created at $logDir/$filename on host $hostname"
 	else
-		echo "Unable to collect the diagnostic information under $logDir"
+		echo "Unable to collect diagnostic information on host $hostname"
 		exit 1
 	fi
 else
