@@ -29,7 +29,7 @@ destinationDir="/var/log/tmp"
 #Destination Hpe logs directory
 mkdir -p $destinationDir
 logDir="/var/log"
-directory="$destinationDir/hpestorage-logs-$today"
+directory="$destinationDir/hpestorage-logs-$timestamp"
 
 # Writing to  destinationDir/
 echo "Command :iscsiadm -m session -P 3" > $destinationDir/iscsiadm-m-P3
@@ -73,6 +73,9 @@ if [ -d $directory ]; then
     #HPE Logs
 	cp -r /var/log/hpe-*.log $directory > /dev/null 2>&1
 
+    #Nimble logs, including CSP
+	cp -r /var/log/nimble-*.log $directory > /dev/null 2>&1
+
 	#copy messages  for RHEL systems
 	cp /var/log/messages* $directory > /dev/null 2>&1
 
@@ -80,14 +83,13 @@ if [ -d $directory ]; then
 	cp /var/log/syslog* $directory > /dev/null 2>&1
 
 	#Nimble Config files
-	cp /etc/multipath.conf $directory
+	cp /etc/multipath.conf $directory > /dev/null 2>&1
 	cp /etc/iscsi/iscsid.conf $directory > /dev/null 2>&1
 
-
-	#dmsetup table  output
+	#dmsetup table output
 	cp $destinationDir/dmsetup $directory
 
-	#dmsetup table  output
+	#dmsetup table output
 	cp $destinationDir/mounts $directory
 
 	#rpm/dpkg package output
@@ -97,10 +99,10 @@ if [ -d $directory ]; then
 	   cp $destinationDir/dpkg $directory
 	fi
 
-	#multipath   output
+	#multipath output
 	cp $destinationDir/multipath $directory
 
-	#multipathd   output
+	#multipathd output
 	cp $destinationDir/multipathd $directory
 
 	#Iscsiadm logs
@@ -113,7 +115,7 @@ if [ -d $directory ]; then
 	cp $destinationDir/host-info $directory
 
 	#tar the files
-	tar -cvzf $filename -C $directory . &> /dev/null
+	tar -czf $filename -C $directory . &> /dev/null
 	mv $filename $logDir/  &> /dev/null
 
 	#Clean up after Tar
@@ -123,28 +125,28 @@ if [ -d $directory ]; then
 	if [[ -f "$logDir/$filename" ]]; then
 		echo "Diagnostic dump file created at $logDir/$filename on host $hostname"
 	else
-		echo "Unable to collect the diagnostic information under $logDir"
+		echo "Unable to collect diagnostic information on host $hostname"
 		exit 1
 	fi
 else
-		echo "$directory not created , try again"
-		exit 1
+	echo "$directory not created, try again"
+	exit 1
 fi
 
 }
 
 display_usage() {
-echo "Diagnostic LogCollector Script to collect HPE Storage logs"
-echo -e "\nUsage: hpe-logcollector"
+    echo "Diagnostic LogCollector Script to collect HPE Storage logs"
+    echo -e "\nUsage: hpe-logcollector"
 }
 
 #Main Function
 # check whether user had supplied -h or --help . If yes display usage
-	if [[ ( $1 == "--help") ||  $1 == "-h" ]]
-	then
-		display_usage
-		exit 0
-	fi
+if [[ ( $1 == "--help") ||  $1 == "-h" ]]
+then
+	display_usage
+	exit 0
+fi
 
 echo "======================================"
 echo "Collecting the Diagnostic Information"
