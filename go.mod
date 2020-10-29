@@ -59,7 +59,12 @@ require (
 	sigs.k8s.io/structured-merge-diff/v3 v3.0.0 // indirect
 	sigs.k8s.io/yaml v1.2.0 // indirect
 )
+
 replace k8s.io/api => k8s.io/api v0.17.0
+
 replace k8s.io/apimachinery => k8s.io/apimachinery v0.17.1-beta.0
+
 replace k8s.io/client-go => k8s.io/client-go v0.17.0
+
 replace google.golang.org/grpc => google.golang.org/grpc v1.26.0
+
