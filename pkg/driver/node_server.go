@@ -1658,12 +1658,12 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 
 	volumeID := in.GetVolumeId()
 	if volumeID == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "volume id %s is empty", volumeID)
+		return nil, status.Errorf(codes.InvalidArgument, "volume id is empty")
 	}
 
 	volumePath := in.GetVolumePath()
 	if volumePath == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "volume path %s is empty", volumePath)
+		return nil, status.Errorf(codes.InvalidArgument, "volume path is empty")
 	}
 
 	// check if it is a mount point
