@@ -694,15 +694,6 @@ func (driver *Driver) ControllerPublishVolume(ctx context.Context, request *csi.
 		return nil, status.Error(codes.InvalidArgument, "Invalid volume capability specified for ControllerPublishVolume")
 	}
 
-	readOnlyValue, err := strconv.ParseBool(request.VolumeContext[readOnlyKey])
-	if err != nil {
-		log.Tracef("Failed to retrieve readonly key from volumeContext : %v", err.Error())
-		readOnlyValue = false
-	}
-	if request.Readonly != readOnlyValue {
-		return nil, status.Error(codes.AlreadyExists, "Volume published but has incompatible readonly flag")
-	}
-
 	// Check for duplicate request. If yes, then return ABORTED
 	key := fmt.Sprintf("%s:%s:%s", "ControllerPublishVolume", request.VolumeId, request.NodeId)
 	if err := driver.HandleDuplicateRequest(key); err != nil {

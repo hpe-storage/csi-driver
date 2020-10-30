@@ -1708,9 +1708,9 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 			volumeID, err.Error())
 	}
 	if volume == nil {
-		log.Infof("Volume with ID %s not found on the backend, return ",
+		log.Errorf("Volume with ID %s not found on the backend, return ", volumeID)
+		return nil, status.Errorf(codes.NotFound, "Volume with ID %s not found on the backend, return ",
 			volumeID)
-		return nil, nil
 	}
 	hpeMetricsProvider := vol.NewMetricsStatFS(in.VolumePath)
 	metrics, err := hpeMetricsProvider.GetMetrics()
