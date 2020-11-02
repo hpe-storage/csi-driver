@@ -1656,9 +1656,14 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 	log.Trace(">>>>> NodeGetVolumeStats")
 	defer log.Trace("<<<<< NodeGetVolumeStats")
 
+	volumeID := in.GetVolumeId()
+	if volumeID == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "volume id is empty")
+	}
+
 	volumePath := in.GetVolumePath()
 	if volumePath == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "volume path %s is empty", volumePath)
+		return nil, status.Errorf(codes.InvalidArgument, "volume path is empty")
 	}
 
 	// check if it is a mount point
@@ -1666,9 +1671,9 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 	notMount, err := dummy.IsLikelyNotMountPoint(volumePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, status.Errorf(codes.InvalidArgument, "volume path %s does not exist", volumePath)
+			return nil, status.Errorf(codes.NotFound, "volume path %s does not exist", volumePath)
 		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.NotFound, err.Error())
 	}
 	if notMount {
 		return nil, status.Errorf(codes.InvalidArgument, "volume path %s is not mounted", volumePath)
@@ -1693,19 +1698,19 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Errorf(codes.Unavailable, "Failed to get storage provider from secrets for volume with id %s, err: %s",
-			in.VolumeId, err.Error())
+			volumeID, err.Error())
 	}
 	// Fetch the volume using volume ID
-	volume, err := storageProvider.GetVolume(in.VolumeId)
+	volume, err := storageProvider.GetVolume(volumeID)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Errorf(codes.Internal, "Error while retrieving volume with id %s from the backend, err: %s",
-			in.VolumeId, err.Error())
+			volumeID, err.Error())
 	}
 	if volume == nil {
-		log.Infof("Volume with ID %s not found on the backend, return ",
-			in.VolumeId)
-		return nil, nil
+		log.Errorf("Volume with ID %s not found on the backend, return ", volumeID)
+		return nil, status.Errorf(codes.NotFound, "Volume with ID %s not found on the backend, return ",
+			volumeID)
 	}
 	hpeMetricsProvider := vol.NewMetricsStatFS(in.VolumePath)
 	metrics, err := hpeMetricsProvider.GetMetrics()
