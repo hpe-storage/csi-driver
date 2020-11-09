@@ -224,7 +224,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 	createParameters, err := driver.flavor.ConfigureAnnotations(request.Name, request.Parameters)
 	if err != nil {
 		log.Errorf("Failed to configure create parameters from PVC annotations. err=%v", err)
-		return nil, status.Error(codes.Internal, "Failed to configure create parameters from PVC annotations")
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to configure create parameters from PVC annotations: %s", err.Error()))
 	}
 
 	// Create volume
@@ -408,7 +408,7 @@ func (driver *Driver) createVolume(
 	existingVolume, err := storageProvider.GetVolumeByName(name)
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.Unavailable, "Failed to check if volume exists")
+		return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to check if volume %s exists. %s", name, err.Error()))
 	}
 
 	if existingVolume != nil {
@@ -453,7 +453,7 @@ func (driver *Driver) createVolume(
 			existingSnap, err := storageProvider.GetSnapshot(snapID)
 			if err != nil {
 				log.Error("Failed to process volume source, err: ", err.Error())
-				return nil, status.Error(codes.Internal, "Error while looking for base snapshot with ID "+snapID)
+				return nil, status.Error(codes.Internal, fmt.Sprintf("Error while looking for base snapshot with ID %s: %s", snapID, err.Error()))
 			}
 			if existingSnap == nil {
 				return nil, status.Error(codes.NotFound, "Could not find base snapshot with ID "+snapID)
@@ -1089,7 +1089,7 @@ func (driver *Driver) ListVolumes(ctx context.Context, request *csi.ListVolumesR
 		volumes, err := storageProvider.GetVolumes()
 		if err != nil {
 			log.Trace("err: ", err.Error())
-			return nil, status.Error(codes.Unavailable, "Error while attempting to list volumes")
+			return nil, status.Error(codes.Unavailable, fmt.Sprintf("Error while attempting to list volumes. %s", err.Error()))
 		}
 		for _, volume := range volumes {
 			allVolumes = append(allVolumes, volume)
@@ -1345,7 +1345,7 @@ func (driver *Driver) DeleteSnapshot(ctx context.Context, request *csi.DeleteSna
 	existingSnapshot, err := storageProvider.GetSnapshot(request.SnapshotId)
 	if err != nil {
 		// Error while retrieving the snapshot using id and secrets
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get snapshot with ID %s", request.SnapshotId))
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get snapshot with ID %s: %s", request.SnapshotId, err.Error()))
 	}
 	if existingSnapshot == nil {
 		log.Tracef("Snapshot %s does not exist", request.SnapshotId)
@@ -1587,7 +1587,7 @@ func getSnapshotsForStorageProvider(ctx context.Context, request *csi.ListSnapsh
 		snapshot, err := storageProvider.GetSnapshot(request.SnapshotId)
 		if err != nil {
 			// Error while retrieving the snapshot using id and secrets
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get snapshot with ID %s", request.SnapshotId))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to get snapshot with ID %s: %s", request.SnapshotId, err.Error()))
 		}
 		if snapshot != nil {
 			allSnapshots = append(allSnapshots, snapshot)
@@ -1596,7 +1596,7 @@ func getSnapshotsForStorageProvider(ctx context.Context, request *csi.ListSnapsh
 		snapshots, err := storageProvider.GetSnapshots(request.SourceVolumeId)
 		if err != nil {
 			log.Trace("err: ", err.Error())
-			return nil, status.Error(codes.Internal, "Error while attempting to list snapshots")
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error while attempting to list snapshots. %s", err.Error()))
 		}
 		log.Tracef("Read %d snapshots from a storage provider", len(snapshots))
 		for _, snapshot := range snapshots {

@@ -88,7 +88,7 @@ func (driver *Driver) isMounted(device *model.Device, mountPoint string) (bool, 
 	// Get all mounts for device
 	mounts, err := driver.chapiDriver.GetMountsForDevice(device)
 	if err != nil {
-		return false, status.Error(codes.Internal, fmt.Sprintf("Error retrieving mounts for the device %s", device.AltFullPathName))
+		return false, status.Error(codes.Internal, fmt.Sprintf("Error retrieving mounts for the device %s: %s", device.AltFullPathName, err.Error()))
 	}
 	for _, mount := range mounts {
 		if mount.Mountpoint == mountPoint {
@@ -594,7 +594,7 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 	log.Tracef("NodeUnstageVolume deleting device %+v", device)
 	if err := driver.chapiDriver.DeleteDevice(device); err != nil {
 		log.Errorf("Failed to delete device with path name %s.  Error: %s", device.Pathname, err.Error())
-		return status.Error(codes.Internal, "Error deleting device "+device.Pathname)
+		return status.Error(codes.Internal, fmt.Sprintf("Error deleting device %s: %s", device.Pathname, err.Error()))
 	}
 	// Remove the device file
 	removeDataFile(stagingTargetPath, deviceInfoFileName)
@@ -678,7 +678,7 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	if err != nil {
 		log.Errorf("Found unsupported volume capability %+v", request.VolumeCapability)
 		return nil, status.Error(codes.InvalidArgument,
-			fmt.Sprintf("Unsupported volume capability %+v specified for NodePublishVolume", request.VolumeCapability))
+			fmt.Sprintf("Unsupported volume capability %+v specified for NodePublishVolume: %s", request.VolumeCapability, err.Error()))
 	}
 	// Get volume access type
 	volAccessType, err := driver.getVolumeAccessType(request.VolumeCapability)
