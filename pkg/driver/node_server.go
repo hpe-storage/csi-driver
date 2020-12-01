@@ -485,6 +485,10 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 	if scope, ok := publishContext[targetScopeKey]; ok {
 		devices[0].TargetScope = scope
 	}
+	// This is useful during unstage to logout of all iscsitarget sessions in case of 3PAR/Primera .  
+	if strings.Contains(strings.ToLower(publishContext[targetNamesKey]), "3pardata"){
+		devices[0].StorageVendor = "3PARdata"
+	}	
 
 	return devices[0], nil
 }
