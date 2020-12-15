@@ -485,10 +485,10 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 	if scope, ok := publishContext[targetScopeKey]; ok {
 		devices[0].TargetScope = scope
 	}
-	// This is useful during unstage to logout of all iscsitarget sessions in case of 3PAR/Primera .  
-	if strings.Contains(strings.ToLower(publishContext[targetNamesKey]), "3pardata"){
+	// This is useful during unstage to logout of all iscsitarget sessions in case of 3PAR/Primera .
+	if strings.Contains(strings.ToLower(publishContext[targetNamesKey]), "3pardata") {
 		devices[0].StorageVendor = "3PARdata"
-	}	
+	}
 
 	return devices[0], nil
 }
@@ -648,12 +648,13 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	log.Tracef(">>>>> NodePublishVolume, VolumeId: %s, stagingPath: %s, targetStagingPath: %s",
 		request.VolumeId, request.TargetPath, request.StagingTargetPath)
 	defer log.Trace("<<<<< NodePublishVolume")
+	targetPath := request.TargetPath
 
 	if request.VolumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "Invalid volume ID specified for NodePublishVolume")
 	}
 
-	if request.TargetPath == "" {
+	if targetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "Invalid target path specified for NodePublishVolume")
 	}
 
@@ -670,7 +671,7 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	}
 
 	// Check for duplicate request. If yes, then return ABORTED
-	key := fmt.Sprintf("%s:%s:%s:%s", "NodePublishVolume", request.VolumeId, request.TargetPath, request.StagingTargetPath)
+	key := fmt.Sprintf("%s:%s:%s:%s", "NodePublishVolume", request.VolumeId, targetPath, request.StagingTargetPath)
 	if err := driver.HandleDuplicateRequest(key); err != nil {
 		return nil, err // ABORTED
 	}
@@ -690,6 +691,13 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 		log.Errorf("Failed to retrieve volume access type, err: %v", err.Error())
 		return nil, status.Error(codes.InvalidArgument,
 			fmt.Sprintf("Failed to retrieve volume access type, %v", err.Error()))
+	}
+
+	// Create target path
+	if request.PublishContext[volumeAccessModeKey] == model.MountType.String() {
+		if err := util.CreateDirIfNotExists(targetPath, 0750); err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to create installation directory %v, %v", targetPath, err))
+		}
 	}
 
 	// Ephemeral volume request does not contain 'publishContext'. So, skip this validation.
