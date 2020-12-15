@@ -27,7 +27,7 @@ func getRecommendationByFsOption(mountPoint *model.Mount, option string, current
 	var description = fsOptionDescriptionMap[option]
 
 	// ignore _netdev option for FC devices
-	if option == "_netdev" && mountPoint.Device.IscsiTarget == nil {
+	if option == "_netdev" && mountPoint.Device.IscsiTargets == nil {
 		return nil
 	}
 	// ignore discard option for ext3 based filesystems as its not supported

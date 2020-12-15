@@ -27,7 +27,7 @@ const (
 	MultipathConf = "/etc/multipath.conf"
 	// MultipathBindings bindings file for multipathd
 	MultipathBindings  = "/etc/multipath/bindings"
-	orphanPathsPattern = ".*(?P<host>\\d+):(?P<channel>\\d+):(?P<target>\\d+):(?P<lun>\\d+).*(REPLACE_VENDOR).*orphan"
+	orphanPathsPattern = ".*\\s+(?P<host>\\d+):(?P<channel>\\d+):(?P<target>\\d+):(?P<lun>\\d+).*(REPLACE_VENDOR).*orphan"
 	maxTries           = 3
 )
 
@@ -239,8 +239,8 @@ func cleanupDeviceAndSlaves(dev *model.Device) (err error) {
 	}
 
 	//delete all physical paths of the device
-	if !isFC && !isGst && dev.IscsiTarget != nil {
-		log.Debugf("volume scoped target %+v, initiating iscsi logout and delete", dev.IscsiTarget)
+	if (!isFC && dev.IscsiTargets != nil )&& (!isGst || dev.StorageVendor == "3PARdata") {
+		log.Debugf("volume scoped target %+v, initiating iscsi logout and delete", dev.IscsiTargets)
 		err = logoutAndDeleteIscsiTarget(dev)
 		if err != nil {
 			log.Error(err.Error())
@@ -286,17 +286,19 @@ func logoutAndDeleteIscsiTarget(dev *model.Device) error {
 	log.Tracef(">>>>> logoutAndDeleteIscsiTarget for device %s", dev.AltFullPathName)
 	defer log.Tracef("<<<<< logoutAndDeleteIscsiTarget")
 
-	if dev.IscsiTarget != nil {
-		log.Tracef("initiating the iscsi target logout for %s of type %s", dev.IscsiTarget.Name, dev.IscsiTarget.Scope)
-		//logout of iscsi target
-		err := iscsiLogoutOfTarget(dev.IscsiTarget)
-		if err != nil {
-			return fmt.Errorf("unable to logout iscsi target %s. Error: %s", dev.IscsiTarget, err.Error())
-		}
-		//delete iscsi node
-		err = iscsiDeleteNode(dev.IscsiTarget)
-		if err != nil {
-			return fmt.Errorf("unable to delete iscsi target: %s. Error: %s", dev.IscsiTarget, err.Error())
+	if dev.IscsiTargets != nil {
+		for _, iscsiTarget := range dev.IscsiTargets {
+			log.Tracef("initiating the iscsi target logout for %s of type %s", iscsiTarget.Name, iscsiTarget.Scope)
+			//logout of iscsi target
+			err := iscsiLogoutOfTarget(iscsiTarget)
+			if err != nil {
+				return fmt.Errorf("unable to logout iscsi target %s. Error: %s", iscsiTarget, err.Error())
+			}
+			//delete iscsi node
+			err = iscsiDeleteNode(iscsiTarget)
+			if err != nil {
+				return fmt.Errorf("unable to delete iscsi target: %s. Error: %s", iscsiTarget, err.Error())
+			}
 		}
 	}
 	return nil
