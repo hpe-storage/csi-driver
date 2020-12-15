@@ -98,6 +98,10 @@ elif [ "$CONFORM_TO" = "sles" ]; then
     fi
 elif [ "$CONFORM_TO" = "coreos" ]; then
     echo "skipping package checks/installation on CoreOS"
+    if ! [[ -e /etc/iscsi/initiatorname.iscsi ]]; then
+        echo "Generating first-boot IQN"
+        echo "InitiatorName=$(iscsi-iname)" > /etc/iscsi/initiatorname.iscsi
+    fi
 else
     echo "unsupported configuration for node package checks. os $os_name"
     exit 1
