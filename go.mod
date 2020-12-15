@@ -23,7 +23,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.12.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
-	github.com/hpe-storage/common-host-libs v4.2.1-0.20200817142457-c83686f6a7ce+incompatible
+	github.com/hpe-storage/common-host-libs v4.2.1-0.20201209024039-1adccfea051b+incompatible
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20190828052325-42886f48215c
 	github.com/jonboulle/clockwork v0.1.0 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.7.1
@@ -67,4 +67,3 @@ replace k8s.io/apimachinery => k8s.io/apimachinery v0.17.1-beta.0
 replace k8s.io/client-go => k8s.io/client-go v0.17.0
 
 replace google.golang.org/grpc => google.golang.org/grpc v1.26.0
-

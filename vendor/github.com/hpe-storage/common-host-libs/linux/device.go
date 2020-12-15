@@ -244,8 +244,13 @@ func GetLinuxDmDevices(needActivePath bool, vol *model.Volume) (a []*model.Devic
 				return nil, err
 			}
 			device.Size = sizeInMiB
+			var multipathdShowPaths []*model.PathInfo
+			if vol.SecondaryArrayDetails != "" {
+				multipathdShowPaths, err = retryGetPathOfDevice(device, false)
+			} else {
+				multipathdShowPaths, err = retryGetPathOfDevice(device, needActivePath)
+			}
 
-			multipathdShowPaths, err := retryGetPathOfDevice(device, needActivePath)
 			if err != nil {
 				err = fmt.Errorf("unable to get scsi slaves for device:%s. Error: %s", device.SerialNumber, err.Error())
 				log.Debugf(err.Error())
@@ -300,15 +305,16 @@ func GetLinuxDmDevices(needActivePath bool, vol *model.Volume) (a []*model.Devic
 
 			isFC := isFibreChannelDevice(device.Slaves)
 			if !isFC {
-				iscsiTarget, err := iscsiGetTargetOfDevice(device)
+				iscsiTargets, err := iscsiGetTargetsOfDevice(device)
 				if err != nil {
 					log.Debugf("unable to get iscsi target for device %s. Error: %s", device.Pathname, err.Error())
 					continue
 					// continue with other devices, might be in offline state and IscsiTarget will be nil for this device
 				}
-				if iscsiTarget != nil {
-					device.IscsiTarget = iscsiTarget
+				if iscsiTargets != nil {
+					device.IscsiTargets = iscsiTargets
 				}
+
 			}
 			if len(device.Slaves) > 0 {
 				log.Tracef("adding device to list %+v", device)
@@ -492,8 +498,9 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 				return d, nil
 			}
 			// Match TargetName/IQN only for VST type
-			if d.IscsiTarget != nil && volume.SerialNumber == "" && d.IscsiTarget.Name == volume.Iqn {
-				log.Debugf("Found device with matching target-name:%s scope:%s map:%s and slaves %+v", d.IscsiTarget.Name, d.IscsiTarget.Scope, d.AltFullPathName, d.Slaves)
+			if d.IscsiTargets[0] != nil && volume.SerialNumber == "" && d.IscsiTargets[0].Name == volume.Iqn {
+				log.Debugf("Found device with matching target-name:%s scope:%s map:%s and slaves %+v", d.IscsiTargets[0].Name, d.IscsiTargets[0].Scope, d.AltFullPathName, d.Slaves)
+
 				return d, nil
 			}
 		}

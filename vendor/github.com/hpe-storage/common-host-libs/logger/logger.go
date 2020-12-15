@@ -274,7 +274,10 @@ func (hook *ConsoleHook) Fire(entry *log.Entry) error {
 
 	// Write log entry to output stream
 	if logParams.UseTextFormatter() {
-		hook.formatter.(*log.TextFormatter).ForceColors = hook.checkIfTerminal(logWriter)
+		//https://github.com/sirupsen/logrus/issues/172
+		if runtime.GOOS != "windows" {
+			hook.formatter.(*log.TextFormatter).ForceColors = hook.checkIfTerminal(logWriter)
+		}
 	}
 
 	lineBytes, err := hook.formatter.Format(entry)
