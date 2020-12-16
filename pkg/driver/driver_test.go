@@ -40,13 +40,18 @@ func TestPluginSuite(t *testing.T) {
 	os.RemoveAll(targetPath)
 
 	config := &sanity.Config{
-		StagingPath: stagingPath,
-		TargetPath:  targetPath,
-		Address:     endpoint,
-		SecretsFile: secretsFile,
+		StagingPath:     stagingPath,
+		TargetPath:      targetPath,
+		Address:         endpoint,
+		SecretsFile:     secretsFile,
+		CreateTargetDir: createTarget,
 	}
 
 	sanity.Test(t, config)
+}
+
+func createTarget(path string) (string, error) {
+	return "./csi-mnt-stage", nil
 }
 
 // nolint: deadcode

@@ -92,7 +92,7 @@ github.com/hpe-storage/common-host-libs/storageprovider/fake
 github.com/hpe-storage/common-host-libs/stringformat
 github.com/hpe-storage/common-host-libs/tunelinux
 github.com/hpe-storage/common-host-libs/util
-# github.com/hpe-storage/k8s-custom-resources v0.0.0-20190828052325-42886f48215c
+# github.com/hpe-storage/k8s-custom-resources v0.0.0-20201216052928-e2854a36f3f9
 github.com/hpe-storage/k8s-custom-resources/pkg/apis/hpestorage/v1
 github.com/hpe-storage/k8s-custom-resources/pkg/client/clientset/versioned
 github.com/hpe-storage/k8s-custom-resources/pkg/client/clientset/versioned/scheme
