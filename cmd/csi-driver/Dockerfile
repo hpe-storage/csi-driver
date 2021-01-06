@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi7/ubi-minimal:7.8-328
+FROM registry.access.redhat.com/ubi7/ubi-minimal:7.9-256
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 RUN microdnf install -y systemd
