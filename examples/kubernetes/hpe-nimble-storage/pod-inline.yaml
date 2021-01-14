@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: my-pod-inline-mount-1
+  name: my-pod-inline-mount-2
 spec:
   containers:
     - name: pod-datelog-1
@@ -15,10 +15,10 @@ spec:
     - name: my-volume-1
       csi:
        driver: csi.hpe.com
-       nodePublishSecretRef:
-         name: nimble-secret
        fsType: ext3
        volumeAttributes:
          csi.storage.k8s.io/ephemeral: "true"
+         inline-volume-secret-name: hpe-backend
+         inline-volume-secret-namespace: hpe-storage
          accessProtocol: "iscsi"
-         size: "5Gi"
+         size: "7Gi"

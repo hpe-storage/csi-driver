@@ -1,0 +1,7 @@
+---
+apiVersion: storage.hpe.com/v1
+kind: VolumeGroup
+metadata:
+  name: my-volume-group
+spec:
+  volumeGroupClassName: my-volume-group-class

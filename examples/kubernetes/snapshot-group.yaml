@@ -1,0 +1,12 @@
+---
+apiVersion: storage.hpe.com/v1
+kind: SnapshotGroup
+metadata:
+  name: my-snapshot-group
+spec:
+  source:
+    kind: VolumeGroup
+    apiGroup: storage.hpe.com
+    name: my-volume-group
+  snapshotGroupClassName: my-snapshot-group-class
+  volumeSnapshotClassName: hpe-snapshot
