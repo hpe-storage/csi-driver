@@ -5,20 +5,20 @@ metadata:
 provisioner: csi.hpe.com
 parameters:
   csi.storage.k8s.io/fstype: xfs
-  csi.storage.k8s.io/provisioner-secret-name: nimble-secret
-  csi.storage.k8s.io/provisioner-secret-namespace: kube-system
-  csi.storage.k8s.io/controller-publish-secret-name: nimble-secret
-  csi.storage.k8s.io/controller-publish-secret-namespace: kube-system
-  csi.storage.k8s.io/node-stage-secret-name: nimble-secret
-  csi.storage.k8s.io/node-stage-secret-namespace: kube-system
-  csi.storage.k8s.io/node-publish-secret-name: nimble-secret
-  csi.storage.k8s.io/node-publish-secret-namespace: kube-system
+  csi.storage.k8s.io/provisioner-secret-name: hpe-backend
+  csi.storage.k8s.io/provisioner-secret-namespace: hpe-storage
+  csi.storage.k8s.io/controller-publish-secret-name: hpe-backend
+  csi.storage.k8s.io/controller-publish-secret-namespace: hpe-storage
+  csi.storage.k8s.io/node-stage-secret-name: hpe-backend
+  csi.storage.k8s.io/node-stage-secret-namespace: hpe-storage
+  csi.storage.k8s.io/node-publish-secret-name: hpe-backend
+  csi.storage.k8s.io/node-publish-secret-namespace: hpe-storage
   # Uncomment for k8s 1.14 for resize support
-  #csi.storage.k8s.io/resizer-secret-name: nimble-secret
-  #csi.storage.k8s.io/resizer-secret-namespace: kube-system
+  #csi.storage.k8s.io/resizer-secret-name: hpe-backend
+  #csi.storage.k8s.io/resizer-secret-namespace: hpe-storage
   # Uncomment for k8s 1.15 for resize support
-  #csi.storage.k8s.io/controller-expand-secret-name: nimble-secret
-  #csi.storage.k8s.io/controller-expand-secret-namespace: kube-system
+  #csi.storage.k8s.io/controller-expand-secret-name: hpe-backend
+  #csi.storage.k8s.io/controller-expand-secret-namespace: hpe-storage
   accessProtocol: "iscsi"
   description: "Volume from csi"
   dedupeEnabled: "false"

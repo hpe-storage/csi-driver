@@ -1,0 +1,10 @@
+---
+apiVersion: storage.hpe.com/v1
+kind: SnapshotGroupClass
+metadata:
+  name: my-snapshot-group-class
+snapshotter: csi.hpe.com
+deletionPolicy: Delete
+parameters:
+  csi.hpe.com/snapshot-group-snapshotter-secret-name: hpe-backend
+  csi.hpe.com/snapshot-group-snapshotter-secret-namespace: hpe-storage

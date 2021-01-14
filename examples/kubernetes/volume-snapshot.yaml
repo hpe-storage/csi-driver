@@ -3,6 +3,6 @@ kind: VolumeSnapshot
 metadata:
   name: my-snap-1
 spec:
-  volumeSnapshotClassName: my-snapclass-1
+  volumeSnapshotClassName: hpe-snapshot
   source:
     persistentVolumeClaimName: my-pvc-1

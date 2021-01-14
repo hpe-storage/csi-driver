@@ -1,0 +1,11 @@
+---
+apiVersion: storage.hpe.com/v1
+kind: VolumeGroupClass
+metadata:
+  name: my-volume-group-class
+provisioner: csi.hpe.com
+deletionPolicy: Delete
+parameters:
+  description: "HPE CSI Driver for Kubernetes Volume Group"
+  csi.hpe.com/volume-group-provisioner-secret-name: hpe-backend
+  csi.hpe.com/volume-group-provisioner-secret-namespace: hpe-storage
