@@ -6,7 +6,7 @@ RUN microdnf install -y systemd
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \
       vendor="HPE" \
-      version="1.3.0" \
+      version="1.4.0" \
       summary="HPE CSI Driver for Kubernetes" \
       description="The HPE CSI Driver for Kubernetes enables container orchestrators, such as Kubernetes and OpenShift, to manage the life-cycle of persistent storage." \
       io.k8s.display-name="HPE CSI Driver for Kubernetes" \
