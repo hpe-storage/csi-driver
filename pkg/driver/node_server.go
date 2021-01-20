@@ -1673,6 +1673,12 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 		return nil, status.Errorf(codes.InvalidArgument, "volume id is empty")
 	}
 
+	if strings.Contains(volumeID, "-") {
+		// ignore NFS pvc to report stats, as it does not contain valid CSP volumeHandle
+		log.Tracef("ignoring pvc with volume id %s", volumeID)
+		return nil, nil
+	}
+
 	volumePath := in.GetVolumePath()
 	if volumePath == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "volume path is empty")
