@@ -926,13 +926,10 @@ func (driver *Driver) controllerPublishVolume(
 		publishContext[fsCreateOptionsKey] = volumeContext[fsCreateOptionsKey]
 	}
 
-	sensitive := map[string]string{}
+	sensitive := []string{}
 	for key, value := range publishContext {
-		if log.IsSensitive(key) {
-			sensitive[key] = "******"
-		} else {
-			sensitive[key] = value
-		}
+		sensitive = append(sensitive, key)
+		sensitive = append(sensitive, value)
 	}
 
 	log.Tracef("Volume %s with ID %s published with the following details: %+v",
