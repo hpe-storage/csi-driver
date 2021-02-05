@@ -928,8 +928,7 @@ func (driver *Driver) controllerPublishVolume(
 
 	sensitive := []string{}
 	for key, value := range publishContext {
-		sensitive = append(sensitive, key)
-		sensitive = append(sensitive, value)
+		sensitive = append(sensitive, key, value)
 	}
 
 	log.Tracef("Volume %s with ID %s published with the following details: %+v",
