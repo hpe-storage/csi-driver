@@ -933,7 +933,7 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	log.Tracef("Volume %s with ID %s published with the following details: %+v",
-		volume.Name, volume.ID, sensitive)
+		volume.Name, volume.ID, log.Scrubber(sensitive))
 	return publishContext, nil
 }
 
