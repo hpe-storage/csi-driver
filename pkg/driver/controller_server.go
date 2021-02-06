@@ -720,6 +720,7 @@ func (driver *Driver) ControllerPublishVolume(ctx context.Context, request *csi.
 	}, nil
 }
 
+// nolint : gcyclo
 func (driver *Driver) controllerPublishVolume(
 	volumeID string,
 	nodeID string,
@@ -856,7 +857,18 @@ func (driver *Driver) controllerPublishVolume(
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Failed to add ACL to volume %s for node %v via CSP, err: %s", volume.ID, node, err.Error()))
 	}
-	log.Tracef("PublishInfo response from CSP: %+v", publishInfo)
+	// PublishInfo contains chap credentials
+	publishInfoLog := *publishInfo
+	publishInfoLog.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapPassword = "********"
+	log.Tracef("PublishInfo response from CSP: %+v", publishInfoLog)
+
+	// CV-CSP sends chap username and password. Update node obj if chap info is sent
+	chapUser := publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapUser
+	chapPassword := publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapPassword
+	if chapUser != "" && chapPassword != "" {
+		node.ChapUser = chapUser
+		node.ChapPassword = string(chapPassword)
+	}
 
 	// target scope is nimble specific therefore extract it from the volume config
 	var requestedTargetScope = targetScopeGroup
@@ -913,8 +925,14 @@ func (driver *Driver) controllerPublishVolume(
 		publishContext[fsModeKey] = volumeContext[fsModeKey]
 		publishContext[fsCreateOptionsKey] = volumeContext[fsCreateOptionsKey]
 	}
+
+	sensitive := []string{}
+	for key, value := range publishContext {
+		sensitive = append(sensitive, key, value)
+	}
+
 	log.Tracef("Volume %s with ID %s published with the following details: %+v",
-		volume.Name, volume.ID, publishContext)
+		volume.Name, volume.ID, log.Scrubber(sensitive))
 	return publishContext, nil
 }
 
