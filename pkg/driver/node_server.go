@@ -1676,7 +1676,7 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 	if strings.Contains(volumeID, "-") {
 		// ignore NFS pvc to report stats, as it does not contain valid CSP volumeHandle
 		log.Tracef("ignoring pvc with volume id %s", volumeID)
-		return nil, nil
+		return &csi.NodeGetVolumeStatsResponse{}, nil
 	}
 
 	volumePath := in.GetVolumePath()
