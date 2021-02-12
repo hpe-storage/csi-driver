@@ -257,13 +257,13 @@ func (driver *Driver) nodeStageVolume(
 		return nil // volume already staged, do nothing and return here
 	}
 
-	if encSecretNameKey, ok := volumeContext[volEncryptionSecretNameKey]; ok {
-		encSecretNamespaceKey := volumeContext[volEncryptionSecretNamespaceKey]
+	if volumeContext[volEncryptionSecretNameKey] != "" {
 		log.Infof("Requested volume needs encryption. Received Secret name: %s, Secret namespace: %s",
-			encSecretNameKey, encSecretNamespaceKey)
+			volumeContext[volEncryptionSecretNameKey], volumeContext[volEncryptionSecretNamespaceKey])
 
 		var encPassphrase string
-		encPassphrase, err = driver.getEncryptionPassphraseFromSecret(encSecretNameKey, encSecretNamespaceKey)
+		encPassphrase, err = driver.getEncryptionPassphraseFromSecret(volumeContext[volEncryptionSecretNameKey],
+																	  volumeContext[volEncryptionSecretNamespaceKey])
 		if err != nil {
 			log.Errorf("Encountered error while fetching secret - %v", err.Error())
 			return err // specified secret for encryption key doesn't exist
@@ -434,13 +434,13 @@ func (driver *Driver) stageVolume(
 	// Add encryption secret to the staging-device. This is required during unstage operation
 	// so that encryption key can be accessed to complete the close operation on LUKS device
 	var encKeySecretInfo EncryptionKeySecretInfo
-	if encSecretName, nameFound := volumeContext[volEncryptionSecretNameKey]; nameFound {
-		encKeySecretInfo.Name = encSecretName
-		if encSecretNamespace, namespaceFound := volumeContext[volEncryptionSecretNamespaceKey]; namespaceFound {
-			encKeySecretInfo.Namespace = encSecretNamespace
+	if volumeContext[volEncryptionSecretNameKey] != "" {
+		encKeySecretInfo.Name = volumeContext[volEncryptionSecretNameKey]
+		if volumeContext[volEncryptionSecretNamespaceKey] != "" {
+			encKeySecretInfo.Namespace = volumeContext[volEncryptionSecretNamespaceKey]
 		} else {
 			return nil, fmt.Errorf("Secret namespace missing for secret %s related to encrypted device %s",
-				encSecretName, device.AltFullLuksPathName)
+				volumeContext[volEncryptionSecretNameKey], device.AltFullLuksPathName)
 		}
 	}
 
