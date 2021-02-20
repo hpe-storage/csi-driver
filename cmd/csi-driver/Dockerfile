@@ -6,6 +6,7 @@ RUN curl https://rpmfind.net/linux/centos/7.9.2009/os/x86_64/Packages/cryptsetup
 RUN yum install -y cryptsetup-2.0.3-6.el7.x86_64.rpm
 RUN rm -f cryptsetup-2.0.3-6.el7.x86_64.rpm
 RUN microdnf install -y systemd
+RUN microdnf remove -y yum
 
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \
