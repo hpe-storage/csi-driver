@@ -494,7 +494,6 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 		DiscoveryIPs:          discoveryIps,
 		ConnectionMode:        defaultConnectionMode,
 		SecondaryArrayDetails: publishContext[secondaryArrayDetailsKey],
-		Encrypted:             publishContext[volEncryptionKey] != "",
 		EncryptionKey: 		   publishContext[volEncryptionKey],
 	}
 	if publishContext[accessProtocolKey] == iscsi {

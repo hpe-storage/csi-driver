@@ -95,7 +95,6 @@ const (
 	// secretName attribute to be used to specify secret name for ephemeral inline volume
 	secretNameKey = "inline-volume-secret-name"
 
-	volEncrypted = "volumeEncrypted"
 	volEncryptionSecretNameKey = "encryptionSecretName"
 	volEncryptionSecretNamespaceKey = "encryptionSecretNamespace"
 	volEncryptionKey = "volumeEncryptionKey"
