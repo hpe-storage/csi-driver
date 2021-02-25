@@ -656,7 +656,7 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 				log.Error(err.Error())
 				return err
 			}
-			time.Sleep(time.Second * 5)
+			log.Infof("Device %s closed successfully by luksClose command", originalDevPath)
 		} else {
 			err := fmt.Errorf("secret not present in the device-info file %s for encrypted volume", deviceFilePath)
 			log.Errorln(err.Error())
