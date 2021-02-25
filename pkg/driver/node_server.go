@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -649,11 +648,12 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 				log.Errorln(err.Error())
 				return err
 			}
-			closeCmd := exec.Command("cryptsetup", "luksClose", device.LuksPathname)
-			log.Infof("luksClose command:%s", closeCmd)
-			closeCmd.Stdin = strings.NewReader(passPhrase)
-			if err := closeCmd.Run(); err != nil {
-				log.Errorf("Close command failed with error %v", err)
+			_, _, err = util.ExecCommandOutputWithStdinArgs("cryptsetup",
+				[]string{"luksClose", device.LuksPathname},
+				[]string{passPhrase})
+			if err != nil {
+				err = fmt.Errorf("luksClose command failed with error %v", err)
+				log.Error(err.Error())
 				return err
 			}
 			time.Sleep(time.Second * 5)
