@@ -95,9 +95,10 @@ const (
 	// secretName attribute to be used to specify secret name for ephemeral inline volume
 	secretNameKey = "inline-volume-secret-name"
 
-	volEncryptionSecretNameKey = "encryptionSecretName"
-	volEncryptionSecretNamespaceKey = "encryptionSecretNamespace"
-	volEncryptionKey = "volumeEncryptionKey"
+	hostEncryptionKey = "hostEncryption"
+	hostEncryptionSecretNameKey = "hostEncryptionSecretName"
+	hostEncryptionSecretNamespaceKey = "hostEncryptionSecretNamespace"
+	hostEncryptionPassphraseKey = "hostEncryptionPassphrase"
 
 	// POD attributes propogated to the CSI
 	csiEphemeralPodName      = "csi.storage.k8s.io/pod.name"

@@ -256,27 +256,32 @@ func (driver *Driver) nodeStageVolume(
 		return nil // volume already staged, do nothing and return here
 	}
 
-	if volumeContext[volEncryptionSecretNameKey] != "" {
-		log.Infof("Requested volume needs encryption. Received Secret name: %s, Secret namespace: %s",
-			volumeContext[volEncryptionSecretNameKey], volumeContext[volEncryptionSecretNamespaceKey])
+	if volumeContext[hostEncryptionKey] == "true" {
+		if volumeContext[hostEncryptionSecretNameKey] != "" {
+			log.Infof("Requested volume needs encryption. Received Secret name: %s, Secret namespace: %s",
+				volumeContext[hostEncryptionSecretNameKey], volumeContext[hostEncryptionSecretNamespaceKey])
 
-		var encPassphrase string
-		encPassphrase, err = driver.getEncryptionPassphraseFromSecret(volumeContext[volEncryptionSecretNameKey],
-																	  volumeContext[volEncryptionSecretNamespaceKey])
-		if err != nil {
-			log.Errorf("Encountered error while fetching secret - %v", err.Error())
-			return err // specified secret for encryption key doesn't exist
-		}
+			var encPassphrase string
+			encPassphrase, err = driver.getEncryptionPassphraseFromSecret(volumeContext[hostEncryptionSecretNameKey],
+				volumeContext[hostEncryptionSecretNamespaceKey])
+			if err != nil {
+				log.Errorf("Encountered error while fetching secret - %v", err.Error())
+				return err // specified secret for encryption key doesn't exist
+			}
 
-		ctxt := make(map[string]string)
-		for k,v := range publishContext {
-			ctxt[k] = v
+			ctxt := make(map[string]string)
+			for k, v := range publishContext {
+				ctxt[k] = v
+			}
+			ctxt[hostEncryptionPassphraseKey] = encPassphrase
+			publishContext = ctxt
+		} else {
+			err := fmt.Sprintf("Failed to stage volume %s - hostEncryptionSecretName must be specified when hostEncryption is true", volumeID)
+			log.Errorln(err)
+			return status.Error(codes.Internal,
+				fmt.Sprintf("Failed to stage volume %s with error: %s", volumeID, err))
 		}
-		ctxt[volEncryptionKey] = encPassphrase
-		publishContext = ctxt
-		log.Tracef("Modified publish context: %v", publishContext)
 	}
-
 	// Stage volume - Create device and expose volume as raw block or mounted directory (filesystem)
 	log.Tracef("NodeStageVolume staging volume %s to the staging path %s", volumeID, stagingTargetPath)
 	stagingDev, err := driver.stageVolume(
@@ -311,7 +316,7 @@ func (driver *Driver) getEncryptionPassphraseFromSecret(volEncryptionSecretName,
 		return "", fmt.Errorf("failed to find encryption secret for secret name %v in namespace %v",
 			volEncryptionSecretName, volEncryptionSecretNamespace)
 	}
-	return secret[volEncryptionKey], err
+	return secret[hostEncryptionPassphraseKey], err
 }
 
 // isVolumeStaged checks if the volume is already been staged on the node.
@@ -415,7 +420,7 @@ func (driver *Driver) stageVolume(
 	volumeContext map[string]string) (*StagingDevice, error) {
 
 	log.Tracef(">>>>> stageVolume, volumeID: %s, stagingMountPoint: %s, volumeAccessType: %v, volCap: %v, publishContext: %v, volumeContext: %v",
-		volumeID, stagingMountPoint, volAccessType.String(), volCap, publishContext, volumeContext)
+		volumeID, stagingMountPoint, volAccessType.String(), volCap, log.MapScrubber(publishContext), volumeContext)
 	defer log.Trace("<<<<< stageVolume")
 
 	// serialize stage requests
@@ -433,13 +438,13 @@ func (driver *Driver) stageVolume(
 	// Add encryption secret to the staging-device. This is required during unstage operation
 	// so that encryption key can be accessed to complete the close operation on LUKS device
 	var encKeySecretInfo EncryptionKeySecretInfo
-	if volumeContext[volEncryptionSecretNameKey] != "" {
-		encKeySecretInfo.Name = volumeContext[volEncryptionSecretNameKey]
-		if volumeContext[volEncryptionSecretNamespaceKey] != "" {
-			encKeySecretInfo.Namespace = volumeContext[volEncryptionSecretNamespaceKey]
+	if volumeContext[hostEncryptionSecretNameKey] != "" {
+		encKeySecretInfo.Name = volumeContext[hostEncryptionSecretNameKey]
+		if volumeContext[hostEncryptionSecretNamespaceKey] != "" {
+			encKeySecretInfo.Namespace = volumeContext[hostEncryptionSecretNamespaceKey]
 		} else {
 			return nil, fmt.Errorf("Secret namespace missing for secret %s related to encrypted device %s",
-				volumeContext[volEncryptionSecretNameKey], device.AltFullLuksPathName)
+				volumeContext[hostEncryptionSecretNameKey], device.AltFullLuksPathName)
 		}
 	}
 
@@ -476,7 +481,7 @@ func (driver *Driver) stageVolume(
 }
 
 func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Device, error) {
-	log.Tracef(">>>>> setupDevice, publishContext: %v", publishContext)
+	log.Tracef(">>>>> setupDevice, publishContext: %v", log.MapScrubber(publishContext))
 	defer log.Trace("<<<<< setupDevice")
 
 	// TODO: Enhance CHAPI to work with a PublishInfo object rather than a volume
@@ -493,7 +498,7 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 		DiscoveryIPs:          discoveryIps,
 		ConnectionMode:        defaultConnectionMode,
 		SecondaryArrayDetails: publishContext[secondaryArrayDetailsKey],
-		EncryptionKey: 		   publishContext[volEncryptionKey],
+		EncryptionKey: 		   publishContext[hostEncryptionPassphraseKey],
 	}
 	if publishContext[accessProtocolKey] == iscsi {
 		chapInfo := &model.ChapInfo{
@@ -656,7 +661,7 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 				log.Error(err.Error())
 				return err
 			}
-			log.Infof("Device %s closed successfully by luksClose command", originalDevPath)
+			log.Infof("Device %s closed successfully by luksClose command", device.LuksPathname)
 		} else {
 			err := fmt.Errorf("secret not present in the device-info file %s for encrypted volume", deviceFilePath)
 			log.Errorln(err.Error())
