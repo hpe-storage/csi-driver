@@ -1,7 +1,6 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  annotations:
   name: my-sc-1
 provisioner: csi.hpe.com
 parameters:
