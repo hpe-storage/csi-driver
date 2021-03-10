@@ -25,7 +25,7 @@ Instructions on how to build the HPE CSI Driver can be found in [BUILDING.md](BU
 
 ## Testing
 
-Example Kubernetes object definitions used to build test cases for the CSI driver is a available in [examples](examples).
+Example Kubernetes object definitions used to build test cases for the CSI driver are available in [examples](examples).
 
 ## Support
 
