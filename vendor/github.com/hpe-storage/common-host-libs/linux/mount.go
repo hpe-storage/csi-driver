@@ -108,7 +108,12 @@ func GetMountPointsForDevices(devices []*model.Device) ([]*model.Mount, error) {
 
 	for _, dev := range devices {
 		log.Tracef("Checking mount for device %+v ", dev)
-		if mountPoints, ok := devToMounts[dev.AltFullPathName]; ok {
+		devPath := dev.AltFullPathName
+		if dev.AltFullLuksPathName != "" {
+			devPath = dev.AltFullLuksPathName
+		}
+		//if mountPoints, ok := devToMounts[dev.AltFullPathName]; ok {
+		if mountPoints, ok := devToMounts[devPath]; ok {
 			for _, mountPoint := range mountPoints {
 				mount := &model.Mount{
 					Mountpoint: mountPoint,
@@ -173,8 +178,8 @@ func GetMountOptionsForDevice(device *model.Device) (options []string, err error
 }
 
 // GetMountOptions : get options used for mount point for the Device
-func GetMountOptions(device *model.Device, mountPoint string) (options []string, err error) {
-	log.Tracef(">>>>> GetMountOptions,  devicePath: %s, mountPoint: %s", device.AltFullPathName, mountPoint)
+func GetMountOptions(devPath string, mountPoint string) (options []string, err error) {
+	log.Tracef(">>>>> GetMountOptions,  devicePath: %s, mountPoint: %s", devPath, mountPoint)
 	defer log.Trace("<<<<< GetMountOptions")
 
 	mountLines, err := util.FileGetStrings(procMounts)
@@ -184,7 +189,7 @@ func GetMountOptions(device *model.Device, mountPoint string) (options []string,
 	for _, line := range mountLines {
 		entry := strings.Fields(line)
 		if len(entry) > 4 {
-			if strings.TrimSpace(entry[0]) == device.AltFullPathName && strings.TrimSpace(entry[1]) == mountPoint {
+			if strings.TrimSpace(entry[0]) == devPath && strings.TrimSpace(entry[1]) == mountPoint {
 				log.Debugf("Found Mount Entry: %s", line)
 				options = strings.Split(entry[3], ",")
 				return options, nil
@@ -195,8 +200,8 @@ func GetMountOptions(device *model.Device, mountPoint string) (options []string,
 }
 
 // SetMountOptions : get options used for mount point for the Device
-func SetMountOptions(device *model.Device, mountPoint string, options []string) error {
-	log.Tracef(">>>>> SetMountOptions,  devicePath: %s, mountPoint: %s, options: %v", device.AltFullPathName, mountPoint, options)
+func SetMountOptions(devPath string, mountPoint string, options []string) error {
+	log.Tracef(">>>>> SetMountOptions,  devicePath: %s, mountPoint: %s, options: %v", devPath, mountPoint, options)
 	defer log.Trace("<<<<< SetMountOptions")
 
 	// Perform remount while applying mount options for an existing mountPoint
@@ -496,14 +501,18 @@ func MountDevice(device *model.Device, mountPoint string, options []string) (*mo
 	}
 
 	// Mount the device at the mountPoint
-	mount, err := MountDeviceWithFileSystem(device.AltFullPathName, mountPoint, options)
+	devPath := device.AltFullPathName
+	if device.AltFullLuksPathName != "" {
+		devPath = device.AltFullLuksPathName
+	}
+	mount, err := MountDeviceWithFileSystem(devPath, mountPoint, options)
 	if mount == nil || err != nil {
 		return nil, fmt.Errorf("unable to mount the device at mountPoint : %s. Error: %s", mountPoint, err.Error())
 	}
-	log.Tracef("Device %s was mounted at %s successfully", device.AltFullPathName, mountPoint)
+	log.Tracef("Device %s was mounted at %s successfully", devPath, mountPoint)
 
 	// Get the mount options
-	mount.Options, err = GetMountOptions(device, mountPoint)
+	mount.Options, err = GetMountOptions(devPath, mountPoint)
 	if err != nil {
 		return nil, fmt.Errorf("Error retrieving the mount options for mountPoint %s, Err: %s", mountPoint, err.Error())
 	}
@@ -904,19 +913,24 @@ func SetupFilesystem(device *model.Device, filesystemType string) error {
 		return fmt.Errorf("Missing filesystem type")
 	}
 
+	devPath := device.AltFullPathName
+	if device.AltFullLuksPathName != "" {
+		devPath = device.AltFullLuksPathName
+	}
+
 	// Check if the device has filesystem already
-	fsType, err := GetFilesystemType(device.AltFullPathName)
+	fsType, err := GetFilesystemType(devPath)
 	if err != nil {
 		return err
 	}
 	if fsType != "" {
-		log.Tracef("Filesystem %s already exists on the device %s", fsType, device.AltFullPathName)
+		log.Tracef("Filesystem %s already exists on the device %s", fsType, devPath)
 		return nil
 	}
 
-	log.Tracef("Creating filesystem %s on device path %s", filesystemType, device.AltFullPathName)
-	if err := RetryCreateFileSystem(device.AltFullPathName, filesystemType); err != nil {
-		log.Errorf("Failed to create filesystem %s on device with path %s", filesystemType, device.AltFullPathName)
+	log.Tracef("Creating filesystem %s on device path %s", filesystemType, devPath)
+	if err := RetryCreateFileSystem(devPath, filesystemType); err != nil {
+		log.Errorf("Failed to create filesystem %s on device with path %s", filesystemType, devPath)
 		return err
 	}
 	return nil
@@ -955,6 +969,11 @@ func SetupMount(device *model.Device, mountPoint string, mountOptions []string) 
 	log.Tracef(">>>>> SetupMount, device: %+v, mountPoint: %s, mountOptions: %v", device, mountPoint, mountOptions)
 	defer log.Trace("<<<<< SetupMount")
 
+	devPath := device.AltFullPathName
+	if device.AltFullLuksPathName != "" {
+		devPath = device.AltFullLuksPathName
+	}
+
 	// Mount device
 	mount, err := MountDevice(device, mountPoint, mountOptions)
 	if err != nil {
@@ -969,11 +988,14 @@ func SetupMount(device *model.Device, mountPoint string, mountOptions []string) 
 		// Check if the requested mount options are already compatible (i.e, set already)
 		if !stringformat.StringsLookup(mount.Options, mountOptions) {
 			// Apply mount options
-			if err = SetMountOptions(device, mountPoint, mountOptions); err != nil {
+			// TODO: Encryption would require devPath to be passed instead
+			//       Although this won't have any impact except a log line where
+			//       AltFullPathName gets printed
+			if err = SetMountOptions(devPath, mountPoint, mountOptions); err != nil {
 				return nil, fmt.Errorf("Error applying mount options %v on the mountpoint %s, %v", mountOptions, mountPoint, err.Error())
 			}
 			// Get the updated mount options
-			updatedMountOptions, err := GetMountOptions(device, mountPoint)
+			updatedMountOptions, err := GetMountOptions(devPath, mountPoint)
 			if err != nil {
 				return nil, fmt.Errorf("Error retrieving mount options for the mountpoint %s, %v", mountPoint, err.Error())
 			}
