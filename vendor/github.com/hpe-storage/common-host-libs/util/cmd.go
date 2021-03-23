@@ -22,6 +22,7 @@ import (
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"os/exec"
 	"regexp"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -30,15 +31,16 @@ const (
 	defaultTimeout = 60
 )
 
-// ExecCommandOutputWithTimeout  executes ExecCommandOutput with the specified timeout
-func ExecCommandOutputWithTimeout(cmd string, args []string, timeout int) (string, int, error) {
-	log.Trace("ExecCommandOutputWithTimeout called with ", cmd, log.Scrubber(args), timeout)
+func execCommandOutputWithTimeout(cmd string, args []string, stdinArgs []string, timeout int) (string, int, error) {
+	log.Trace("execCommandOutputWithTimeout called with ", cmd, log.Scrubber(args), timeout)
 	var err error
 	c := exec.Command(cmd, args...)
 	var b bytes.Buffer
 	c.Stdout = &b
 	c.Stderr = &b
-
+	if len(stdinArgs) > 0 {
+		c.Stdin = strings.NewReader(strings.Join(stdinArgs, "\n"))
+	}
 	if err = c.Start(); err != nil {
 		return "", 999, err
 	}
@@ -78,12 +80,24 @@ func ExecCommandOutputWithTimeout(cmd string, args []string, timeout int) (strin
 	return out, 0, nil
 }
 
+// ExecCommandOutputWithTimeout  executes ExecCommandOutput with the specified timeout
+func ExecCommandOutputWithTimeout(cmd string, args []string, timeout int) (string, int, error) {
+	return execCommandOutputWithTimeout(cmd, args, []string{}, defaultTimeout)
+}
 // ExecCommandOutput returns stdout and stderr in a single string, the return code, and error.
 // If the return code is not zero, error will not be nil.
 // Stdout and Stderr are dumped to the log at the debug level.
 // Return code of 999 indicates an error starting the command.
 func ExecCommandOutput(cmd string, args []string) (string, int, error) {
 	return ExecCommandOutputWithTimeout(cmd, args, defaultTimeout)
+}
+
+// ExecCommandOutputWithStdinArgs returns stdout and stderr in a single string, the return code, and error.
+// If the return code is not zero, error will not be nil.
+// Stdout and Stderr are dumped to the log at the debug level.
+// Return code of 999 indicates an error starting the command.
+func ExecCommandOutputWithStdinArgs(cmd string, args []string, stdInArgs []string) (string, int, error) {
+	return execCommandOutputWithTimeout(cmd, args, stdInArgs, defaultTimeout)
 }
 
 // FindStringSubmatchMap : find and build  the map of named groups

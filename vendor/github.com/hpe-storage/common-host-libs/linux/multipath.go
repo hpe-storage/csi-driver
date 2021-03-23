@@ -19,7 +19,7 @@ var (
 	showMapsFormat       = []string{"show", "maps", "format", "%w %d %n %s"}
 	orphanPathRegexp     = regexp.MustCompile(getOrphanPathsPattern())
 	multipathMutex       sync.Mutex
-	deviceVendorPatterns = []string{"Nimble", "3PARdata", "TrueNAS"}
+	deviceVendorPatterns = []string{"Nimble", "3PARdata", "TrueNAS", "FreeNAS"}
 )
 
 const (
