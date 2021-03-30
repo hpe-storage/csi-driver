@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -21,7 +22,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/resource"
-	vol "k8s.io/kubernetes/pkg/volume"
 	"k8s.io/utils/mount"
 
 	log "github.com/hpe-storage/common-host-libs/logger"
@@ -498,7 +498,7 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 		DiscoveryIPs:          discoveryIps,
 		ConnectionMode:        defaultConnectionMode,
 		SecondaryArrayDetails: publishContext[secondaryArrayDetailsKey],
-		EncryptionKey: 		   publishContext[hostEncryptionPassphraseKey],
+		EncryptionKey:         publishContext[hostEncryptionPassphraseKey],
 	}
 	if publishContext[accessProtocolKey] == iscsi {
 		chapInfo := &model.ChapInfo{
@@ -1801,63 +1801,25 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 			in.VolumePath)
 		return nil, nil
 	}
-	pvName := folders[len(folders)-2]
-	credentials, err := driver.flavor.GetCredentialsFromVolume(pvName)
-	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Errorf(codes.Unavailable, "Failed to get credentials from volume with name %s, err: %s",
-			pvName, err.Error())
-	}
 
-	// Get storage provider using secrets
-	storageProvider, err := driver.GetStorageProvider(credentials)
+	var statfs syscall.Statfs_t
+	err = syscall.Statfs(volumePath, &statfs)
 	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Errorf(codes.Unavailable, "Failed to get storage provider from secrets for volume with id %s, err: %s",
-			volumeID, err.Error())
-	}
-	// Fetch the volume using volume ID
-	volume, err := storageProvider.GetVolume(volumeID)
-	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Errorf(codes.Internal, "Error while retrieving volume with id %s from the backend, err: %s",
-			volumeID, err.Error())
-	}
-	if volume == nil {
-		log.Errorf("Volume with ID %s not found on the backend, return ", volumeID)
-		return nil, status.Errorf(codes.NotFound, "Volume with ID %s not found on the backend, return ",
-			volumeID)
-	}
-	hpeMetricsProvider := vol.NewMetricsStatFS(in.VolumePath)
-	metrics, err := hpeMetricsProvider.GetMetrics()
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	inodes, ok := (*(metrics.Inodes)).AsInt64()
-	if !ok {
-		log.WithContext(ctx).Error("failed to fetch available inodes")
-	}
-	inodesFree, ok := (*(metrics.InodesFree)).AsInt64()
-	if !ok {
-		log.WithContext(ctx).Error("failed to fetch free inodes")
-	}
-	inodesUsed, ok := (*(metrics.InodesUsed)).AsInt64()
-	if !ok {
-		log.WithContext(ctx).Error("failed to fetch used inodes")
+		log.WithContext(ctx).Error(err.Error())
 	}
 
 	return &csi.NodeGetVolumeStatsResponse{
 		Usage: []*csi.VolumeUsage{
 			{
-				Available: volume.FreeBytes,
-				Total:     volume.Size,
-				Used:      volume.UsedBytes,
+				Available: int64(statfs.Bavail) * int64(statfs.Bsize),
+				Total:     int64(statfs.Blocks) * int64(statfs.Bsize),
+				Used:      (int64(statfs.Blocks) - int64(statfs.Bfree)) * int64(statfs.Bsize),
 				Unit:      csi.VolumeUsage_BYTES,
 			},
 			{
-				Available: inodesFree,
-				Total:     inodes,
-				Used:      inodesUsed,
+				Available: int64(statfs.Ffree),
+				Total:     int64(statfs.Files),
+				Used:      int64(statfs.Files) - int64(statfs.Ffree),
 				Unit:      csi.VolumeUsage_INODES,
 			},
 		},
