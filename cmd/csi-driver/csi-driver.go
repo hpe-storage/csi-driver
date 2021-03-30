@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	csiVersion           = "0.1"
+	csiVersion           = "1.3"
 	csiDriverName        = "csi.hpe.com"
 	csiControllerLogFile = "/var/log/hpe-csi-controller.log"
 	csiNodeLogFile       = "/var/log/hpe-csi-node.log"

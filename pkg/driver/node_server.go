@@ -4,6 +4,7 @@
 package driver
 
 import (
+	b64 "encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -229,8 +230,9 @@ func (driver *Driver) nodeStageVolume(
 	}
 
 	// Get Volume
-	if _, err := driver.GetVolumeByID(volumeID, secrets); err != nil {
-		log.Error("Failed to get volume ", volumeID)
+	volume, err := driver.GetVolumeByID(volumeID, secrets)
+	if err != nil {
+		log.Error("Failed to get volume with id %s while node staging", volumeID)
 		return err // NOT_FOUND
 	}
 
@@ -265,6 +267,7 @@ func (driver *Driver) nodeStageVolume(
 		volumeCapability,
 		publishContext,
 		volumeContext,
+		volume.Chap,
 	)
 	if err != nil {
 		return status.Error(codes.Internal,
@@ -382,7 +385,8 @@ func (driver *Driver) stageVolume(
 	volAccessType model.VolumeAccessType,
 	volCap *csi.VolumeCapability,
 	publishContext map[string]string,
-	volumeContext map[string]string) (*StagingDevice, error) {
+	volumeContext map[string]string,
+	chapInfo *model.ChapInfo) (*StagingDevice, error) {
 
 	log.Tracef(">>>>> stageVolume, volumeID: %s, stagingMountPoint: %s, volumeAccessType: %v, volCap: %v, publishContext: %v, volumeContext: %v",
 		volumeID, stagingMountPoint, volAccessType.String(), volCap, publishContext, volumeContext)
@@ -393,7 +397,7 @@ func (driver *Driver) stageVolume(
 	defer stageLock.Unlock()
 
 	// Create device for volume on the node
-	device, err := driver.setupDevice(publishContext)
+	device, err := driver.setupDevice(publishContext, chapInfo)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Error creating device for volume %s, err: %v", volumeID, err.Error()))
@@ -431,7 +435,7 @@ func (driver *Driver) stageVolume(
 	return stagingDevice, nil
 }
 
-func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Device, error) {
+func (driver *Driver) setupDevice(publishContext map[string]string, chapInfo *model.ChapInfo) (*model.Device, error) {
 	log.Tracef(">>>>> setupDevice, publishContext: %v", publishContext)
 	defer log.Trace("<<<<< setupDevice")
 
@@ -451,18 +455,41 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 		SecondaryArrayDetails: publishContext[secondaryArrayDetailsKey],
 	}
 	if publishContext[accessProtocolKey] == iscsi {
-		chapInfo := &model.ChapInfo{
-			Name:     publishContext[chapUsernameKey],
-			Password: publishContext[chapPasswordKey],
+		// HPE Cloud Volumes CSP sends CHAP credentials in the Volume response
+		if chapInfo != nil {
+			volume.Chap = chapInfo
+			log.Infof("Using chap credentials from cloud volume %s", volume.Name)
+		} else {
+			// Nimble CSP or 3PAR-Primera CSP or other CSPs
+			// Get chap credentials from Cluster
+			nodeID, err := driver.nodeGetInfo()
+			if err != nil {
+				log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+			}
+			// Decode and check if the node is configured
+			nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
+			if err != nil {
+				log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
+				return nil, status.Error(codes.NotFound, err.Error())
+			}
+			if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
+				// Decode chap password
+				decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
+				nodeInfo.ChapPassword = string(decodedChapPassword)
+			}
+			volume.Chap = &model.ChapInfo{
+				Name:     nodeInfo.ChapUser,
+				Password: nodeInfo.ChapPassword,
+			}
+			log.Infof("Using chap credentials from node %s", nodeID)
 		}
-		volume.Chap = chapInfo
 	}
 
 	// Cleanup any stale device existing before stage
-	device, err := driver.chapiDriver.GetDevice(volume)
+	device, _ := driver.chapiDriver.GetDevice(volume)
 	if device != nil {
 		device.TargetScope = volume.TargetScope
-		err = driver.chapiDriver.DeleteDevice(device)
+		err := driver.chapiDriver.DeleteDevice(device)
 		if err != nil {
 			log.Warnf("Failed to cleanup stale device %s before staging, err %s", device.AltFullPathName, err.Error())
 		}
@@ -476,7 +503,7 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 	}
 	if len(devices) == 0 {
 		log.Errorf("Failed to get the device just created using the volume %+v", volume)
-		return nil, fmt.Errorf("Unable to find the device for volume %+v", volume)
+		return nil, fmt.Errorf("unable to find the device for volume %+v", volume)
 	}
 
 	// Update targetScope in stagingDevice from publishContext.
@@ -1811,7 +1838,7 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		accessType = model.BlockType
 	}
 
-	var err error
+	var expandErr error
 	targetPath := ""
 	if accessType == model.BlockType {
 		// for raw block device volume-path is device path: i.e /dev/dm-1
@@ -1819,7 +1846,7 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		// Expand device to underlying volume size
 		log.Infof("About to expand device %s with access type block to underlying volume size",
 			request.VolumePath)
-		err = driver.chapiDriver.ExpandDevice(targetPath, model.BlockType)
+		expandErr = driver.chapiDriver.ExpandDevice(targetPath, model.BlockType)
 	} else {
 		// figure out if volumePath is actually a staging path
 		stagedDevice, err := readStagedDeviceInfo(request.GetVolumePath())
@@ -1846,12 +1873,12 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		// Expand device to underlying volume size
 		log.Infof("About to expand device %s with access type mount to underlying volume size",
 			request.VolumePath)
-		err = driver.chapiDriver.ExpandDevice(targetPath, model.MountType)
+		expandErr = driver.chapiDriver.ExpandDevice(targetPath, model.MountType)
 	}
 
-	if err != nil {
+	if expandErr != nil {
 		return nil, status.Error(codes.Internal,
-			fmt.Sprintf("Unable to expand device, %s", err.Error()))
+			fmt.Sprintf("Unable to expand device, %s", expandErr.Error()))
 	}
 	// no need to report device capacity here
 	return &csi.NodeExpandVolumeResponse{}, nil

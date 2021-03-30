@@ -44,8 +44,6 @@ const (
 	secondaryArrayDetailsKey = "secondaryArrayDetailsKey"
 
 	discoveryIPsKey       = "discoveryIps"
-	chapUsernameKey       = "chapUsername"
-	chapPasswordKey       = "chapPassword"
 	readOnlyKey           = "readOnly"
 	volumeAccessModeKey   = "volumeAccessMode"
 	multiInitiatorKey     = "multiInitiator"
