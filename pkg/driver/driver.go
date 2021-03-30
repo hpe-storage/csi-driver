@@ -701,7 +701,7 @@ func (driver *Driver) IsNFSResourceRequest(parameters map[string]string) bool {
 		nfsPVC = parameters[nfsPVCKey]
 	}
 
-	if nfsResources == "true" && nfsPVC != "true" {
+	if nfsResources == trueKey && nfsPVC != trueKey {
 		// this is the original pvc
 		return true
 	}

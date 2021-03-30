@@ -143,10 +143,12 @@ type IscsiTarget struct {
 type Device struct {
 	VolumeID        string       `json:"volume_id,omitempty"`
 	Pathname        string       `json:"path_name,omitempty"`
+	LuksPathname    string       `json:"luks_path_name,omitempty"`
 	SerialNumber    string       `json:"serial_number,omitempty"`
 	Major           string       `json:"major,omitempty"`
 	Minor           string       `json:"minor,omitempty"`
 	AltFullPathName string       `json:"alt_full_path_name,omitempty"`
+	AltFullLuksPathName string   `json:"alt_full_luks_path_name,omitempty"`
 	MpathName       string       `json:"mpath_device_name,omitempty"`
 	Size            int64        `json:"size,omitempty"` // size in MiB
 	Slaves          []string     `json:"slaves,omitempty"`
@@ -197,6 +199,7 @@ type Volume struct {
 	SecondaryArrayDetails string                 `json:"secondary_array_details,omitempty"`
 	UsedBytes             int64                  `json:"used_bytes,omitempty"`
 	FreeBytes             int64                  `json:"free_bytes,omitempty"`
+	EncryptionKey         string                 `json:"encryption_key,omitempty"`
 }
 
 func (v Volume) TargetNames() []string {

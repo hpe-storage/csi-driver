@@ -2,6 +2,8 @@ FROM registry.access.redhat.com/ubi7/ubi-minimal:7.9-256
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 RUN microdnf install -y systemd
+ADD CentOS-Base.repo /etc/yum.repos.d/
+RUN microdnf install -y cryptsetup
 
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \

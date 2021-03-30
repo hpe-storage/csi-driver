@@ -8,10 +8,17 @@ import (
 
 // StagingDevice represents the device information that is stored in the staging area.
 type StagingDevice struct {
-	VolumeID         string                 `json:"volume_id"`
-	VolumeAccessMode model.VolumeAccessType `json:"volume_access_mode"` // block or mount
-	Device           *model.Device          `json:"device"`
-	MountInfo        *Mount                 `json:"mount_info,omitempty"`
+	VolumeID         string                   `json:"volume_id"`
+	VolumeAccessMode model.VolumeAccessType   `json:"volume_access_mode"` // block or mount
+	Device           *model.Device            `json:"device"`
+	MountInfo        *Mount                   `json:"mount_info,omitempty"`
+	EncKeySecretInfo *EncryptionKeySecretInfo `json:"enc_key_secret_info,omitempty"`
+}
+
+// EncryptionKeySecretInfo represents secret information related to passphrase stored in staging area.
+type EncryptionKeySecretInfo struct {
+	Name 		string `json:"secret_name,omitempty"`
+	Namespace 	string `json:"secret_namespace,omitempty"`
 }
 
 // Mount :
