@@ -232,7 +232,7 @@ func (driver *Driver) nodeStageVolume(
 	// Get Volume
 	volume, err := driver.GetVolumeByID(volumeID, secrets)
 	if err != nil {
-		log.Error("Failed to get volume with id %s while node staging", volumeID)
+		log.Errorf("Failed to get volume with id %s while node staging", volumeID)
 		return err // NOT_FOUND
 	}
 
