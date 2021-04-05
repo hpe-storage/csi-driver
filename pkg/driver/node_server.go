@@ -229,13 +229,6 @@ func (driver *Driver) nodeStageVolume(
 		return nil
 	}
 
-	// Get Volume
-	volume, err := driver.GetVolumeByID(volumeID, secrets)
-	if err != nil {
-		log.Errorf("Failed to get volume with id %s while node staging", volumeID)
-		return err // NOT_FOUND
-	}
-
 	// Stage the volume on the node by creating a new device with block or mount access.
 	// If already staged, then validate it and return appropriate response.
 	// Check if the volume has already been staged. If yes, then return here with success
@@ -291,9 +284,9 @@ func (driver *Driver) nodeStageVolume(
 		stagingMountPoint,
 		volAccessType,
 		volumeCapability,
+		secrets,
 		publishContext,
 		volumeContext,
-		volume.Chap,
 	)
 	if err != nil {
 		return status.Error(codes.Internal,
@@ -419,9 +412,9 @@ func (driver *Driver) stageVolume(
 	stagingMountPoint string,
 	volAccessType model.VolumeAccessType,
 	volCap *csi.VolumeCapability,
+	secrets map[string]string,
 	publishContext map[string]string,
-	volumeContext map[string]string,
-	chapInfo *model.ChapInfo) (*StagingDevice, error) {
+	volumeContext map[string]string) (*StagingDevice, error) {
 
 	log.Tracef(">>>>> stageVolume, volumeID: %s, stagingMountPoint: %s, volumeAccessType: %v, volCap: %v, publishContext: %v, volumeContext: %v",
 		volumeID, stagingMountPoint, volAccessType.String(), volCap, log.MapScrubber(publishContext), volumeContext)
@@ -430,6 +423,45 @@ func (driver *Driver) stageVolume(
 	// serialize stage requests
 	stageLock.Lock()
 	defer stageLock.Unlock()
+
+	var chapInfo *model.ChapInfo
+	if publishContext[accessProtocolKey] == iscsi {
+		// For CV-CSP, IsCloud is set to "true". So, retrieving CHAP credentials from CloudVolumes Portal
+		if publishContext[isCloudKey] == trueKey {
+			// Get Volume - HPE Cloud Volumes CSP sends CHAP credentials in the Volume response
+			cloudVolume, err := driver.GetVolumeByID(volumeID, secrets)
+			if err != nil {
+				log.Errorf("Failed to get cloud volume with id %s while node staging", volumeID)
+				return nil, err // NOT_FOUND
+			}
+			chapInfo = cloudVolume.Chap
+			log.Infof("Using chap credentials from cloud volume with id %s", volumeID)
+		} else {
+			// Nimble CSP or 3PAR-Primera CSP or other CSPs
+			// Get chap credentials from Cluster
+			nodeID, err := driver.nodeGetInfo()
+			if err != nil {
+				log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+			}
+			// Decode and check if the node is configured
+			nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
+			if err != nil {
+				log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
+				return nil, status.Error(codes.NotFound, err.Error())
+			}
+			if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
+				// Decode chap password
+				decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
+				nodeInfo.ChapPassword = string(decodedChapPassword)
+
+				chapInfo = &model.ChapInfo{
+					Name:     nodeInfo.ChapUser,
+					Password: nodeInfo.ChapPassword,
+				}
+				log.Infof("Using chap credentials from node %s", nodeID)
+			}
+		}
+	}
 
 	// Create device for volume on the node
 	device, err := driver.setupDevice(publishContext, chapInfo)
@@ -474,7 +506,7 @@ func (driver *Driver) stageVolume(
 	mount, err := driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
 		mountInfo.MountOptions, mountInfo.FilesystemOptions)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
+		return nil, fmt.Errorf("failed to mount device %s, %v", device.AltFullPathName, err.Error())
 	}
 	log.Tracef("Device %s mounted successfully, Mount: %+v", device.AltFullPathName, mount)
 
@@ -502,7 +534,8 @@ func (driver *Driver) setupDevice(publishContext map[string]string, chapInfo *mo
 		DiscoveryIPs:          discoveryIps,
 		ConnectionMode:        defaultConnectionMode,
 		SecondaryArrayDetails: publishContext[secondaryArrayDetailsKey],
-		EncryptionKey: 		   publishContext[hostEncryptionPassphraseKey],
+		EncryptionKey:         publishContext[hostEncryptionPassphraseKey],
+		Chap:                  chapInfo,
 	}
 	if publishContext[accessProtocolKey] == iscsi {
 		// HPE Cloud Volumes CSP sends CHAP credentials in the Volume response

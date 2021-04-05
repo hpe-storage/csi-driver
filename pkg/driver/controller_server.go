@@ -872,6 +872,7 @@ func (driver *Driver) controllerPublishVolume(
 	publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
 	publishContext[targetScopeKey] = requestedTargetScope
 	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
+	publishContext[isCloudKey] = strconv.FormatBool(publishInfo.IsCloud) // Get the CSP type: True if Cloud else False
 
 	// Start of population of target array details
 	if publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails != nil {
@@ -890,7 +891,7 @@ func (driver *Driver) controllerPublishVolume(
 		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIPs, ",")
 	}
 
-	if readOnlyAccessMode == true {
+	if readOnlyAccessMode {
 		publishContext[readOnlyKey] = strconv.FormatBool(readOnlyAccessMode)
 	} else { // Default case, we stick to old behavior
 		publishContext[readOnlyKey] = strconv.FormatBool(readOnlyFlag)

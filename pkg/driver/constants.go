@@ -50,6 +50,7 @@ const (
 	defaultConnectionMode = "manual"
 	chapUserEnvKey        = "CHAP_USER"
 	chapPasswordEnvKey    = "CHAP_PASSWORD"
+	isCloudKey            = "isCloud"
 
 	// deviceInfoFileName is used to store the device details in a JSON file
 	deviceInfoFileName = "deviceInfo.json"
