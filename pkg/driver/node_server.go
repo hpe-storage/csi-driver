@@ -537,36 +537,6 @@ func (driver *Driver) setupDevice(publishContext map[string]string, chapInfo *mo
 		EncryptionKey:         publishContext[hostEncryptionPassphraseKey],
 		Chap:                  chapInfo,
 	}
-	if publishContext[accessProtocolKey] == iscsi {
-		// HPE Cloud Volumes CSP sends CHAP credentials in the Volume response
-		if chapInfo != nil {
-			volume.Chap = chapInfo
-			log.Infof("Using chap credentials from cloud volume %s", volume.Name)
-		} else {
-			// Nimble CSP or 3PAR-Primera CSP or other CSPs
-			// Get chap credentials from Cluster
-			nodeID, err := driver.nodeGetInfo()
-			if err != nil {
-				log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
-			}
-			// Decode and check if the node is configured
-			nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
-			if err != nil {
-				log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
-				return nil, status.Error(codes.NotFound, err.Error())
-			}
-			if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
-				// Decode chap password
-				decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
-				nodeInfo.ChapPassword = string(decodedChapPassword)
-			}
-			volume.Chap = &model.ChapInfo{
-				Name:     nodeInfo.ChapUser,
-				Password: nodeInfo.ChapPassword,
-			}
-			log.Infof("Using chap credentials from node %s", nodeID)
-		}
-	}
 
 	// Cleanup any stale device existing before stage
 	device, _ := driver.chapiDriver.GetDevice(volume)
