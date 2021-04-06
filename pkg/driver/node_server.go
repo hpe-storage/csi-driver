@@ -424,47 +424,8 @@ func (driver *Driver) stageVolume(
 	stageLock.Lock()
 	defer stageLock.Unlock()
 
-	var chapInfo *model.ChapInfo
-	if publishContext[accessProtocolKey] == iscsi {
-		// For CV-CSP, IsCloud is set to "true". So, retrieving CHAP credentials from CloudVolumes Portal
-		if publishContext[isCloudKey] == trueKey {
-			// Get Volume - HPE Cloud Volumes CSP sends CHAP credentials in the Volume response
-			cloudVolume, err := driver.GetVolumeByID(volumeID, secrets)
-			if err != nil {
-				log.Errorf("Failed to get cloud volume with id %s while node staging", volumeID)
-				return nil, err // NOT_FOUND
-			}
-			chapInfo = cloudVolume.Chap
-			log.Infof("Using chap credentials from cloud volume with id %s", volumeID)
-		} else {
-			// Nimble CSP or 3PAR-Primera CSP or other CSPs
-			// Get chap credentials from Cluster
-			nodeID, err := driver.nodeGetInfo()
-			if err != nil {
-				log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
-			}
-			// Decode and check if the node is configured
-			nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
-			if err != nil {
-				log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
-				return nil, status.Error(codes.NotFound, err.Error())
-			}
-			if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
-				// Decode chap password
-				decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
-				nodeInfo.ChapPassword = string(decodedChapPassword)
-
-				chapInfo = &model.ChapInfo{
-					Name:     nodeInfo.ChapUser,
-					Password: nodeInfo.ChapPassword,
-				}
-				log.Infof("Using chap credentials from node %s", nodeID)
-			}
-		}
-	}
-
 	// Create device for volume on the node
-	device, err := driver.setupDevice(publishContext, chapInfo)
+	device, err := driver.setupDevice(volumeID, secrets, publishContext)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Error creating device for volume %s, err: %v", volumeID, err.Error()))
@@ -516,8 +477,12 @@ func (driver *Driver) stageVolume(
 	return stagingDevice, nil
 }
 
-func (driver *Driver) setupDevice(publishContext map[string]string, chapInfo *model.ChapInfo) (*model.Device, error) {
-	log.Tracef(">>>>> setupDevice, publishContext: %v", log.MapScrubber(publishContext))
+func (driver *Driver) setupDevice(
+	volumeID string,
+	secrets map[string]string,
+	publishContext map[string]string) (*model.Device, error) {
+
+	log.Tracef(">>>>> setupDevice, volumeID: %s, publishContext: %v", volumeID, log.MapScrubber(publishContext))
 	defer log.Trace("<<<<< setupDevice")
 
 	// TODO: Enhance CHAPI to work with a PublishInfo object rather than a volume
@@ -535,7 +500,45 @@ func (driver *Driver) setupDevice(publishContext map[string]string, chapInfo *mo
 		ConnectionMode:        defaultConnectionMode,
 		SecondaryArrayDetails: publishContext[secondaryArrayDetailsKey],
 		EncryptionKey:         publishContext[hostEncryptionPassphraseKey],
-		Chap:                  chapInfo,
+	}
+
+	// Set iSCSI CHAP credentials if configured
+	if publishContext[accessProtocolKey] == iscsi {
+		// For CV-CSP, IsCloud is set to "true". So, retrieving CHAP credentials from CloudVolumes Portal
+		if publishContext[isCloudKey] == trueKey {
+			// Get Volume - HPE Cloud Volumes CSP sends CHAP credentials in the Volume response
+			cloudVolume, err := driver.GetVolumeByID(volumeID, secrets)
+			if err != nil {
+				log.Errorf("Failed to get cloud volume with id %s while node staging", volumeID)
+				return nil, err // NOT_FOUND
+			}
+			volume.Chap = cloudVolume.Chap
+			log.Infof("Using chap credentials from cloud volume with id %s", volumeID)
+		} else {
+			// Nimble CSP or 3PAR-Primera CSP or other CSPs
+			// Get chap credentials from Cluster
+			nodeID, err := driver.nodeGetInfo()
+			if err != nil {
+				log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+			}
+			// Decode and check if the node is configured
+			nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
+			if err != nil {
+				log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
+				return nil, status.Error(codes.NotFound, err.Error())
+			}
+			if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
+				// Decode chap password
+				decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
+				nodeInfo.ChapPassword = string(decodedChapPassword)
+
+				volume.Chap = &model.ChapInfo{
+					Name:     nodeInfo.ChapUser,
+					Password: nodeInfo.ChapPassword,
+				}
+				log.Infof("Using chap credentials from node %s", nodeID)
+			}
+		}
 	}
 
 	// Cleanup any stale device existing before stage
