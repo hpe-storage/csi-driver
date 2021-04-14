@@ -350,9 +350,10 @@ func (driver *Driver) createVolume(
 	hostEncryption, err := driver.validateHostEncryptionParameters(createParameters)  
 	if err != nil {
 		log.Error("err: ", err.Error())
-		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid arguments for encryption, %s", err.Error()))
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid arguments for host encryption, %s", err.Error()))
 	} 
- 	createParameters[hostEncryptionKey] = hostEncryption
+ 	// hostEncryption can be true and false after validation which can be used during Publish and Stage workflows
+	createParameters[hostEncryptionKey] = hostEncryption
 
 	// TODO: use additional properties here to configure the volume further... these might come in from doryd
 	createOptions := make(map[string]interface{})
@@ -374,10 +375,6 @@ func (driver *Driver) createVolume(
 		delete(createOptions, descriptionKey)
 	}
 
-   
-
-
-
 	// Build the volume context to be returned to the CO in the create response
 	// This same context will be used by the CO during Publish and Stage workflows
 	respVolContext := make(map[string]string)
@@ -393,16 +390,15 @@ func (driver *Driver) createVolume(
 		respVolContext[fsTypeKey] = filesystem
 	}
 	log.Trace("Volume context in response to CO: ", respVolContext)
-    
+
 	// Secrets
 	storageProvider, err := driver.GetStorageProvider(secrets)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to get storage provider from secrets, %s", err.Error()))
 	}
-   
-	// TODO: check for version compatibility for new features
 
+	// TODO: check for version compatibility for new features
 	// Note the call to GetVolumeByName.  Names are only unique within a single group so a given name
 	// can be used more than once if multiple groups are configured.  Note the comment from the spec regarding
 	// the name field:
@@ -1636,6 +1632,7 @@ func getSnapshotsForStorageProvider(ctx context.Context, request *csi.ListSnapsh
 
 	return allSnapshots, nil
 }
+
 func (driver *Driver) validateHostEncryptionParameters(createParameters map[string]string) (string, error) {
 	log.Tracef(">>>>> validateHostEncryptionParameters, createParameters: %+v", createParameters )
 	defer log.Trace("<<<<< validateHostEncryptionParameters")
