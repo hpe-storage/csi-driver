@@ -19,6 +19,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/mpathconfig"
 	"github.com/hpe-storage/common-host-libs/sgio"
 	"github.com/hpe-storage/common-host-libs/util"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -515,7 +516,7 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 			if d.SerialNumber == volume.SerialNumber {
 				log.Debugf("Found device with matching SerialNumber:%s map %s and slaves %+v", d.SerialNumber, d.AltFullPathName, d.Slaves)
 
-				if volume.EncryptionKey != ""{
+				if volume.EncryptionKey != "" {
 					originalDevPath := "/dev/" + d.Pathname
 
 					isLuksDev, err := isLuksDevice(originalDevPath)
@@ -537,7 +538,7 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 						log.Infof("Device %s has been LUKS formatted successfully", originalDevPath)
 					}
 					srcMpath := "/dev/" + d.Pathname
-					mappedMPath := "enc-" + d.MpathName   // "enc-mpathx"
+					mappedMPath := "enc-" + d.MpathName // "enc-mpathx"
 					log.Infof("Opening LUKS device %s with mapped device %s...", srcMpath, mappedMPath)
 					_, _, err = util.ExecCommandOutputWithStdinArgs("cryptsetup",
 						[]string{"luksOpen", srcMpath, mappedMPath},
@@ -1267,6 +1268,32 @@ func RescanForCapacityUpdates(devicePath string) error {
 	return nil
 }
 
+// IsBlockDevice checks if the given path is a block device
+func IsBlockDevice(devicePath string) (bool, error) {
+	var st unix.Stat_t
+	err := unix.Stat(devicePath, &st)
+	if err != nil {
+		return false, err
+	}
+
+	return (st.Mode & unix.S_IFMT) == unix.S_IFBLK, nil
+}
+
+// GetBlockSizeBytes returns the block size in bytes
+func GetBlockSizeBytes(devicePath string) (int64, error) {
+	args := []string{"--getsize64", devicePath}
+	out, _, err := util.ExecCommandOutput("blockdev", args)
+	if err != nil {
+		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(out), err)
+	}
+	strOut := strings.TrimSpace(string(out))
+	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse size %s as int", strOut)
+	}
+	return gotSizeBytes, nil
+}
+
 // ExpandDevice expands device and filesystem at given targetPath to underlying volume size
 // targetPath is /dev/dm-* for block device and mountpoint for filesystem based device
 func ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error {
@@ -1307,7 +1334,7 @@ func ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error
 	return err
 }
 
-func resizeMappedLuksDevice(devPath string) (bool, error){
+func resizeMappedLuksDevice(devPath string) (bool, error) {
 	log.Tracef(">>>> resizeMappedLuksDevice - %s", devPath)
 	defer log.Tracef("<<<< resizeMappedLuksDevice - %s", devPath)
 

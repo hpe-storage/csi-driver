@@ -26,4 +26,6 @@ type Driver interface {
 	GetMounts(serialNumber string) ([]*model.Mount, error)
 	GetMountsForDevice(device *model.Device) ([]*model.Mount, error)
 	ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error
+	IsBlockDevice(devicePath string) (bool, error)
+	GetBlockSizeBytes(devicePath string) (int64, error)
 }

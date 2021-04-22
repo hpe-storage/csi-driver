@@ -136,3 +136,13 @@ func (driver *MacDriver) ExpandDevice(targetPath string, volAccessType model.Vol
 func (driver *MacDriver) MountNFSVolume(source string, targetPath string, mountOptions []string, nfsType string) error {
 	return nil
 }
+
+// IsBlockDevice will check if the given path is a block device
+func (driver *MacDriver) IsBlockDevice(devicePath string) (bool, error) {
+	return false, fmt.Errorf("not implemented")
+}
+
+// GetBlockSizeBytes returns the size of the block device
+func (driver *MacDriver) GetBlockSizeBytes(devicePath string) (int64, error) {
+	return -1, fmt.Errorf("not implemented")
+}

@@ -9,13 +9,14 @@ import (
 	"os"
 	"strings"
 
+	"sort"
+	"sync"
+
 	"github.com/hpe-storage/common-host-libs/linux"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/util"
 	uuid "github.com/satori/go.uuid"
-	"sort"
-	"sync"
 )
 
 // LinuxDriver ... Linux implementation of the CHAPI driver
@@ -345,4 +346,14 @@ func (driver *LinuxDriver) OfflineDevice(device *model.Device) error {
 // ExpandDevice will expand the given device/filesystem on the host
 func (driver *LinuxDriver) ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error {
 	return linux.ExpandDevice(targetPath, volAccessType)
+}
+
+// IsBlockDevice will check if the given path is a block device
+func (driver *LinuxDriver) IsBlockDevice(devicePath string) (bool, error) {
+	return linux.IsBlockDevice(devicePath)
+}
+
+// GetBlockSizeBytes returns the size of the block device
+func (driver *LinuxDriver) GetBlockSizeBytes(devicePath string) (int64, error) {
+	return linux.GetBlockSizeBytes(devicePath)
 }
