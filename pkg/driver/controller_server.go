@@ -346,6 +346,15 @@ func (driver *Driver) createVolume(
 		delete(createParameters, protectionTemplateKey)
 	}
 
+	// Validate the host encryption parameters 
+	hostEncryption, err := driver.validateHostEncryptionParameters(createParameters)  
+	if err != nil {
+		log.Error("err: ", err.Error())
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid arguments for host encryption, %s", err.Error()))
+	} 
+ 	// hostEncryption can be true and false after validation which can be used during Publish and Stage workflows
+	createParameters[hostEncryptionKey] = hostEncryption
+
 	// TODO: use additional properties here to configure the volume further... these might come in from doryd
 	createOptions := make(map[string]interface{})
 	for k, v := range createParameters {
@@ -390,7 +399,6 @@ func (driver *Driver) createVolume(
 	}
 
 	// TODO: check for version compatibility for new features
-
 	// Note the call to GetVolumeByName.  Names are only unique within a single group so a given name
 	// can be used more than once if multiple groups are configured.  Note the comment from the spec regarding
 	// the name field:
@@ -1623,4 +1631,51 @@ func getSnapshotsForStorageProvider(ctx context.Context, request *csi.ListSnapsh
 	}
 
 	return allSnapshots, nil
+}
+
+func (driver *Driver) validateHostEncryptionParameters(createParameters map[string]string) (string, error) {
+	log.Tracef(">>>>> validateHostEncryptionParameters, createParameters: %+v", createParameters )
+	defer log.Trace("<<<<< validateHostEncryptionParameters")
+	var hostEncryptionVal string
+	var ok bool
+	// handling specified and invalid value for hostencryption
+	if hostEncryptionVal, ok = createParameters[hostEncryptionKey]; ok {
+		if hostEncryptionVal != trueKey && hostEncryptionVal != falseKey {
+			err := fmt.Sprintf("Invalid value for the hostEncryption parameter, it must be either [true, false]")
+			return falseKey, status.Error(codes.InvalidArgument, err)
+			
+		}
+	}
+	encryptionSecretNameSpecified := true
+	if _, ok = createParameters[hostEncryptionSecretNameKey]; !ok {
+		encryptionSecretNameSpecified = false
+	} 
+
+	encryptionSecretNamespaceSpecified := true
+	if _, ok = createParameters[hostEncryptionSecretNamespaceKey]; !ok {
+		encryptionSecretNamespaceSpecified = false
+	} 
+
+	if hostEncryptionVal == "" && !encryptionSecretNameSpecified && !encryptionSecretNamespaceSpecified {
+		return falseKey, nil
+	}
+	
+	// If both keys are specified and no empty
+	if createParameters[hostEncryptionSecretNameKey] != "" && createParameters[hostEncryptionSecretNamespaceKey] != "" {
+		// when hostencryption is unspecified default value is empty
+		if hostEncryptionVal == "" {
+			return trueKey, nil
+		}
+		return hostEncryptionVal, nil
+	}
+
+	// If secretname and/or secret namespace are not specified
+	if hostEncryptionVal == trueKey || hostEncryptionVal == "" {
+		err := fmt.Sprintf("For encrypted volume HostEncryptionSecretName and HostEncryptionSecretNamespace both must be specified")
+		return falseKey, status.Error(codes.InvalidArgument, err)
+		
+
+	}
+
+	return falseKey, nil
 }
