@@ -27,7 +27,7 @@ func (driver *Driver) getVolumeAccessType(volCap *csi.VolumeCapability) (model.V
 	defer log.Trace("<<<<< getVolumeAccessType")
 
 	if volCap.GetAccessType() == nil {
-		return model.UnknownType, fmt.Errorf("Missing access type in the volume capability %+v", volCap)
+		return model.UnknownType, fmt.Errorf("missing access type in the volume capability %+v", volCap)
 	}
 
 	switch valType := volCap.GetAccessType().(type) {
@@ -865,18 +865,7 @@ func (driver *Driver) controllerPublishVolume(
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Failed to add ACL to volume %s for node %v via CSP, err: %s", volume.ID, node, err.Error()))
 	}
-	// PublishInfo contains chap credentials
-	publishInfoLog := *publishInfo
-	publishInfoLog.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapPassword = "********"
-	log.Tracef("PublishInfo response from CSP: %+v", publishInfoLog)
-
-	// CV-CSP sends chap username and password. Update node obj if chap info is sent
-	chapUser := publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapUser
-	chapPassword := publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapPassword
-	if chapUser != "" && chapPassword != "" {
-		node.ChapUser = chapUser
-		node.ChapPassword = string(chapPassword)
-	}
+	log.Tracef("PublishInfo response from CSP: %+v", publishInfo)
 
 	// target scope is nimble specific therefore extract it from the volume config
 	var requestedTargetScope = targetScopeGroup
@@ -907,17 +896,9 @@ func (driver *Driver) controllerPublishVolume(
 
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
 		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIPs, ",")
-		// validate chapuser from storage provider and node
-		if node.ChapUser != "" && !strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapUser, node.ChapUser) {
-			err := fmt.Errorf("Failed to publish volume. chapuser expected :%s got :%s", node.ChapUser, publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapUser)
-			log.Errorf(err.Error())
-			return nil, status.Error(codes.Internal, err.Error())
-		}
-		publishContext[chapUsernameKey] = node.ChapUser
-		publishContext[chapPasswordKey] = node.ChapPassword
 	}
 
-	if readOnlyAccessMode == true {
+	if readOnlyAccessMode {
 		publishContext[readOnlyKey] = strconv.FormatBool(readOnlyAccessMode)
 	} else { // Default case, we stick to old behavior
 		publishContext[readOnlyKey] = strconv.FormatBool(readOnlyFlag)

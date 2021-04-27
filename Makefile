@@ -100,4 +100,3 @@ image:
 push:
 	@echo "Publishing csi-driver:$(VERSION)"
 	@docker push $(IMAGE)
-

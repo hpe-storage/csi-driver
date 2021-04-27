@@ -594,9 +594,9 @@ func (driver *Driver) ClearRequest(key string) {
 }
 
 func getString(value interface{}) string {
-	switch value.(type) {
+	switch val := value.(type) {
 	case string:
-		return value.(string)
+		return val
 	default: // JSON
 		bytes, _ := json.Marshal(value)
 		return string(bytes)
