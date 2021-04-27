@@ -110,7 +110,7 @@ const (
 	sizeKey = "size"
 
 	trueKey = "true"
-
+	falseKey = "false"
 	// nfs properties
 	nfsResourcesKey = "nfsResources"
 	// indicates if this is an underlying NFS PVC(not exposed to user)

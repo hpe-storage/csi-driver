@@ -22,13 +22,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/resource"
-	vol "k8s.io/kubernetes/pkg/volume"
-	"k8s.io/utils/mount"
 
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/stringformat"
 	"github.com/hpe-storage/common-host-libs/util"
+	"k8s.io/kubernetes/pkg/volume"
 )
 
 var (
@@ -1786,15 +1785,16 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 	log.Trace(">>>>> NodeGetVolumeStats")
 	defer log.Trace("<<<<< NodeGetVolumeStats")
 
-	volumeID := in.GetVolumeId()
-	if volumeID == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "volume id is empty")
+	if len(in.VolumeId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume ID was empty")
+	}
+	if len(in.VolumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
 
-	if strings.Contains(volumeID, "-") {
-		// ignore NFS pvc to report stats, as it does not contain valid CSP volumeHandle
-		log.Tracef("ignoring pvc with volume id %s", volumeID)
-		return &csi.NodeGetVolumeStatsResponse{}, nil
+	volumeID := in.GetVolumeId()
+	if volumeID == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "NodeGetVolumeStats volume ID not found")
 	}
 
 	volumePath := in.GetVolumePath()
@@ -1802,83 +1802,56 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 		return nil, status.Errorf(codes.InvalidArgument, "volume path is empty")
 	}
 
-	// check if it is a mount point
-	dummy := mount.New("")
-	notMount, err := dummy.IsLikelyNotMountPoint(volumePath)
+	_, err := os.Lstat(in.VolumePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, status.Errorf(codes.NotFound, "volume path %s does not exist", volumePath)
+			return nil, status.Errorf(codes.NotFound, "path %s does not exist", in.VolumePath)
 		}
-		return nil, status.Error(codes.NotFound, err.Error())
-	}
-	if notMount {
-		return nil, status.Errorf(codes.InvalidArgument, "volume path %s is not mounted", volumePath)
+		return nil, status.Errorf(codes.Internal, "unknown error when stat on %s: %v", in.VolumePath, err)
 	}
 
-	folders := strings.Split(in.VolumePath, "/")
-	if len(folders) < 2 {
-		log.Infof("Volume name could not be retrieved from path %s , return ",
-			in.VolumePath)
-		return nil, nil
-	}
-	pvName := folders[len(folders)-2]
-	credentials, err := driver.flavor.GetCredentialsFromVolume(pvName)
+	isBlock, err := driver.chapiDriver.IsBlockDevice(in.VolumePath)
 	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Errorf(codes.Unavailable, "Failed to get credentials from volume with name %s, err: %s",
-			pvName, err.Error())
+		return nil, status.Errorf(codes.Internal, "failed to determine whether %s is block device: %v", in.VolumePath, err)
 	}
 
-	// Get storage provider using secrets
-	storageProvider, err := driver.GetStorageProvider(credentials)
+	// if block device
+	if isBlock {
+		bcap, err := driver.chapiDriver.GetBlockSizeBytes(in.VolumePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get block capacity on path %s: %v", in.VolumePath, err)
+		}
+		return &csi.NodeGetVolumeStatsResponse{
+			Usage: []*csi.VolumeUsage{
+				{
+					Unit:  csi.VolumeUsage_BYTES,
+					Total: bcap,
+				},
+			},
+		}, nil
+	}
+
+	// if it is filesystem backed device
+	metricsProvider := volume.NewMetricsStatFS(in.VolumePath)
+
+	metrics, err := metricsProvider.GetMetrics()
 	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Errorf(codes.Unavailable, "Failed to get storage provider from secrets for volume with id %s, err: %s",
-			volumeID, err.Error())
-	}
-	// Fetch the volume using volume ID
-	volume, err := storageProvider.GetVolume(volumeID)
-	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Errorf(codes.Internal, "Error while retrieving volume with id %s from the backend, err: %s",
-			volumeID, err.Error())
-	}
-	if volume == nil {
-		log.Errorf("Volume with ID %s not found on the backend, return ", volumeID)
-		return nil, status.Errorf(codes.NotFound, "Volume with ID %s not found on the backend, return ",
-			volumeID)
-	}
-	hpeMetricsProvider := vol.NewMetricsStatFS(in.VolumePath)
-	metrics, err := hpeMetricsProvider.GetMetrics()
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	inodes, ok := (*(metrics.Inodes)).AsInt64()
-	if !ok {
-		log.WithContext(ctx).Error("failed to fetch available inodes")
-	}
-	inodesFree, ok := (*(metrics.InodesFree)).AsInt64()
-	if !ok {
-		log.WithContext(ctx).Error("failed to fetch free inodes")
-	}
-	inodesUsed, ok := (*(metrics.InodesUsed)).AsInt64()
-	if !ok {
-		log.WithContext(ctx).Error("failed to fetch used inodes")
+		return nil, status.Errorf(codes.Internal, "failed to get fs info on path %s: %v", in.VolumePath, err)
 	}
 
 	return &csi.NodeGetVolumeStatsResponse{
 		Usage: []*csi.VolumeUsage{
 			{
-				Available: volume.FreeBytes,
-				Total:     volume.Size,
-				Used:      volume.UsedBytes,
 				Unit:      csi.VolumeUsage_BYTES,
+				Available: metrics.Available.AsDec().UnscaledBig().Int64(),
+				Total:     metrics.Capacity.AsDec().UnscaledBig().Int64(),
+				Used:      metrics.Used.AsDec().UnscaledBig().Int64(),
 			},
 			{
-				Available: inodesFree,
-				Total:     inodes,
-				Used:      inodesUsed,
 				Unit:      csi.VolumeUsage_INODES,
+				Available: metrics.InodesFree.AsDec().UnscaledBig().Int64(),
+				Total:     metrics.Inodes.AsDec().UnscaledBig().Int64(),
+				Used:      metrics.InodesUsed.AsDec().UnscaledBig().Int64(),
 			},
 		},
 	}, nil

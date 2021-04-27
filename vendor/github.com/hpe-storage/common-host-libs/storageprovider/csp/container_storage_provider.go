@@ -174,7 +174,7 @@ func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) 
 		}
 		request.Path = reqPath      // Set the original path value
 		request.ResponseError = nil // Reset the previous error response
-		log.Tracef("Re-attempting the request: %+v", request)
+		log.Tracef("Re-attempting the request: Action=%s Path=%s", request.Action, request.Path)
 		return provider.invoke(request) // Recursive invoke call with new token
 	}
 	log.Tracef("Replying with status code: %v", status)

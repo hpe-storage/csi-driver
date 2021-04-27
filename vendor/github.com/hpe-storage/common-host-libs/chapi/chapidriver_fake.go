@@ -159,3 +159,13 @@ func (driver *FakeDriver) ExpandDevice(targetPath string, volAccessType model.Vo
 func (driver *FakeDriver) MountNFSVolume(source string, targetPath string, mountOptions []string, nfsType string) error {
 	return nil
 }
+
+// IsBlockDevice will check if the given path is a block device
+func (driver *FakeDriver) IsBlockDevice(devicePath string) (bool, error) {
+	return false, nil
+}
+
+// GetBlockSizeBytes returns the size of the block device
+func (driver *FakeDriver) GetBlockSizeBytes(devicePath string) (int64, error) {
+	return -1, nil
+}
