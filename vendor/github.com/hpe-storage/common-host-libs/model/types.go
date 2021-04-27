@@ -279,7 +279,6 @@ type PublishOptions struct {
 type PublishInfo struct {
 	SerialNumber string `json:"serial_number,omitempty"`
 	AccessInfo
-	IsCloud bool `json:"is_cloud,omitempty"`
 }
 
 // AccessInfo describes the various ways a volume can be accessed
