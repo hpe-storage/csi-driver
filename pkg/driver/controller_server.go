@@ -857,13 +857,7 @@ func (driver *Driver) controllerPublishVolume(
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Failed to add ACL to volume %s for node %v via CSP, err: %s", volume.ID, node, err.Error()))
 	}
-
-	// FIXME: nimble-csp and 3par-csp are still sending chap secrets via publishInfo.
-	//        Need to fix these CSPs not to publish secrets anymore here.
-	// PublishInfo contains chap credentials, sanitize them here from logs
-	publishInfoLog := *publishInfo
-	publishInfoLog.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.ChapPassword = "********"
-	log.Tracef("PublishInfo response from CSP: %+v", publishInfoLog)
+	log.Tracef("PublishInfo response from CSP: %+v", publishInfo)
 
 	// target scope is nimble specific therefore extract it from the volume config
 	var requestedTargetScope = targetScopeGroup
@@ -878,7 +872,6 @@ func (driver *Driver) controllerPublishVolume(
 	publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
 	publishContext[targetScopeKey] = requestedTargetScope
 	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
-	publishContext[isCloudKey] = strconv.FormatBool(publishInfo.IsCloud) // Get the CSP type: True if Cloud else False
 
 	// Start of population of target array details
 	if publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails != nil {

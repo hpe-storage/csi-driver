@@ -504,40 +504,27 @@ func (driver *Driver) setupDevice(
 
 	// Set iSCSI CHAP credentials if configured
 	if publishContext[accessProtocolKey] == iscsi {
-		// For CV-CSP, IsCloud is set to "true". So, retrieving CHAP credentials from CloudVolumes Portal
-		if publishContext[isCloudKey] == trueKey {
-			// Get Volume - HPE Cloud Volumes CSP sends CHAP credentials in the Volume response
-			cloudVolume, err := driver.GetVolumeByID(volumeID, secrets)
-			if err != nil {
-				log.Errorf("Failed to get cloud volume with id %s while node staging", volumeID)
-				return nil, err // NOT_FOUND
-			}
-			volume.Chap = cloudVolume.Chap
-			log.Infof("Using chap credentials from cloud volume with id %s", volumeID)
-		} else {
-			// Nimble CSP or 3PAR-Primera CSP or other CSPs
-			// Get chap credentials from Cluster
-			nodeID, err := driver.nodeGetInfo()
-			if err != nil {
-				log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
-			}
-			// Decode and check if the node is configured
-			nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
-			if err != nil {
-				log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
-				return nil, status.Error(codes.NotFound, err.Error())
-			}
-			if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
-				// Decode chap password
-				decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
-				nodeInfo.ChapPassword = string(decodedChapPassword)
+		// Get CHAP credentials from Cluster
+		nodeID, err := driver.nodeGetInfo()
+		if err != nil {
+			log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+		}
+		// Decode and check if the node is configured
+		nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
+		if err != nil {
+			log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
+			// Decode chap password
+			decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
+			nodeInfo.ChapPassword = string(decodedChapPassword)
 
-				volume.Chap = &model.ChapInfo{
-					Name:     nodeInfo.ChapUser,
-					Password: nodeInfo.ChapPassword,
-				}
-				log.Infof("Using chap credentials from node %s", nodeID)
+			volume.Chap = &model.ChapInfo{
+				Name:     nodeInfo.ChapUser,
+				Password: nodeInfo.ChapPassword,
 			}
+			log.Infof("Using chap credentials from node %s", nodeID)
 		}
 	}
 
