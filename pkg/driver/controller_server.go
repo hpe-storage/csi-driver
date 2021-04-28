@@ -346,14 +346,18 @@ func (driver *Driver) createVolume(
 		delete(createParameters, protectionTemplateKey)
 	}
 
-	// Validate the host encryption parameters 
-	hostEncryption, err := driver.validateHostEncryptionParameters(createParameters)  
+	// Validate the host encryption parameters
+	hostEncryption, err := driver.validateHostEncryptionParameters(createParameters)
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid arguments for host encryption, %s", err.Error()))
-	} 
- 	// hostEncryption can be true and false after validation which can be used during Publish and Stage workflows
-	createParameters[hostEncryptionKey] = hostEncryption
+	}
+
+	// hostEncryption can be true and false after validation which can be used during Publish and Stage workflows.
+	// csi-sanity tests fails(panic) if the createParameters are nil.
+	if createParameters != nil {
+		createParameters[hostEncryptionKey] = hostEncryption
+	}
 
 	// TODO: use additional properties here to configure the volume further... these might come in from doryd
 	createOptions := make(map[string]interface{})
@@ -1615,7 +1619,7 @@ func getSnapshotsForStorageProvider(ctx context.Context, request *csi.ListSnapsh
 }
 
 func (driver *Driver) validateHostEncryptionParameters(createParameters map[string]string) (string, error) {
-	log.Tracef(">>>>> validateHostEncryptionParameters, createParameters: %+v", createParameters )
+	log.Tracef(">>>>> validateHostEncryptionParameters, createParameters: %+v", createParameters)
 	defer log.Trace("<<<<< validateHostEncryptionParameters")
 	var hostEncryptionVal string
 	var ok bool
@@ -1624,23 +1628,23 @@ func (driver *Driver) validateHostEncryptionParameters(createParameters map[stri
 		if hostEncryptionVal != trueKey && hostEncryptionVal != falseKey {
 			err := fmt.Sprintf("Invalid value for the hostEncryption parameter, it must be either [true, false]")
 			return falseKey, status.Error(codes.InvalidArgument, err)
-			
+
 		}
 	}
 	encryptionSecretNameSpecified := true
 	if _, ok = createParameters[hostEncryptionSecretNameKey]; !ok {
 		encryptionSecretNameSpecified = false
-	} 
+	}
 
 	encryptionSecretNamespaceSpecified := true
 	if _, ok = createParameters[hostEncryptionSecretNamespaceKey]; !ok {
 		encryptionSecretNamespaceSpecified = false
-	} 
+	}
 
 	if hostEncryptionVal == "" && !encryptionSecretNameSpecified && !encryptionSecretNamespaceSpecified {
 		return falseKey, nil
 	}
-	
+
 	// If both keys are specified and no empty
 	if createParameters[hostEncryptionSecretNameKey] != "" && createParameters[hostEncryptionSecretNamespaceKey] != "" {
 		// when hostencryption is unspecified default value is empty
@@ -1654,7 +1658,6 @@ func (driver *Driver) validateHostEncryptionParameters(createParameters map[stri
 	if hostEncryptionVal == trueKey || hostEncryptionVal == "" {
 		err := fmt.Sprintf("For encrypted volume HostEncryptionSecretName and HostEncryptionSecretNamespace both must be specified")
 		return falseKey, status.Error(codes.InvalidArgument, err)
-		
 
 	}
 
