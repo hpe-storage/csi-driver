@@ -136,6 +136,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 	}
 
 	log.Tracef("About to start the CSI driver '%v'", driverName)
+	envKubeletRootDir := os.Getenv(driver.KubeletRootDirEnvKey)
 	pid := os.Getpid()
 	d, err := driver.NewDriver(
 		driverName,
@@ -146,10 +147,12 @@ func csiCliHandler(cmd *cobra.Command) error {
 		dbServer,
 		dbPort,
 		podMonitor,
-		monitorInterval)
+		monitorInterval,
+		envKubeletRootDir)
 	if err != nil {
 		return fmt.Errorf("Error instantiating plugin %v, Err: %v", driverName, err.Error())
 	}
+	log.Infof("About to start the CSI driver '%v with KubeletRootDirectory %s'", driverName, d.KubeletRootDir)
 
 	d.Start(nodeService)
 	log.Infof("[%d] reply  : %v", pid, os.Args)

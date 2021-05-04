@@ -51,6 +51,44 @@ func TestNodeGetIntEnv(t *testing.T) {
 
 }
 
+func TestKubeletRootDir(t *testing.T) {
+	socket := "/tmp/csi.sock"
+	endpoint := "unix://" + socket
+	volumeID := "1"
+	testCases := []struct {
+		name           string
+		kubeletRootDir string
+		expectVal      string
+	}{
+		{
+			name:           "default path",
+			kubeletRootDir: DefaultKubeletRoot,
+			expectVal:      DefaultKubeletRoot + DefaultPluginMountPath + "/" + volumeID,
+		},
+		{
+			name:           "modified path with leading slash",
+			kubeletRootDir: "/var/lib/docker/kubelet/",
+			expectVal:      "/var/lib/docker/kubelet/" + DefaultPluginMountPath + "/" + volumeID,
+		},
+		{
+			name:           "modified path without leading slash",
+			kubeletRootDir: "/var/lib/docker/kubelet",
+			expectVal:      "/var/lib/docker/kubelet/" + DefaultPluginMountPath + "/" + volumeID,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, _ := NewDriver("test-driver", "0.1", endpoint, "", true, "", "", false, 0, tc.kubeletRootDir)
+			expectVal := d.getDefaultMountPoint(volumeID)
+			if expectVal != tc.expectVal {
+				t.Fatalf("Got %s expected %s", expectVal, tc.expectVal)
+			}
+		})
+	}
+
+}
+
 func TestNodeGetVolumeStats(t *testing.T) {
 	socket := "/tmp/csi.sock"
 	endpoint := "unix://" + socket

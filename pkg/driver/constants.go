@@ -10,11 +10,12 @@ const (
 	// defaultFileSystem is the implemenation-specific default value
 	defaultFileSystem = "xfs"
 
+	// Default Kubelet Root directory
+	DefaultKubeletRoot     string = "/var/lib/kubelet/"
+	DefaultPluginMountPath string = "plugins/hpe.com/mounts"
+
 	// Unsupported filesystem
 	nfsFileSystem = "nfs"
-
-	// Default mount directory
-	defaultMountDir = "/var/lib/kubelet/plugins/hpe.com/mounts"
 
 	// GiB in bytes
 	giB int64 = 1 * 1024 * 1024 * 1024
@@ -50,6 +51,7 @@ const (
 	defaultConnectionMode = "manual"
 	chapUserEnvKey        = "CHAP_USER"
 	chapPasswordEnvKey    = "CHAP_PASSWORD"
+	KubeletRootDirEnvKey  = "KUBELET_ROOT_DIR"
 
 	// deviceInfoFileName is used to store the device details in a JSON file
 	deviceInfoFileName = "deviceInfo.json"
@@ -109,7 +111,7 @@ const (
 	// Ephemeral volume size specified in the POD spec
 	sizeKey = "size"
 
-	trueKey = "true"
+	trueKey  = "true"
 	falseKey = "false"
 	// nfs properties
 	nfsResourcesKey = "nfsResources"

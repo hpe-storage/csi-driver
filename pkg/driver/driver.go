@@ -56,10 +56,11 @@ type Driver struct {
 	requestCache      map[string]interface{}
 	requestCacheMutex *concurrent.MapMutex
 	DBService         dbservice.DBService
+	KubeletRootDir    string
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
-func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval int64) (*Driver, error) {
+func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval int64, envKubeletRootDir string) (*Driver, error) {
 
 	// Get CSI driver
 	driver := getDriver(name, version, endpoint)
@@ -79,6 +80,15 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 		driver.podMonitor = monitor.NewMonitor(driver.flavor, podMonitorInterval)
 	}
 
+	driver.KubeletRootDir = DefaultKubeletRoot
+	if envKubeletRootDir != "" {
+		driver.KubeletRootDir = envKubeletRootDir
+		if strings.HasSuffix(envKubeletRootDir, "/") {
+			driver.KubeletRootDir = envKubeletRootDir
+		} else {
+			driver.KubeletRootDir = envKubeletRootDir + "/"
+		}
+	}
 	// Init Controller Service Capabilities supported by the driver
 	driver.AddControllerServiceCapabilities([]csi.ControllerServiceCapability_RPC_Type{
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
