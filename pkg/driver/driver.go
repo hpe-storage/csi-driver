@@ -60,7 +60,7 @@ type Driver struct {
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
-func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval int64, envKubeletRootDir string) (*Driver, error) {
+func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval int64) (*Driver, error) {
 
 	// Get CSI driver
 	driver := getDriver(name, version, endpoint)
@@ -81,11 +81,10 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 	}
 
 	driver.KubeletRootDir = DefaultKubeletRoot
+	envKubeletRootDir := os.Getenv(KubeletRootDirEnvKey)
 	if envKubeletRootDir != "" {
 		driver.KubeletRootDir = envKubeletRootDir
-		if strings.HasSuffix(envKubeletRootDir, "/") {
-			driver.KubeletRootDir = envKubeletRootDir
-		} else {
+		if !strings.HasSuffix(envKubeletRootDir, "/") {
 			driver.KubeletRootDir = envKubeletRootDir + "/"
 		}
 	}

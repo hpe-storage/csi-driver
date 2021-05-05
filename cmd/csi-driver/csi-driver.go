@@ -135,8 +135,6 @@ func csiCliHandler(cmd *cobra.Command) error {
 		return fmt.Errorf("invalid interval %s provided for monitoring pods on unreachable nodes", podMonitorInterval)
 	}
 
-	log.Tracef("About to start the CSI driver '%v'", driverName)
-	envKubeletRootDir := os.Getenv(driver.KubeletRootDirEnvKey)
 	pid := os.Getpid()
 	d, err := driver.NewDriver(
 		driverName,
@@ -147,8 +145,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 		dbServer,
 		dbPort,
 		podMonitor,
-		monitorInterval,
-		envKubeletRootDir)
+		monitorInterval)
 	if err != nil {
 		return fmt.Errorf("Error instantiating plugin %v, Err: %v", driverName, err.Error())
 	}

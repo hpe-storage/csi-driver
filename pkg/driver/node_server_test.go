@@ -52,8 +52,7 @@ func TestNodeGetIntEnv(t *testing.T) {
 }
 
 func TestKubeletRootDir(t *testing.T) {
-	socket := "/tmp/csi.sock"
-	endpoint := "unix://" + socket
+	endpoint := "unix://" + testsocket
 	volumeID := "1"
 	testCases := []struct {
 		name           string
@@ -79,7 +78,8 @@ func TestKubeletRootDir(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			d, _ := NewDriver("test-driver", "0.1", endpoint, "", true, "", "", false, 0, tc.kubeletRootDir)
+			os.Setenv(KubeletRootDirEnvKey, tc.kubeletRootDir)
+			d, _ := NewDriver("test-driver", "0.1", endpoint, "", true, "", "", false, 0)
 			expectVal := d.getDefaultMountPoint(volumeID)
 			if expectVal != tc.expectVal {
 				t.Fatalf("Got %s expected %s", expectVal, tc.expectVal)
@@ -90,8 +90,7 @@ func TestKubeletRootDir(t *testing.T) {
 }
 
 func TestNodeGetVolumeStats(t *testing.T) {
-	socket := "/tmp/csi.sock"
-	endpoint := "unix://" + socket
+	endpoint := "unix://" + testsocket
 	driver := &Driver{
 		name:              "fake-test-driver",
 		version:           "2.0",
