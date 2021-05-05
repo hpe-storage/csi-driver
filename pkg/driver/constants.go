@@ -44,8 +44,6 @@ const (
 	secondaryArrayDetailsKey = "secondaryArrayDetailsKey"
 
 	discoveryIPsKey       = "discoveryIps"
-	chapUsernameKey       = "chapUsername"
-	chapPasswordKey       = "chapPassword"
 	readOnlyKey           = "readOnly"
 	volumeAccessModeKey   = "volumeAccessMode"
 	multiInitiatorKey     = "multiInitiator"
@@ -95,6 +93,11 @@ const (
 	// secretName attribute to be used to specify secret name for ephemeral inline volume
 	secretNameKey = "inline-volume-secret-name"
 
+	hostEncryptionKey                = "hostEncryption"
+	hostEncryptionSecretNameKey      = "hostEncryptionSecretName"
+	hostEncryptionSecretNamespaceKey = "hostEncryptionSecretNamespace"
+	hostEncryptionPassphraseKey      = "hostEncryptionPassphrase"
+
 	// POD attributes propogated to the CSI
 	csiEphemeralPodName      = "csi.storage.k8s.io/pod.name"
 	csiEphemeralPodNamespace = "csi.storage.k8s.io/pod.namespace"
@@ -107,7 +110,7 @@ const (
 	sizeKey = "size"
 
 	trueKey = "true"
-
+	falseKey = "false"
 	// nfs properties
 	nfsResourcesKey = "nfsResources"
 	// indicates if this is an underlying NFS PVC(not exposed to user)

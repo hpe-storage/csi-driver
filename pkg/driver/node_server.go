@@ -4,6 +4,7 @@
 package driver
 
 import (
+	b64 "encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,13 +22,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/resource"
-	vol "k8s.io/kubernetes/pkg/volume"
-	"k8s.io/utils/mount"
 
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/stringformat"
 	"github.com/hpe-storage/common-host-libs/util"
+	"k8s.io/kubernetes/pkg/volume"
 )
 
 var (
@@ -228,12 +228,6 @@ func (driver *Driver) nodeStageVolume(
 		return nil
 	}
 
-	// Get Volume
-	if _, err := driver.GetVolumeByID(volumeID, secrets); err != nil {
-		log.Error("Failed to get volume ", volumeID)
-		return err // NOT_FOUND
-	}
-
 	// Stage the volume on the node by creating a new device with block or mount access.
 	// If already staged, then validate it and return appropriate response.
 	// Check if the volume has already been staged. If yes, then return here with success
@@ -256,6 +250,32 @@ func (driver *Driver) nodeStageVolume(
 		return nil // volume already staged, do nothing and return here
 	}
 
+	if volumeContext[hostEncryptionKey] == "true" {
+		if volumeContext[hostEncryptionSecretNameKey] != "" {
+			log.Infof("Requested volume needs encryption. Received Secret name: %s, Secret namespace: %s",
+				volumeContext[hostEncryptionSecretNameKey], volumeContext[hostEncryptionSecretNamespaceKey])
+
+			var encPassphrase string
+			encPassphrase, err = driver.getEncryptionPassphraseFromSecret(volumeContext[hostEncryptionSecretNameKey],
+				volumeContext[hostEncryptionSecretNamespaceKey])
+			if err != nil {
+				log.Errorf("Encountered error while fetching secret - %v", err.Error())
+				return err // specified secret for encryption key doesn't exist
+			}
+
+			ctxt := make(map[string]string)
+			for k, v := range publishContext {
+				ctxt[k] = v
+			}
+			ctxt[hostEncryptionPassphraseKey] = encPassphrase
+			publishContext = ctxt
+		} else {
+			err := fmt.Sprintf("Failed to stage volume %s - hostEncryptionSecretName must be specified when hostEncryption is true", volumeID)
+			log.Errorln(err)
+			return status.Error(codes.Internal,
+				fmt.Sprintf("Failed to stage volume %s with error: %s", volumeID, err))
+		}
+	}
 	// Stage volume - Create device and expose volume as raw block or mounted directory (filesystem)
 	log.Tracef("NodeStageVolume staging volume %s to the staging path %s", volumeID, stagingTargetPath)
 	stagingDev, err := driver.stageVolume(
@@ -263,6 +283,7 @@ func (driver *Driver) nodeStageVolume(
 		stagingMountPoint,
 		volAccessType,
 		volumeCapability,
+		secrets,
 		publishContext,
 		volumeContext,
 	)
@@ -282,6 +303,15 @@ func (driver *Driver) nodeStageVolume(
 		return status.Error(codes.Internal, fmt.Sprintf("Failed to stage volume %s, err: %s", volumeID, err.Error()))
 	}
 	return nil
+}
+
+func (driver *Driver) getEncryptionPassphraseFromSecret(volEncryptionSecretName, volEncryptionSecretNamespace string) (string, error) {
+	secret, err := driver.flavor.GetCredentialsFromSecret(volEncryptionSecretName, volEncryptionSecretNamespace)
+	if err != nil {
+		return "", fmt.Errorf("failed to find encryption secret for secret name %v in namespace %v",
+			volEncryptionSecretName, volEncryptionSecretNamespace)
+	}
+	return secret[hostEncryptionPassphraseKey], err
 }
 
 // isVolumeStaged checks if the volume is already been staged on the node.
@@ -381,11 +411,12 @@ func (driver *Driver) stageVolume(
 	stagingMountPoint string,
 	volAccessType model.VolumeAccessType,
 	volCap *csi.VolumeCapability,
+	secrets map[string]string,
 	publishContext map[string]string,
 	volumeContext map[string]string) (*StagingDevice, error) {
 
 	log.Tracef(">>>>> stageVolume, volumeID: %s, stagingMountPoint: %s, volumeAccessType: %v, volCap: %v, publishContext: %v, volumeContext: %v",
-		volumeID, stagingMountPoint, volAccessType.String(), volCap, publishContext, volumeContext)
+		volumeID, stagingMountPoint, volAccessType.String(), volCap, log.MapScrubber(publishContext), volumeContext)
 	defer log.Trace("<<<<< stageVolume")
 
 	// serialize stage requests
@@ -393,18 +424,32 @@ func (driver *Driver) stageVolume(
 	defer stageLock.Unlock()
 
 	// Create device for volume on the node
-	device, err := driver.setupDevice(publishContext)
+	device, err := driver.setupDevice(volumeID, secrets, publishContext)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Error creating device for volume %s, err: %v", volumeID, err.Error()))
 	}
 	log.Infof("Device setup successful, Device: %+v", device)
 
+	// Add encryption secret to the staging-device. This is required during unstage operation
+	// so that encryption key can be accessed to complete the close operation on LUKS device
+	var encKeySecretInfo EncryptionKeySecretInfo
+	if volumeContext[hostEncryptionSecretNameKey] != "" {
+		encKeySecretInfo.Name = volumeContext[hostEncryptionSecretNameKey]
+		if volumeContext[hostEncryptionSecretNamespaceKey] != "" {
+			encKeySecretInfo.Namespace = volumeContext[hostEncryptionSecretNamespaceKey]
+		} else {
+			return nil, fmt.Errorf("Secret namespace missing for secret %s related to encrypted device %s",
+				volumeContext[hostEncryptionSecretNameKey], device.AltFullLuksPathName)
+		}
+	}
+
 	// Construct staging device to be stored in the staging path on the node
 	stagingDevice := &StagingDevice{
 		VolumeID:         volumeID,
 		VolumeAccessMode: volAccessType,
 		Device:           device,
+		EncKeySecretInfo: &encKeySecretInfo,
 	}
 
 	// If Block, then stage the volume for raw block device access
@@ -421,7 +466,7 @@ func (driver *Driver) stageVolume(
 	mount, err := driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
 		mountInfo.MountOptions, mountInfo.FilesystemOptions)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
+		return nil, fmt.Errorf("failed to mount device %s, %v", device.AltFullPathName, err.Error())
 	}
 	log.Tracef("Device %s mounted successfully, Mount: %+v", device.AltFullPathName, mount)
 
@@ -431,8 +476,12 @@ func (driver *Driver) stageVolume(
 	return stagingDevice, nil
 }
 
-func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Device, error) {
-	log.Tracef(">>>>> setupDevice, publishContext: %v", publishContext)
+func (driver *Driver) setupDevice(
+	volumeID string,
+	secrets map[string]string,
+	publishContext map[string]string) (*model.Device, error) {
+
+	log.Tracef(">>>>> setupDevice, volumeID: %s, publishContext: %v", volumeID, log.MapScrubber(publishContext))
 	defer log.Trace("<<<<< setupDevice")
 
 	// TODO: Enhance CHAPI to work with a PublishInfo object rather than a volume
@@ -449,20 +498,40 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 		DiscoveryIPs:          discoveryIps,
 		ConnectionMode:        defaultConnectionMode,
 		SecondaryArrayDetails: publishContext[secondaryArrayDetailsKey],
+		EncryptionKey:         publishContext[hostEncryptionPassphraseKey],
 	}
+
+	// Set iSCSI CHAP credentials if configured
 	if publishContext[accessProtocolKey] == iscsi {
-		chapInfo := &model.ChapInfo{
-			Name:     publishContext[chapUsernameKey],
-			Password: publishContext[chapPasswordKey],
+		// Get CHAP credentials from Cluster
+		nodeID, err := driver.nodeGetInfo()
+		if err != nil {
+			log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
 		}
-		volume.Chap = chapInfo
+		// Decode and check if the node is configured
+		nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
+		if err != nil {
+			log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
+			// Decode chap password
+			decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
+			nodeInfo.ChapPassword = string(decodedChapPassword)
+
+			volume.Chap = &model.ChapInfo{
+				Name:     nodeInfo.ChapUser,
+				Password: nodeInfo.ChapPassword,
+			}
+			log.Infof("Using chap credentials from node %s", nodeID)
+		}
 	}
 
 	// Cleanup any stale device existing before stage
-	device, err := driver.chapiDriver.GetDevice(volume)
+	device, _ := driver.chapiDriver.GetDevice(volume)
 	if device != nil {
 		device.TargetScope = volume.TargetScope
-		err = driver.chapiDriver.DeleteDevice(device)
+		err := driver.chapiDriver.DeleteDevice(device)
 		if err != nil {
 			log.Warnf("Failed to cleanup stale device %s before staging, err %s", device.AltFullPathName, err.Error())
 		}
@@ -476,7 +545,7 @@ func (driver *Driver) setupDevice(publishContext map[string]string) (*model.Devi
 	}
 	if len(devices) == 0 {
 		log.Errorf("Failed to get the device just created using the volume %+v", volume)
-		return nil, fmt.Errorf("Unable to find the device for volume %+v", volume)
+		return nil, fmt.Errorf("unable to find the device for volume %+v", volume)
 	}
 
 	// Update targetScope in stagingDevice from publishContext.
@@ -591,6 +660,31 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 			return status.Error(codes.Internal,
 				fmt.Sprintf("Error unmounting device %s from mountpoint %s, err: %s",
 					device.AltFullPathName, stagingDev.MountInfo.MountPoint, err.Error()))
+		}
+	}
+
+	// If this is an encrypted device, close it
+	if device.AltFullLuksPathName != "" {
+		if stagingDev.EncKeySecretInfo.Name != "" {
+			passPhrase, err := driver.getEncryptionPassphraseFromSecret(stagingDev.EncKeySecretInfo.Name,
+				stagingDev.EncKeySecretInfo.Namespace)
+			if err != nil {
+				log.Errorln(err.Error())
+				return err
+			}
+			_, _, err = util.ExecCommandOutputWithStdinArgs("cryptsetup",
+				[]string{"luksClose", device.LuksPathname},
+				[]string{passPhrase})
+			if err != nil {
+				err = fmt.Errorf("luksClose command failed with error %v", err)
+				log.Error(err.Error())
+				return err
+			}
+			log.Infof("Device %s closed successfully by luksClose command", device.LuksPathname)
+		} else {
+			err := fmt.Errorf("secret not present in the device-info file %s for encrypted volume", deviceFilePath)
+			log.Errorln(err.Error())
+			return err
 		}
 	}
 
@@ -1020,6 +1114,29 @@ func (driver *Driver) getEphemeralVolumeSecret(volumeHandle string, volumeContex
 		return nil, nil, err
 	}
 	return secrets, secretRef, nil
+}
+
+func (driver *Driver) getEncryptedVolumeSecret(volumeHandle string, secretName, secretNamespace string) (map[string]string, *Secret, error) {
+	log.Tracef(">>>>> getEncryptedVolumeSecret, volumeHandle: %s, secretName: %s, secretNamespace: %s", volumeHandle, secretName, secretNamespace)
+	defer log.Trace("<<<<< getEncryptedVolumeSecret")
+
+	var secretRef *Secret
+	// Get the secret reference from volume context if specified
+	if secretName != "" && secretNamespace != "" {
+		log.Tracef("Extract the secret reference from volume context for volume %s", volumeHandle)
+		secretRef = &Secret{
+			Name:      secretName,
+			Namespace: secretNamespace,
+		}
+		secrets, err := driver.flavor.GetCredentialsFromSecret(secretRef.Name, secretRef.Namespace)
+		if err != nil {
+			log.Errorf("Failed to fetch credentials from secret %s/%s for encrypted volume %s, %s",
+				secretRef.Name, secretRef.Namespace, volumeHandle, err.Error())
+			return nil, nil, err
+		}
+		return secrets, secretRef, nil
+	}
+	return nil, nil, nil
 }
 
 func (driver *Driver) nodePublishEphemeralVolume(
@@ -1668,15 +1785,16 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 	log.Trace(">>>>> NodeGetVolumeStats")
 	defer log.Trace("<<<<< NodeGetVolumeStats")
 
-	volumeID := in.GetVolumeId()
-	if volumeID == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "volume id is empty")
+	if len(in.VolumeId) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume ID was empty")
+	}
+	if len(in.VolumePath) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "NodeGetVolumeStats volume path was empty")
 	}
 
-	if strings.Contains(volumeID, "-") {
-		// ignore NFS pvc to report stats, as it does not contain valid CSP volumeHandle
-		log.Tracef("ignoring pvc with volume id %s", volumeID)
-		return &csi.NodeGetVolumeStatsResponse{}, nil
+	volumeID := in.GetVolumeId()
+	if volumeID == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "NodeGetVolumeStats volume ID not found")
 	}
 
 	volumePath := in.GetVolumePath()
@@ -1684,83 +1802,56 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 		return nil, status.Errorf(codes.InvalidArgument, "volume path is empty")
 	}
 
-	// check if it is a mount point
-	dummy := mount.New("")
-	notMount, err := dummy.IsLikelyNotMountPoint(volumePath)
+	_, err := os.Lstat(in.VolumePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, status.Errorf(codes.NotFound, "volume path %s does not exist", volumePath)
+			return nil, status.Errorf(codes.NotFound, "path %s does not exist", in.VolumePath)
 		}
-		return nil, status.Error(codes.NotFound, err.Error())
-	}
-	if notMount {
-		return nil, status.Errorf(codes.InvalidArgument, "volume path %s is not mounted", volumePath)
+		return nil, status.Errorf(codes.Internal, "unknown error when stat on %s: %v", in.VolumePath, err)
 	}
 
-	folders := strings.Split(in.VolumePath, "/")
-	if len(folders) < 2 {
-		log.Infof("Volume name could not be retrieved from path %s , return ",
-			in.VolumePath)
-		return nil, nil
-	}
-	pvName := folders[len(folders)-2]
-	credentials, err := driver.flavor.GetCredentialsFromVolume(pvName)
+	isBlock, err := driver.chapiDriver.IsBlockDevice(in.VolumePath)
 	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Errorf(codes.Unavailable, "Failed to get credentials from volume with name %s, err: %s",
-			pvName, err.Error())
+		return nil, status.Errorf(codes.Internal, "failed to determine whether %s is block device: %v", in.VolumePath, err)
 	}
 
-	// Get storage provider using secrets
-	storageProvider, err := driver.GetStorageProvider(credentials)
+	// if block device
+	if isBlock {
+		bcap, err := driver.chapiDriver.GetBlockSizeBytes(in.VolumePath)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to get block capacity on path %s: %v", in.VolumePath, err)
+		}
+		return &csi.NodeGetVolumeStatsResponse{
+			Usage: []*csi.VolumeUsage{
+				{
+					Unit:  csi.VolumeUsage_BYTES,
+					Total: bcap,
+				},
+			},
+		}, nil
+	}
+
+	// if it is filesystem backed device
+	metricsProvider := volume.NewMetricsStatFS(in.VolumePath)
+
+	metrics, err := metricsProvider.GetMetrics()
 	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Errorf(codes.Unavailable, "Failed to get storage provider from secrets for volume with id %s, err: %s",
-			volumeID, err.Error())
-	}
-	// Fetch the volume using volume ID
-	volume, err := storageProvider.GetVolume(volumeID)
-	if err != nil {
-		log.Error("err: ", err.Error())
-		return nil, status.Errorf(codes.Internal, "Error while retrieving volume with id %s from the backend, err: %s",
-			volumeID, err.Error())
-	}
-	if volume == nil {
-		log.Errorf("Volume with ID %s not found on the backend, return ", volumeID)
-		return nil, status.Errorf(codes.NotFound, "Volume with ID %s not found on the backend, return ",
-			volumeID)
-	}
-	hpeMetricsProvider := vol.NewMetricsStatFS(in.VolumePath)
-	metrics, err := hpeMetricsProvider.GetMetrics()
-	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
-	}
-	inodes, ok := (*(metrics.Inodes)).AsInt64()
-	if !ok {
-		log.WithContext(ctx).Error("failed to fetch available inodes")
-	}
-	inodesFree, ok := (*(metrics.InodesFree)).AsInt64()
-	if !ok {
-		log.WithContext(ctx).Error("failed to fetch free inodes")
-	}
-	inodesUsed, ok := (*(metrics.InodesUsed)).AsInt64()
-	if !ok {
-		log.WithContext(ctx).Error("failed to fetch used inodes")
+		return nil, status.Errorf(codes.Internal, "failed to get fs info on path %s: %v", in.VolumePath, err)
 	}
 
 	return &csi.NodeGetVolumeStatsResponse{
 		Usage: []*csi.VolumeUsage{
 			{
-				Available: volume.FreeBytes,
-				Total:     volume.Size,
-				Used:      volume.UsedBytes,
 				Unit:      csi.VolumeUsage_BYTES,
+				Available: metrics.Available.AsDec().UnscaledBig().Int64(),
+				Total:     metrics.Capacity.AsDec().UnscaledBig().Int64(),
+				Used:      metrics.Used.AsDec().UnscaledBig().Int64(),
 			},
 			{
-				Available: inodesFree,
-				Total:     inodes,
-				Used:      inodesUsed,
 				Unit:      csi.VolumeUsage_INODES,
+				Available: metrics.InodesFree.AsDec().UnscaledBig().Int64(),
+				Total:     metrics.Inodes.AsDec().UnscaledBig().Int64(),
+				Used:      metrics.InodesUsed.AsDec().UnscaledBig().Int64(),
 			},
 		},
 	}, nil
@@ -1811,7 +1902,7 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		accessType = model.BlockType
 	}
 
-	var err error
+	var expandErr error
 	targetPath := ""
 	if accessType == model.BlockType {
 		// for raw block device volume-path is device path: i.e /dev/dm-1
@@ -1819,7 +1910,7 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		// Expand device to underlying volume size
 		log.Infof("About to expand device %s with access type block to underlying volume size",
 			request.VolumePath)
-		err = driver.chapiDriver.ExpandDevice(targetPath, model.BlockType)
+		expandErr = driver.chapiDriver.ExpandDevice(targetPath, model.BlockType)
 	} else {
 		// figure out if volumePath is actually a staging path
 		stagedDevice, err := readStagedDeviceInfo(request.GetVolumePath())
@@ -1846,12 +1937,12 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		// Expand device to underlying volume size
 		log.Infof("About to expand device %s with access type mount to underlying volume size",
 			request.VolumePath)
-		err = driver.chapiDriver.ExpandDevice(targetPath, model.MountType)
+		expandErr = driver.chapiDriver.ExpandDevice(targetPath, model.MountType)
 	}
 
-	if err != nil {
+	if expandErr != nil {
 		return nil, status.Error(codes.Internal,
-			fmt.Sprintf("Unable to expand device, %s", err.Error()))
+			fmt.Sprintf("Unable to expand device, %s", expandErr.Error()))
 	}
 	// no need to report device capacity here
 	return &csi.NodeExpandVolumeResponse{}, nil

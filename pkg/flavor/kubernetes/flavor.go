@@ -520,7 +520,7 @@ func (flavor *Flavor) getClaimOverrideOptions(claim *v1.PersistentVolumeClaim, o
 	provisionerName := provisioner
 	for _, override := range overrides {
 		for key, annotation := range claim.Annotations {
-			if strings.HasPrefix(key, provisionerName+"/"+override) {
+			if key == provisionerName+"/"+override {
 				if valOpt, ok := optionsMap[override]; ok {
 					if override == "size" || override == "sizeInGiB" {
 						// do not allow  override of size and sizeInGiB

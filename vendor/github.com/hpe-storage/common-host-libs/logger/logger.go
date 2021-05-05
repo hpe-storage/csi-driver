@@ -454,6 +454,8 @@ func IsSensitive(key string) bool {
 		"secret",
 		"token",
 		"accesskey",
+		"passphrase",
+
 	}
 	key = strings.ToLower(key)
 	for _, bad := range badWords {
@@ -474,6 +476,20 @@ func Scrubber(args []string) []string {
 		}
 	}
 	return args
+}
+
+// MapScrubber checks if the map contains any sensitive information like username/password/secret
+// If found, then masks values for those keys, else copies the original value and returns new map
+func MapScrubber(m map[string]string) map[string]string {
+	retMap := make(map[string]string)
+	for k, v := range m {
+		if IsSensitive(k) {
+			retMap[k] = "**********"
+		} else {
+			retMap[k] = v
+		}
+	}
+	return retMap
 }
 
 // sourced adds a source field to the logger that contains

@@ -91,6 +91,7 @@ image:
 	cp -r ../cmd/csi-driver/conform/ conform/ && \
 	cp -r ../cmd/csi-driver/diag/ diag/ && \
 	cp -r ../cmd/csi-driver/chroot-host-wrapper.sh . && \
+	cp -r ../cmd/csi-driver/CentOS-Base.repo . && \
 	cp -r ../LICENSE . && \
 	rsync -r --no-perms --no-owner --no-group  $(TUNE_LINUX_CONFIG_PATH)/ tune/ && \
 	docker build -t $(IMAGE) .
@@ -99,4 +100,3 @@ image:
 push:
 	@echo "Publishing csi-driver:$(VERSION)"
 	@docker push $(IMAGE)
-

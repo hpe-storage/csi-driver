@@ -2,9 +2,22 @@
 package driver
 
 import (
+	"context"
+	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/hpe-storage/common-host-libs/chapi"
+	"github.com/hpe-storage/common-host-libs/concurrent"
+	"github.com/hpe-storage/common-host-libs/storageprovider"
+	"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
 )
+
+const defaultVolumeID = "testVolID"
+const defaultTargetPath = "/mnt/test"
+const defaultStagingPath = "/staging"
 
 func TestNodeGetIntEnv(t *testing.T) {
 	driver := &Driver{
@@ -36,4 +49,79 @@ func TestNodeGetIntEnv(t *testing.T) {
 		})
 	}
 
+}
+
+func TestNodeGetVolumeStats(t *testing.T) {
+	socket := "/tmp/csi.sock"
+	endpoint := "unix://" + socket
+	driver := &Driver{
+		name:              "fake-test-driver",
+		version:           "2.0",
+		endpoint:          endpoint,
+		storageProviders:  make(map[string]storageprovider.StorageProvider),
+		chapiDriver:       &chapi.FakeDriver{},
+		flavor:            &vanilla.Flavor{},
+		requestCache:      make(map[string]interface{}),
+		requestCacheMutex: concurrent.NewMapMutex(),
+	}
+
+	tempDir, err := ioutil.TempDir("", "ngvs")
+	if err != nil {
+		t.Fatalf("Failed to set up temp dir: %v", err)
+	}
+
+	// setup the staging paths
+	targetPath := filepath.Join(tempDir, defaultTargetPath)
+	os.MkdirAll(targetPath, 0750)
+	stagingPath := filepath.Join(tempDir, defaultStagingPath)
+	os.MkdirAll(stagingPath, 0750)
+	defer os.RemoveAll(targetPath)
+	defer os.RemoveAll(stagingPath)
+	defer os.RemoveAll(tempDir)
+
+	testCases := []struct {
+		name       string
+		volumeID   string
+		volumePath string
+		expectErr  bool
+	}{
+		{
+			name:       "normal",
+			volumeID:   defaultVolumeID,
+			volumePath: targetPath,
+		},
+		{
+			name:       "no vol id",
+			volumePath: targetPath,
+			expectErr:  true,
+		},
+		{
+			name:      "no vol path",
+			volumeID:  defaultVolumeID,
+			expectErr: true,
+		},
+		{
+			name:       "bad vol path",
+			volumeID:   defaultVolumeID,
+			volumePath: "/mnt/fake",
+			expectErr:  true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+
+			req := &csi.NodeGetVolumeStatsRequest{
+				VolumeId:   tc.volumeID,
+				VolumePath: tc.volumePath,
+			}
+			_, err := driver.NodeGetVolumeStats(context.Background(), req)
+			if err != nil && !tc.expectErr {
+				t.Fatalf("Got unexpected err: %v", err)
+			}
+			if err == nil && tc.expectErr {
+				t.Fatal("Did not get error but expected one")
+			}
+		})
+	}
 }

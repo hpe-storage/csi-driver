@@ -19,6 +19,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/mpathconfig"
 	"github.com/hpe-storage/common-host-libs/sgio"
 	"github.com/hpe-storage/common-host-libs/util"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -467,6 +468,25 @@ func rescanLoginVolumeForBackend(volObj *model.Volume) error {
 	return nil
 }
 
+func isLuksDevice(devPath string) (bool, error) {
+	log.Tracef(">>>> isLuksDevice - %s", devPath)
+	defer log.Tracef("<<<< isLuksDevice - %s", devPath)
+
+	_, exitStatus, _ := util.ExecCommandOutput("cryptsetup", []string{"isLuks", "-v", devPath})
+	log.Tracef("Exit status of isLuks: %d", exitStatus)
+	if exitStatus == 0 {
+		log.Infof("%s is a LUKS device", devPath)
+		return true, nil
+	}
+	if exitStatus == 1 {
+		log.Infof("Not a LUKS device - %s", devPath)
+		return false, nil
+	} else {
+		log.Errorf("Unknown device - %s", devPath)
+		return false, fmt.Errorf("isLuks command failed to find out if the device %s is encrypted", devPath)
+	}
+}
+
 // CreateLinuxDevice : attaches and creates a new linux device
 // nolint: gocyclo
 func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
@@ -495,6 +515,46 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 			// Match SerialNumber
 			if d.SerialNumber == volume.SerialNumber {
 				log.Debugf("Found device with matching SerialNumber:%s map %s and slaves %+v", d.SerialNumber, d.AltFullPathName, d.Slaves)
+
+				if volume.EncryptionKey != "" {
+					originalDevPath := "/dev/" + d.Pathname
+
+					isLuksDev, err := isLuksDevice(originalDevPath)
+					if err != nil {
+						return nil, err
+					}
+
+					// LUKS format device if this is the first time it is being used
+					if !isLuksDev {
+						log.Infof("Device %s is a new device. LUKS formatting it...", originalDevPath)
+						_, _, err := util.ExecCommandOutputWithStdinArgs("cryptsetup",
+							[]string{"luksFormat", "--batch-mode", originalDevPath},
+							[]string{volume.EncryptionKey})
+						if err != nil {
+							err = fmt.Errorf("LUKS format command failed with error: %v", err)
+							log.Error(err.Error())
+							return nil, err
+						}
+						log.Infof("Device %s has been LUKS formatted successfully", originalDevPath)
+					}
+					srcMpath := "/dev/" + d.Pathname
+					mappedMPath := "enc-" + d.MpathName // "enc-mpathx"
+					log.Infof("Opening LUKS device %s with mapped device %s...", srcMpath, mappedMPath)
+					_, _, err = util.ExecCommandOutputWithStdinArgs("cryptsetup",
+						[]string{"luksOpen", srcMpath, mappedMPath},
+						[]string{volume.EncryptionKey})
+					if err != nil {
+						err = fmt.Errorf("LUKS open command failed with error: %v", err)
+						log.Error(err.Error())
+						return nil, err
+					}
+					log.Infof("Opened LUKS device %s with mapped device %s successfully", srcMpath, mappedMPath)
+
+					// Replacing the device path,AltFullPathName
+					d.LuksPathname = mappedMPath
+					d.AltFullLuksPathName = "/dev/mapper/" + mappedMPath
+				}
+				log.Debugf("Returning device with matching serialNumber:%s map %s and slaves %+v", d.SerialNumber, d.AltFullPathName, d.Slaves)
 				return d, nil
 			}
 			// Match TargetName/IQN only for VST type
@@ -1180,6 +1240,18 @@ func RescanForCapacityUpdates(devicePath string) error {
 		return err
 	}
 
+	// The underlying device found can be a mapped LUKS device (enc-mpathx) in which case it needs
+	// to be resized using LUKS command
+	isMappedLuksDev, err := isMappedLuksDevice(devicePath)
+	if err != nil {
+		return err
+	}
+
+	if isMappedLuksDev {
+		_, err := resizeMappedLuksDevice(devicePath)
+		return err
+	}
+
 	if devicePath != "" {
 		// multipathd takes either mpathx(without prefix) or /dev/dm-x as input
 		devicePath = strings.TrimPrefix(devicePath, "/dev/mapper/")
@@ -1194,6 +1266,32 @@ func RescanForCapacityUpdates(devicePath string) error {
 		}
 	}
 	return nil
+}
+
+// IsBlockDevice checks if the given path is a block device
+func IsBlockDevice(devicePath string) (bool, error) {
+	var st unix.Stat_t
+	err := unix.Stat(devicePath, &st)
+	if err != nil {
+		return false, err
+	}
+
+	return (st.Mode & unix.S_IFMT) == unix.S_IFBLK, nil
+}
+
+// GetBlockSizeBytes returns the block size in bytes
+func GetBlockSizeBytes(devicePath string) (int64, error) {
+	args := []string{"--getsize64", devicePath}
+	out, _, err := util.ExecCommandOutput("blockdev", args)
+	if err != nil {
+		return -1, fmt.Errorf("error when getting size of block volume at path %s: output: %s, err: %v", devicePath, string(out), err)
+	}
+	strOut := strings.TrimSpace(string(out))
+	gotSizeBytes, err := strconv.ParseInt(strOut, 10, 64)
+	if err != nil {
+		return -1, fmt.Errorf("failed to parse size %s as int", strOut)
+	}
+	return gotSizeBytes, nil
 }
 
 // ExpandDevice expands device and filesystem at given targetPath to underlying volume size
@@ -1218,6 +1316,7 @@ func ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error
 	if err != nil || devPath == "" {
 		return fmt.Errorf("unable to get device mounted at %s", targetPath)
 	}
+
 	// resize device with devPath, i.e /dev/mapper/mpath*
 	err = RescanForCapacityUpdates(devPath)
 	if err != nil {
@@ -1233,4 +1332,39 @@ func ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error
 		return fmt.Errorf("unable to expand filesystem on %s, error :%s", devPath, err.Error())
 	}
 	return err
+}
+
+func resizeMappedLuksDevice(devPath string) (bool, error) {
+	log.Tracef(">>>> resizeMappedLuksDevice - %s", devPath)
+	defer log.Tracef("<<<< resizeMappedLuksDevice - %s", devPath)
+
+	_, exitStatus, err := util.ExecCommandOutput("cryptsetup", []string{"resize", devPath})
+	log.Tracef("exit status of resize LUKS device: %d", exitStatus)
+	if exitStatus == 0 {
+		log.Infof("mapped LUKS device %s resized successfully", devPath)
+		return true, nil
+	}
+	errMsg := fmt.Errorf("failed to resize mapped LUKS device %s with error: %v", devPath, err)
+	log.Errorln(errMsg.Error())
+	return false, errMsg
+}
+
+func isMappedLuksDevice(devPath string) (bool, error) {
+	log.Tracef(">>>> isMappedLuksDevice - %s", devPath)
+	defer log.Tracef("<<<< isMappedLuksDevice - %s", devPath)
+
+	out, exitStatus, err := util.ExecCommandOutput("cryptsetup", []string{"status", "-v", devPath})
+	log.Tracef("exit code of LUKS status: %d", exitStatus)
+	if exitStatus == 0 {
+		log.Infof("LUKS status output: %v", out)
+		return true, nil
+	}
+	if exitStatus == 1 {
+		log.Infof("not a mapped LUKS device - %s", devPath)
+		return false, nil
+	} else {
+		err := fmt.Errorf("LUKS status is unsure of the device: %s. Returned code: %v with error: %v", devPath, exitStatus, err)
+		log.Error(err.Error())
+		return false, err
+	}
 }
