@@ -39,8 +39,8 @@ var (
 var isWatcherEnabled bool = false
 
 // Helper utility to construct default mountpoint path
-func getDefaultMountPoint(id string) string {
-	return fmt.Sprintf("%s/%s", defaultMountDir, id)
+func (driver *Driver) getDefaultMountPoint(id string) string {
+	return fmt.Sprintf("%s/%s", driver.KubeletRootDir+DefaultPluginMountPath, id)
 }
 
 func getMountInfo(volumeID string, volCap *csi.VolumeCapability, publishContext map[string]string, mountPoint string) *Mount {
@@ -168,7 +168,7 @@ func (driver *Driver) NodeStageVolume(ctx context.Context, request *csi.NodeStag
 	err := driver.nodeStageVolume(
 		request.VolumeId,
 		request.StagingTargetPath,
-		getDefaultMountPoint(request.VolumeId), // Default mount point for staging
+		driver.getDefaultMountPoint(request.VolumeId), // Default mount point for staging
 		request.VolumeCapability,
 		request.Secrets,
 		request.PublishContext,

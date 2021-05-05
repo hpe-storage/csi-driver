@@ -16,11 +16,14 @@ import (
 	"github.com/kubernetes-csi/csi-test/pkg/sanity"
 )
 
+const (
+	testsocket string = "/tmp/csi.sock"
+)
+
 func TestPluginSuite(t *testing.T) {
-	socket := "/tmp/csi.sock"
-	endpoint := "unix://" + socket
-	if err := os.Remove(socket); err != nil && !os.IsNotExist(err) {
-		t.Fatalf("failed to remove unix domain socket file %s, error: %s", socket, err)
+	endpoint := "unix://" + testsocket
+	if err := os.Remove(testsocket); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("failed to remove unix domain socket file %s, error: %s", testsocket, err)
 	}
 
 	log.InitLogging("csi-test.log", &log.LogParams{Level: "trace"}, false)
