@@ -193,12 +193,8 @@ func (driver *Driver) StartScrubber(nodeService bool) chan bool {
 			scrubberInterval = defaultInlineVolumeScrubberInterval
 			log.Tracef("Using defaultInlineVolumeScrubberInterval %d", scrubberInterval)
 		}
-		// Fetch PODs directory path from env variable. If unspecified, then use default value.
-		podsDirPath := os.Getenv(podsDirPathKey)
-		if podsDirPath == "" {
-			podsDirPath = defaultPodsDirPath
-			log.Tracef("Using defaultPodsDirPath %s", podsDirPath)
-		}
+		// Fetch PODs directory path from KubeletRootDir
+		podsDirPath := driver.KubeletRootDir + "pods"
 		log.Infof("Scheduled ephemeral inline volumes scrubber task to run every %d seconds, PodsDirPath: [%s]", scrubberInterval, podsDirPath)
 		tick := time.NewTicker(time.Duration(scrubberInterval) * time.Second)
 		done := make(chan bool)
