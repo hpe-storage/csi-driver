@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"strconv"
 
 	"github.com/Scalingo/go-etcd-lock/lock"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -243,9 +244,14 @@ func (driver *Driver) AddControllerServiceCapabilities(capabilities []csi.Contro
 func (driver *Driver) AddNodeServiceCapabilities(capabilities []csi.NodeServiceCapability_RPC_Type) {
 	var nodeServiceCapabilities []*csi.NodeServiceCapability
 
+	disableNodeGetVolumeStats, _ := strconv.ParseBool(os.Getenv(disableNodeGetVolumeStatsKey))
 	for _, c := range capabilities {
-		log.Infof("Enabling node service capability: %v", c.String())
-		nodeServiceCapabilities = append(nodeServiceCapabilities, NewNodeServiceCapability(c))
+		if disableNodeGetVolumeStats && c.String() == "GET_VOLUME_STATS" {
+			continue
+		} else {
+			log.Infof("Enabling node service capability: %v", c.String())
+			nodeServiceCapabilities = append(nodeServiceCapabilities, NewNodeServiceCapability(c))
+		}
 	}
 
 	driver.nodeServiceCapabilities = nodeServiceCapabilities
