@@ -52,6 +52,9 @@ const (
 	chapUserEnvKey        = "CHAP_USER"
 	chapPasswordEnvKey    = "CHAP_PASSWORD"
 	KubeletRootDirEnvKey  = "KUBELET_ROOT_DIR"
+	
+	// disable the node get volumestats 
+	disableNodeGetVolumeStatsKey    = "DISABLE_NODE_GET_VOLUMESTATS"
 
 	// deviceInfoFileName is used to store the device details in a JSON file
 	deviceInfoFileName = "deviceInfo.json"
