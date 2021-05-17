@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 
 	"github.com/Scalingo/go-etcd-lock/lock"
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -39,9 +39,10 @@ const (
 
 // Driver is the object that implements the CSI interfaces
 type Driver struct {
-	name     string
-	version  string
-	endpoint string
+	name             string
+	version          string
+	endpoint         string
+	cspClientTimeout int64
 
 	chapiDriver      chapi.Driver
 	storageProviders map[string]storageprovider.StorageProvider
@@ -61,11 +62,13 @@ type Driver struct {
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
-func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval int64) (*Driver, error) {
+func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval, cspClientTimeout int64) (*Driver, error) {
 
 	// Get CSI driver
 	driver := getDriver(name, version, endpoint)
 
+	// Set cspclient timeout
+	driver.cspClientTimeout = cspClientTimeout
 	// Configure flavor
 	if flavorName == flavor.Kubernetes {
 		flavor, err := kubernetes.NewKubernetesFlavor(nodeService, driver.chapiDriver)
@@ -345,12 +348,15 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 	log.Trace(">>>>> GetStorageProvider")
 	defer log.Trace("<<<<< GetStorageProvider")
 
-	// Create credentails
+	// Create credentials
 	credentials, err := storageprovider.CreateCredentials(secrets)
 	if err != nil {
 		log.Errorf("Failed to create credentials, err: %s", err.Error())
 		return nil, err
 	}
+
+	// Save csp client timeout in secrets
+	credentials.CspClientTimeout = driver.cspClientTimeout
 
 	cacheKey := driver.GenerateStorageProviderCacheKey(credentials)
 	if csp, ok := driver.storageProviders[cacheKey]; ok {
