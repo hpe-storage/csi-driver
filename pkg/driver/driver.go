@@ -356,7 +356,14 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 	}
 
 	// Save csp client timeout in secrets
-	credentials.CspClientTimeout = driver.cspClientTimeout
+	credentials.CspClientTimeout = 60
+	if strings.Contains(strings.ToLower(credentials.ServiceName), "alletra9000") ||
+		strings.Contains(strings.ToLower(credentials.ServiceName), "primera") {
+		credentials.CspClientTimeout = driver.cspClientTimeout
+		if driver.cspClientTimeout > 360 {
+			credentials.CspClientTimeout = 300
+		}
+	}
 
 	cacheKey := driver.GenerateStorageProviderCacheKey(credentials)
 	if csp, ok := driver.storageProviders[cacheKey]; ok {
