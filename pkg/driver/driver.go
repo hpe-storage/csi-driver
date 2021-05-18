@@ -359,8 +359,10 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 	credentials.CspClientTimeout = 60
 	if strings.Contains(strings.ToLower(credentials.ServiceName), "alletra9000") ||
 		strings.Contains(strings.ToLower(credentials.ServiceName), "primera") {
+		log.Tracef("Setting csp client timeout for alletra9000/primera service with %d seconds", driver.cspClientTimeout)
 		credentials.CspClientTimeout = driver.cspClientTimeout
 		if driver.cspClientTimeout > 360 {
+			log.Warnf("Timeout specified %d is more than 300 seconds. Setting it to max value %d", driver.cspClientTimeout, 300)
 			credentials.CspClientTimeout = 300
 		}
 	}
