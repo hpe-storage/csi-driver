@@ -320,7 +320,7 @@ func (driver *Driver) AddStorageProvider(credentials *storageprovider.Credential
 	log.Trace(">>>>> AddStorageProvider")
 	defer log.Trace("<<<<< AddStorageProvider")
 
-	log.Infof("Adding connection to CSP at IP %s, port %d, context path %s, with username %s, serviceName %s and timeout %d",
+	log.Infof("Adding connection to CSP at IP %s, port %d, context path %s, with username %s, serviceName %s and timeout %d seconds",
 		credentials.Backend, credentials.ServicePort, credentials.ContextPath, credentials.Username, credentials.ServiceName, credentials.CspClientTimeout)
 
 	// Get CSP instance
