@@ -4,10 +4,9 @@ package storageprovider
 
 import (
 	"fmt"
-	"strconv"
-
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
+	"strconv"
 )
 
 const (
@@ -21,6 +20,8 @@ const (
 	DefaultContextPath = "/csp"
 	// DefaultServicePort if not set for on-array csp
 	DefaultServicePort = 443
+	// DefaultCSPClientTimeout if not set for off-array csp
+	DefaultCSPClientTimeout = 60
 )
 
 // StorageProvider defines the interface to any storage related operations required by CSI and hopefully docker
@@ -50,12 +51,13 @@ type StorageProvider interface {
 
 // Credentials defines how a StorageProvider is accessed
 type Credentials struct {
-	Username    string
-	Password    string
-	Backend     string
-	ServicePort int
-	ContextPath string
-	ServiceName string
+	Username         string
+	Password         string
+	Backend          string
+	ServicePort      int
+	ContextPath      string
+	ServiceName      string
+	CspClientTimeout int64
 }
 
 // CreateCredentials creates the credentail object from the given secrets
@@ -65,7 +67,7 @@ func CreateCredentials(secrets map[string]string) (*Credentials, error) {
 
 	// When secrets specified
 	if secrets == nil || len(secrets) == 0 {
-		return nil, fmt.Errorf("No secrets have been provided")
+		return nil, fmt.Errorf("no secrets have been provided")
 	}
 
 	credentials := &Credentials{}
@@ -114,6 +116,10 @@ func CreateCredentials(secrets map[string]string) (*Credentials, error) {
 	}
 	if credentials.ServiceName != "" && credentials.ServicePort == 0 {
 		return nil, fmt.Errorf("Missing port in the secrets")
+	}
+
+	if credentials.ServiceName != "" && credentials.CspClientTimeout == 0 {
+		credentials.CspClientTimeout = 60
 	}
 
 	return credentials, nil
