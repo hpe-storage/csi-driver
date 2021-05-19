@@ -141,7 +141,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 
 	cspHTTPClientTimeout, err := strconv.ParseInt(cspClientTimeout, 10, 64)
 	if err != nil {
-		return fmt.Errorf("invalid timeout %s provided for csp client", podMonitorInterval)
+		return fmt.Errorf("invalid timeout %s provided for csp client", cspClientTimeout)
 	}
 
 	pid := os.Getpid()
