@@ -3,7 +3,6 @@
 package chapi
 
 import (
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -73,8 +72,9 @@ func generateUniqueNodeId() (string, error) {
 	// sort mac addresses as best attempt to get same address even if node.gob is deleted
 	sort.Strings(macs)
 
-	// create a unique id using mac addess and host name
-	idStr := strings.Replace(macs[0], ":", "", -1) + hex.EncodeToString([]byte(hostName))
+	// create a unique id using mac address and host name using Md5 hash
+	// https://github.com/hpe-storage/csi-driver/issues/270
+	idStr := util.GetMD5HashOfTwoStrings(strings.Replace(macs[0], ":", "", -1), hostName)
 	if len(idStr) < 32 {
 		// pad with zeroes for minimum length
 		idStr += strings.Repeat("0", 32-len(idStr))

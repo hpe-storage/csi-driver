@@ -4,7 +4,10 @@ package util
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 )
@@ -45,4 +48,10 @@ func ConvertArrayOfIntToString(lun_ids []int32) string {
 		}
 	}
 	return buffer.String()
+}
+
+func GetMD5HashOfTwoStrings(string1, string2 string) string {
+	h := md5.New()
+	io.WriteString(h, string1+string2)
+	return hex.EncodeToString(h.Sum(nil))
 }
