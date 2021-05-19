@@ -36,6 +36,8 @@ import (
 const (
 	defaultTTL = 60
 	maxCSPClientTimeout = 360
+	alletra9000 = "alletra9000"
+	primera = "primera"
 )
 
 // Driver is the object that implements the CSI interfaces
@@ -357,8 +359,8 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 	}
 
 	// Save csp client timeout in secrets
-	if strings.Contains(strings.ToLower(credentials.ServiceName), "alletra9000") ||
-		strings.Contains(strings.ToLower(credentials.ServiceName), "primera") {
+	if strings.Contains(strings.ToLower(credentials.ServiceName), alletra9000) ||
+		strings.Contains(strings.ToLower(credentials.ServiceName), primera) {
 		log.Tracef("Setting csp client timeout for alletra9000/primera service with %d seconds", driver.cspClientTimeout)
 		credentials.CspClientTimeout = driver.cspClientTimeout
 		if driver.cspClientTimeout > maxCSPClientTimeout {
