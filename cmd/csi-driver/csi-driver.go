@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -37,7 +38,7 @@ var (
 	dbPort             string
 	flavorName         string
 	podMonitorInterval string
-	cspClientTimeout   string
+	cspClientTimeout   time.Duration
 
 	// RootCmd is the main CSI command
 	RootCmd = &cobra.Command{
@@ -78,7 +79,7 @@ func init() {
 	RootCmd.PersistentFlags().StringVarP(&flavorName, "flavor", "f", "", "CSI driver flavor")
 	RootCmd.PersistentFlags().BoolP("pod-monitor", "", false, "Enable monitoring of pod statuses on unreachable nodes")
 	RootCmd.PersistentFlags().StringVarP(&podMonitorInterval, "pod-monitor-interval", "", "30", "Interval in seconds to monitor pods")
-	RootCmd.PersistentFlags().StringVarP(&cspClientTimeout, "csp-client-timeout", "", "60", "Interval in seconds for csp client http call")
+	RootCmd.PersistentFlags().DurationVarP(&cspClientTimeout, "csp-client-timeout", "", 60*time.Second, "Timeout for CSP client http call")
 
 }
 
@@ -95,7 +96,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 	flavorName, _ := cmd.Flags().GetString("flavor")
 	podMonitor, _ := cmd.Flags().GetBool("pod-monitor")
 	podMonitorInterval, _ := cmd.Flags().GetString("pod-monitor-interval")
-	cspClientTimeout, _ := cmd.Flags().GetString("csp-client-timeout")
+	cspClientTimeout, _ := cmd.Flags().GetDuration("csp-client-timeout")
 
 	// Parse the endpoint
 	_, addr, err := driver.ParseEndpoint(endpoint)
@@ -139,11 +140,6 @@ func csiCliHandler(cmd *cobra.Command) error {
 		return fmt.Errorf("invalid interval %s provided for monitoring pods on unreachable nodes", podMonitorInterval)
 	}
 
-	cspHTTPClientTimeout, err := strconv.ParseInt(cspClientTimeout, 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid timeout %s provided for csp client", cspClientTimeout)
-	}
-
 	pid := os.Getpid()
 	d, err := driver.NewDriver(
 		driverName,
@@ -155,7 +151,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 		dbPort,
 		podMonitor,
 		monitorInterval,
-		cspHTTPClientTimeout)
+		int64(cspClientTimeout.Seconds()))
 	if err != nil {
 		return fmt.Errorf("Error instantiating plugin %v, Err: %v", driverName, err.Error())
 	}

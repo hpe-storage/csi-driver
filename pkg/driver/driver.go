@@ -35,6 +35,7 @@ import (
 
 const (
 	defaultTTL = 60
+	maxCSPClientTimeout = 360
 )
 
 // Driver is the object that implements the CSI interfaces
@@ -319,8 +320,8 @@ func (driver *Driver) AddStorageProvider(credentials *storageprovider.Credential
 	log.Trace(">>>>> AddStorageProvider")
 	defer log.Trace("<<<<< AddStorageProvider")
 
-	log.Infof("Adding connection to CSP at IP %s, port %d, context path %s, with username %s and serviceName %s",
-		credentials.Backend, credentials.ServicePort, credentials.ContextPath, credentials.Username, credentials.ServiceName)
+	log.Infof("Adding connection to CSP at IP %s, port %d, context path %s, with username %s, serviceName %s and timeout %d",
+		credentials.Backend, credentials.ServicePort, credentials.ContextPath, credentials.Username, credentials.ServiceName, credentials.CspClientTimeout)
 
 	// Get CSP instance
 	csp, err := csp.NewContainerStorageProvider(credentials)
@@ -356,14 +357,13 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 	}
 
 	// Save csp client timeout in secrets
-	credentials.CspClientTimeout = 60
 	if strings.Contains(strings.ToLower(credentials.ServiceName), "alletra9000") ||
 		strings.Contains(strings.ToLower(credentials.ServiceName), "primera") {
 		log.Tracef("Setting csp client timeout for alletra9000/primera service with %d seconds", driver.cspClientTimeout)
 		credentials.CspClientTimeout = driver.cspClientTimeout
-		if driver.cspClientTimeout > 360 {
-			log.Warnf("Timeout specified %d is more than 360 seconds. Setting it to max value %d", driver.cspClientTimeout, 360)
-			credentials.CspClientTimeout = 360
+		if driver.cspClientTimeout > maxCSPClientTimeout {
+			log.Warnf("Timeout specified %d is more than max value. Setting it to max value %d", driver.cspClientTimeout, maxCSPClientTimeout)
+			credentials.CspClientTimeout = maxCSPClientTimeout
 		}
 	}
 
