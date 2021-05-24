@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi7/ubi-minimal:7.9-256
+FROM registry.access.redhat.com/ubi7/ubi-minimal:7.9-364
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD CentOS-Base.repo /etc/yum.repos.d/
