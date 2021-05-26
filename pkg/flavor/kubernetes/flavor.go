@@ -41,6 +41,8 @@ const (
 	nodeLostCondition             = "NodeLost"
 	provisionerSecretNameKey      = "csi.storage.k8s.io/provisioner-secret-name"
 	provisionerSecretNamespaceKey = "csi.storage.k8s.io/provisioner-secret-namespace"
+	chapUserEnvKey                = "CHAP_USER"
+	chapPasswordEnvKey            = "CHAP_PASSWORD"
 )
 
 var (
@@ -145,6 +147,14 @@ func NewKubernetesFlavor(nodeService bool, chapiDriver chapi.Driver) (*Flavor, e
 	return flavor, nil
 }
 
+func (flavor *Flavor) GetChapUserFromEnvironment() string {
+	return os.Getenv(chapUserEnvKey)
+}
+
+func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
+	return os.Getenv(chapPasswordEnvKey)
+}
+
 // ConfigureAnnotations takes the PVC annotations and overrides any parameters in the CSI create volume request
 func (flavor *Flavor) ConfigureAnnotations(name string, parameters map[string]string) (map[string]string, error) {
 	log.Tracef(">>>>> ConfigureAnnotations called with PVC Name %s", name)
@@ -224,13 +234,13 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			updateNodeRequired = true
 		}
 
-		chapUser := getChapUserFromEnvironment()
+		chapUser := flavor.GetChapUserFromEnvironment()
 		if !reflect.DeepEqual(nodeInfo.Spec.ChapUser, chapUser) {
 			nodeInfo.Spec.ChapUser = chapUser
 			updateNodeRequired = true
 		}
 
-		chapPassword := getChapPasswordFromEnvironment()
+		chapPassword := flavor.GetChapPasswordFromEnvironment()
 		if !reflect.DeepEqual(nodeInfo.Spec.ChapPassword, chapPassword) {
 			nodeInfo.Spec.ChapPassword = chapPassword
 			updateNodeRequired = true
@@ -291,14 +301,6 @@ func getWwpnsFromNode(node *model.Node) []string {
 		wwpns = append(wwpns, *node.Wwpns[i])
 	}
 	return wwpns
-}
-
-func getChapUserFromEnvironment() string {
-	return os.Getenv("CHAP_USER")
-}
-
-func getChapPasswordFromEnvironment() string {
-	return os.Getenv("CHAP_PASSWORD")
 }
 
 func getNetworksFromNode(node *model.Node) []string {

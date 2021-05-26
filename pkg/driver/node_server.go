@@ -2056,8 +2056,8 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 				iqns = append(iqns, &initiator.Init[i])
 				// we support only single host initiator
 				// check if CHAP credentials is set through configMap, ignore iscsid.conf reference
-				envChapUser := os.Getenv(chapUserEnvKey)
-				envChapPassword := os.Getenv(chapPasswordEnvKey)
+				envChapUser := driver.flavor.GetChapUserFromEnvironment()
+				envChapPassword := driver.flavor.GetChapPasswordFromEnvironment()
 				if envChapUser != "" && envChapPassword != "" {
 					chapUsername = envChapUser
 					chapPassword = envChapPassword

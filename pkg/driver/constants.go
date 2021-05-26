@@ -49,8 +49,6 @@ const (
 	volumeAccessModeKey   = "volumeAccessMode"
 	multiInitiatorKey     = "multiInitiator"
 	defaultConnectionMode = "manual"
-	chapUserEnvKey        = "CHAP_USER"
-	chapPasswordEnvKey    = "CHAP_PASSWORD"
 	KubeletRootDirEnvKey  = "KUBELET_ROOT_DIR"
 
 	// disable the node get volumestats
