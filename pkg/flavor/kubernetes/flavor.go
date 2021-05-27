@@ -241,8 +241,8 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 		}
 
 		chapPassword := flavor.GetChapPasswordFromEnvironment()
-		if !reflect.DeepEqual(nodeInfo.Spec.ChapPassword, chapPassword) {
-			nodeInfo.Spec.ChapPassword = chapPassword
+		if !reflect.DeepEqual(nodeInfo.Spec.ChapPassword, b64.StdEncoding.EncodeToString([]byte(chapPassword))) {
+			nodeInfo.Spec.ChapPassword = b64.StdEncoding.EncodeToString([]byte(chapPassword))
 			updateNodeRequired = true
 		}
 
