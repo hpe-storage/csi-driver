@@ -41,6 +41,8 @@ const (
 	nodeLostCondition             = "NodeLost"
 	provisionerSecretNameKey      = "csi.storage.k8s.io/provisioner-secret-name"
 	provisionerSecretNamespaceKey = "csi.storage.k8s.io/provisioner-secret-namespace"
+	chapUserEnvKey                = "CHAP_USER"
+	chapPasswordEnvKey            = "CHAP_PASSWORD"
 )
 
 var (
@@ -145,6 +147,14 @@ func NewKubernetesFlavor(nodeService bool, chapiDriver chapi.Driver) (*Flavor, e
 	return flavor, nil
 }
 
+func (flavor *Flavor) GetChapUserFromEnvironment() string {
+	return os.Getenv(chapUserEnvKey)
+}
+
+func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
+	return os.Getenv(chapPasswordEnvKey)
+}
+
 // ConfigureAnnotations takes the PVC annotations and overrides any parameters in the CSI create volume request
 func (flavor *Flavor) ConfigureAnnotations(name string, parameters map[string]string) (map[string]string, error) {
 	log.Tracef(">>>>> ConfigureAnnotations called with PVC Name %s", name)
@@ -224,12 +234,24 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			updateNodeRequired = true
 		}
 
+		chapUser := flavor.GetChapUserFromEnvironment()
+		if !reflect.DeepEqual(nodeInfo.Spec.ChapUser, chapUser) {
+			nodeInfo.Spec.ChapUser = chapUser
+			updateNodeRequired = true
+		}
+
+		chapPassword := flavor.GetChapPasswordFromEnvironment()
+		if !reflect.DeepEqual(nodeInfo.Spec.ChapPassword, b64.StdEncoding.EncodeToString([]byte(chapPassword))) {
+			nodeInfo.Spec.ChapPassword = b64.StdEncoding.EncodeToString([]byte(chapPassword))
+			updateNodeRequired = true
+		}
+
 		if !updateNodeRequired {
 			// no update needed to existing CRD
 			return node.UUID, nil
 		}
-		log.Infof("updating Node %s with iqns %v wwpns %v networks %v",
-			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.WWPNs, nodeInfo.Spec.Networks)
+		log.Infof("updating Node %s with iqns %v wwpns %v networks %v chapuser %s",
+			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.WWPNs, nodeInfo.Spec.Networks, nodeInfo.Spec.ChapUser)
 		_, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
 		if err != nil {
 			log.Errorf("Error updating the node %s - %s\n", nodeInfo.Name, err.Error())

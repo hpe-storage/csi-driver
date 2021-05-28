@@ -103,3 +103,11 @@ func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
 func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 	return nil
 }
+
+func (flavor *Flavor) GetChapUserFromEnvironment() string {
+	return ""
+}
+
+func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
+	return ""
+}
