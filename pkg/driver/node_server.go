@@ -434,7 +434,7 @@ func (driver *Driver) stageVolume(
 	// Add encryption secret to the staging-device. This is required during unstage operation
 	// so that encryption key can be accessed to complete the close operation on LUKS device
 	var encKeySecretInfo EncryptionKeySecretInfo
-	if volumeContext[hostEncryptionSecretNameKey] != "" {
+	if volumeContext[hostEncryptionSecretNameKey] != "" && volumeContext[hostEncryptionKey] == "true" {
 		encKeySecretInfo.Name = volumeContext[hostEncryptionSecretNameKey]
 		if volumeContext[hostEncryptionSecretNamespaceKey] != "" {
 			encKeySecretInfo.Namespace = volumeContext[hostEncryptionSecretNamespaceKey]
