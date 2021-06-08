@@ -589,6 +589,17 @@ func MountNFSShare(source string, targetPath string, options []string, nfsType s
 		nfsType = defaultNFSType
 	}
 
+	mountedSource, _ := GetDeviceFromMountPoint(targetPath)
+	if mountedSource != "" {
+		// the source exists for the target path but differs from the expected mount, return error
+		if mountedSource != source {
+			err := fmt.Errorf("%s is already mounted at %s. Skipping mount for %s", mountedSource, source, targetPath)
+			return err
+		}
+		// if mount point present with expected targetPath, return successful
+		return nil
+	}
+
 	args := []string{fmt.Sprintf("-t%s", nfsType), source, targetPath}
 	optionArgs := []string{}
 	if len(options) != 0 {
