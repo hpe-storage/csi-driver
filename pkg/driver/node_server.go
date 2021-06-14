@@ -142,8 +142,8 @@ func (driver *Driver) removeStaleBindMounts(device *model.Device, stagingPath st
 // NodeUnstageVolume.
 // nolint: gocyclo
 func (driver *Driver) NodeStageVolume(ctx context.Context, request *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	log.Infof(">>>>> NodeStageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
-	defer log.Infof("<<<<< NodeStageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
+	log.Tracef(">>>>> NodeStageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
+	defer log.Tracef("<<<<< NodeStageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
 
 	if request.VolumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "Invalid volume ID specified for NodeStageVolume")
@@ -585,8 +585,8 @@ func (driver *Driver) setupDevice(
 // If this RPC failed, or the CO does not know if it failed or not, it MAY choose to call NodeUnstageVolume again.
 // nolint: gocyclo
 func (driver *Driver) NodeUnstageVolume(ctx context.Context, request *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
-	log.Infof(">>>>> NodeUnstageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
-	defer log.Infof("<<<<< NodeUnstageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
+	log.Tracef(">>>>> NodeUnstageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
+	defer log.Tracef("<<<<< NodeUnstageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
 
 	if request.VolumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "Invalid volume ID specified for NodeUnstageVolume")
@@ -739,9 +739,9 @@ func getEphemeralVolName(podName string, volumeHandle string) string {
 // MULTI_NODE		OK (idempotent)		ALREADY_EXISTS		OK						OK
 // Non MULTI_NODE	OK (idempotent)		ALREADY_EXISTS		FAILED_PRECONDITION		FAILED_PRECONDITION
 func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
-	log.Infof(">>>>> NodePublishVolume, VolumeId: %s, stagingPath: %s, targetStagingPath: %s",
+	log.Tracef(">>>>> NodePublishVolume, VolumeId: %s, stagingPath: %s, targetStagingPath: %s",
 		request.VolumeId, request.TargetPath, request.StagingTargetPath)
-	defer log.Infof("<<<<< NodePublishVolume, VolumeId: %s, stagingPath: %s, targetStagingPath: %s",
+	defer log.Tracef("<<<<< NodePublishVolume, VolumeId: %s, stagingPath: %s, targetStagingPath: %s",
 		request.VolumeId, request.TargetPath, request.StagingTargetPath)
 	targetPath := request.TargetPath
 
@@ -1534,8 +1534,8 @@ func (driver *Driver) createEphemeralVolume(
 // This operation MUST be idempotent. If this RPC failed, or the CO does not know if it failed or not, it can choose to call NodeUnpublishVolume
 // again.
 func (driver *Driver) NodeUnpublishVolume(ctx context.Context, request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
-	log.Infof(">>>>> NodeUnpublishVolume, VolumeId: %s, TargetPath: %s", request.VolumeId, request.TargetPath)
-	defer log.Infof("<<<<< NodeUnpublishVolume, VolumeId: %s, TargetPath: %s", request.VolumeId, request.TargetPath)
+	log.Tracef(">>>>> NodeUnpublishVolume, VolumeId: %s, TargetPath: %s", request.VolumeId, request.TargetPath)
+	defer log.Tracef("<<<<< NodeUnpublishVolume, VolumeId: %s, TargetPath: %s", request.VolumeId, request.TargetPath)
 
 	if request.VolumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "Invalid volume ID specified for NodeUnpublishVolume")
