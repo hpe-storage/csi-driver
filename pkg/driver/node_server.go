@@ -142,8 +142,8 @@ func (driver *Driver) removeStaleBindMounts(device *model.Device, stagingPath st
 // NodeUnstageVolume.
 // nolint: gocyclo
 func (driver *Driver) NodeStageVolume(ctx context.Context, request *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
-	log.Trace(">>>>> NodeStageVolume")
-	defer log.Trace("<<<<< NodeStageVolume")
+	log.Tracef(">>>>> NodeStageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
+	defer log.Tracef("<<<<< NodeStageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
 
 	if request.VolumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "Invalid volume ID specified for NodeStageVolume")
@@ -585,8 +585,8 @@ func (driver *Driver) setupDevice(
 // If this RPC failed, or the CO does not know if it failed or not, it MAY choose to call NodeUnstageVolume again.
 // nolint: gocyclo
 func (driver *Driver) NodeUnstageVolume(ctx context.Context, request *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
-	log.Trace(">>>>> NodeUnstageVolume")
-	defer log.Trace("<<<<< NodeUnstageVolume")
+	log.Tracef(">>>>> NodeUnstageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
+	defer log.Tracef("<<<<< NodeUnstageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
 
 	if request.VolumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "Invalid volume ID specified for NodeUnstageVolume")
@@ -741,7 +741,8 @@ func getEphemeralVolName(podName string, volumeHandle string) string {
 func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log.Tracef(">>>>> NodePublishVolume, VolumeId: %s, stagingPath: %s, targetStagingPath: %s",
 		request.VolumeId, request.TargetPath, request.StagingTargetPath)
-	defer log.Trace("<<<<< NodePublishVolume")
+	defer log.Tracef("<<<<< NodePublishVolume, VolumeId: %s, stagingPath: %s, targetStagingPath: %s",
+		request.VolumeId, request.TargetPath, request.StagingTargetPath)
 	targetPath := request.TargetPath
 
 	if request.VolumeId == "" {
@@ -1534,7 +1535,7 @@ func (driver *Driver) createEphemeralVolume(
 // again.
 func (driver *Driver) NodeUnpublishVolume(ctx context.Context, request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	log.Tracef(">>>>> NodeUnpublishVolume, VolumeId: %s, TargetPath: %s", request.VolumeId, request.TargetPath)
-	defer log.Trace("<<<<< NodeUnpublishVolume")
+	defer log.Tracef("<<<<< NodeUnpublishVolume, VolumeId: %s, TargetPath: %s", request.VolumeId, request.TargetPath)
 
 	if request.VolumeId == "" {
 		return nil, status.Error(codes.InvalidArgument, "Invalid volume ID specified for NodeUnpublishVolume")
