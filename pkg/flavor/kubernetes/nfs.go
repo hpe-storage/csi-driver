@@ -195,7 +195,7 @@ NFSv4
 {
   Graceless = true;
   UseGetpwnam = true;
-  DomainName = REPLACE_DOMAIN;
+  DomainName = "REPLACE_DOMAIN";
 }
 EXPORT
 {
