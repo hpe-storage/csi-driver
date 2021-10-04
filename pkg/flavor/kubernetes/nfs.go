@@ -24,7 +24,7 @@ import (
 const (
 	nfsPrefix           = "hpe-nfs-"
 	defaultNFSNamespace = "hpe-nfs"
-	defaultNFSImage     = "hpestorage/nfs-provisioner:v1.0.0"
+	defaultNFSImage     = "quay.io/hpestorage/nfs-provisioner:v2.0.0"
 
 	creationInterval           = 60 // 300s with sleep interval of 5s
 	creationDelay              = 5 * time.Second
