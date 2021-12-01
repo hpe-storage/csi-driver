@@ -56,7 +56,7 @@ if [ "$CONFORM_TO" = "ubuntu" ]; then
     fi
 
     # Install XFS utils
-    if [ ! -f /usr/sbin/mkfs.xfs ]; then
+    if [ ! -f /sbin/mkfs.xfs ]; then
         apt-get -qq update
         apt-get -qq install -y xfsprogs
         exit_on_error $?
