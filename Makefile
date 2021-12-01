@@ -5,6 +5,8 @@ endif
 
 TAG = edge
 
+ARCH ?= amd64
+
 # unless a BUILD_NUMBER is specified
 ifeq ($(IGNORE_BUILD_NUMBER),true)
 	VERSION = $(TAG)
@@ -71,7 +73,7 @@ clean:
 compile:
 	@echo "Compiling the source for ${GOOS}"
 	@go version
-	@env CGO_ENABLED=0 GOOS=${GOOS} GOARCH=amd64 go build -o build/${NAME} ./cmd/csi-driver/
+	@env CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${ARCH} go build -o build/${NAME} ./cmd/csi-driver/
 
 .PHONY: test
 test:
