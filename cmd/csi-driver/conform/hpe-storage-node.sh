@@ -55,6 +55,13 @@ if [ "$CONFORM_TO" = "ubuntu" ]; then
         exit_on_error $?
     fi
 
+    # Install XFS utils
+    if [ ! -f /sbin/mkfs.xfs ]; then
+        apt-get -qq update
+        apt-get -qq install -y xfsprogs
+        exit_on_error $?
+    fi
+
 elif [ "$CONFORM_TO" = "redhat" ]; then
     # Install device-mapper-multipath
     if [ ! -f /sbin/multipathd ]; then
