@@ -235,7 +235,7 @@ func (chapiClient *Client) GetNetworks() (networks []*model.NetworkInterface, er
 			log.Error(errResp.Info)
 			return nil, errors.New(errResp.Info)
 		}
-		log.Errorf("GetNetworks Err :", err.Error())
+		log.Errorf("GetNetworks Err : %s", err.Error())
 		return nil, err
 	}
 
@@ -521,7 +521,7 @@ func (chapiClient *Client) UnmountDevice(volume *model.Volume) error {
 
 // Unmount make a DELETE request to chapi to unmount filesystem on the host
 func (chapiClient *Client) Unmount(reqMount *model.Mount, respMount *model.Mount) (err error) {
-	log.Trace(">>>>> Unmount called on %s", reqMount.Mountpoint)
+	log.Tracef(">>>>> Unmount called on %s", reqMount.Mountpoint)
 	defer log.Trace("<<<<< Unmount")
 	// fetch host ID
 	err = chapiClient.cacheHostID()

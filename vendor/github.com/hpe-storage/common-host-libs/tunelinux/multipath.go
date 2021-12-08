@@ -3,15 +3,16 @@ package tunelinux
 // Copyright 2019 Hewlett Packard Enterprise Development LP.
 import (
 	"errors"
-	"github.com/hpe-storage/common-host-libs/linux"
-	log "github.com/hpe-storage/common-host-libs/logger"
-	"github.com/hpe-storage/common-host-libs/mpathconfig"
-	"github.com/hpe-storage/common-host-libs/util"
 	"io/ioutil"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/hpe-storage/common-host-libs/linux"
+	log "github.com/hpe-storage/common-host-libs/logger"
+	"github.com/hpe-storage/common-host-libs/mpathconfig"
+	"github.com/hpe-storage/common-host-libs/util"
 )
 
 const (
@@ -276,7 +277,10 @@ func setMultipathRecommendations(recommendations []*Recommendation) (err error) 
 		}
 	}
 	if err == nil {
-		if value := (defaultsSection.GetProperties())["find_multipaths"]; value == "yes" {
+		// if we find_multipaths key with yes value or if the key is absent (in case of Ubuntu)
+		// set it to no
+		value := (defaultsSection.GetProperties())["find_multipaths"]
+		if value == "yes" || value == "" {
 			(defaultsSection.GetProperties())["find_multipaths"] = "no"
 		}
 	}
@@ -353,4 +357,3 @@ func ConfigureMultipath() (err error) {
 	}
 	return nil
 }
-

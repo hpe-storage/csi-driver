@@ -937,12 +937,12 @@ func getCspClient(credentials *storageprovider.Credentials) (*connectivity.Clien
 	cspURI := fmt.Sprintf("http://%s:%d", credentials.ServiceName, credentials.ServicePort)
 
 	if credentials.CspClientTimeout == 0 {
-		 credentials.CspClientTimeout = storageprovider.DefaultCSPClientTimeout
+		credentials.CspClientTimeout = storageprovider.DefaultCSPClientTimeout
 	}
 	log.Tracef(">>>>> getCspClient (service) using URI %s and username %s with timeout set to %d seconds", cspURI, credentials.Username, credentials.CspClientTimeout)
 	defer log.Trace("<<<<< getCspClient")
 
-	cspHTTPClientTimeout := time.Duration(credentials.CspClientTimeout)*time.Second
+	cspHTTPClientTimeout := time.Duration(credentials.CspClientTimeout) * time.Second
 	// Setup HTTP client to the CSP service
 	cspClient := connectivity.NewHTTPClientWithTimeout(cspURI, cspHTTPClientTimeout)
 	return cspClient, nil

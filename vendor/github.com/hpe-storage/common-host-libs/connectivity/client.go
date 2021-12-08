@@ -188,7 +188,7 @@ func (client *Client) DoJSON(r *Request) (int, error) {
 			err = decode(res.Body, r.ResponseError, r)
 			if err != nil {
 				log.Error("Failed to decode error response.")
-				r.ResponseError = "Failed to decode error response, Error:" + string(res.StatusCode)
+				r.ResponseError = "Failed to decode error response, Error:" + fmt.Sprintf("%d", res.StatusCode)
 				return res.StatusCode, err
 			}
 		}
