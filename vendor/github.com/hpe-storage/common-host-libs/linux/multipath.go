@@ -239,7 +239,7 @@ func cleanupDeviceAndSlaves(dev *model.Device) (err error) {
 	}
 
 	//delete all physical paths of the device
-	if (!isFC && dev.IscsiTargets != nil )&& (!isGst || dev.StorageVendor == "3PARdata") {
+	if (!isFC && dev.IscsiTargets != nil && !isGst) {
 		log.Debugf("volume scoped target %+v, initiating iscsi logout and delete", dev.IscsiTargets)
 		err = logoutAndDeleteIscsiTarget(dev)
 		if err != nil {

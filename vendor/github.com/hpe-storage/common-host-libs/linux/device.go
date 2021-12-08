@@ -392,7 +392,7 @@ func setAltFullPathName(dev *model.Device) (err error) {
 
 // Helper function to perform rescan and detect the newly attached volume (FC/iSCSI volume)
 func rescanLoginVolume(volume *model.Volume) error {
-	log.Traceln(">>>>> rescanLoginVolume %v", volume, "and accessProtocol", volume.AccessProtocol)
+	log.Traceln(">>>>> rescanLoginVolume", volume, "and accessProtocol", volume.AccessProtocol)
 	defer log.Traceln("<<<< rescanLoginVolume")
 	var err error
 	var primaryVolObj *model.Volume
@@ -441,7 +441,7 @@ func rescanLoginVolume(volume *model.Volume) error {
 
 func rescanLoginVolumeForBackend(volObj *model.Volume) error {
 
-	log.Traceln("Called rescanLoginVolumeForBackend %v", volObj, "and accessProtocol", volObj.AccessProtocol)
+	log.Traceln("Called rescanLoginVolumeForBackend", volObj, "and accessProtocol", volObj.AccessProtocol)
 	var err error
 	if strings.EqualFold(volObj.AccessProtocol, "fc") {
 		// FC volume
