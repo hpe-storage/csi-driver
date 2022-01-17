@@ -275,6 +275,8 @@ github.com/hpe-storage/common-host-libs v4.2.1-0.20210608172014-97cb25c9f147+inc
 github.com/hpe-storage/common-host-libs v4.2.1-0.20210608172014-97cb25c9f147+incompatible/go.mod h1:qQxvwt4l9C79p2V8bY1P13As1+ylyznKJVp3K2P5bz8=
 github.com/hpe-storage/common-host-libs v4.5.0+incompatible h1:4PFNsJ2Q0OJTYRcJ02MDn3uDBTUUyor6iZCl+KGhCow=
 github.com/hpe-storage/common-host-libs v4.5.0+incompatible/go.mod h1:qQxvwt4l9C79p2V8bY1P13As1+ylyznKJVp3K2P5bz8=
+github.com/hpe-storage/common-host-libs v4.5.1-0.20220117163037-4df04fb7b82e+incompatible h1:rlckWXkWfNX+BFHj23TB7S8hifEWQVD+FvOTCTQijAg=
+github.com/hpe-storage/common-host-libs v4.5.1-0.20220117163037-4df04fb7b82e+incompatible/go.mod h1:qQxvwt4l9C79p2V8bY1P13As1+ylyznKJVp3K2P5bz8=
 github.com/hpe-storage/k8s-custom-resources v0.0.0-20190828052325-42886f48215c h1:M/4pHhSouEEjd613SFODOskZmn6pS5tWITHdA8MPWMI=
 github.com/hpe-storage/k8s-custom-resources v0.0.0-20190828052325-42886f48215c/go.mod h1:qYST/Hepa2MRB85zskShx/+WlbUG5bmq/orhy6sA2jE=
 github.com/hpe-storage/k8s-custom-resources v0.0.0-20201216052928-e2854a36f3f9 h1:kC0UlG2zL6ZkcsgYmhhUiw2NGEsZ8RA1A6K55wq4noo=

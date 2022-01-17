@@ -621,7 +621,14 @@ func cleanupStaleScsiPaths(volume *model.Volume) (err error) {
 
 		// obtain current path serial using sysfs vpd80 page
 		var serialNumber string
-		serialNumber, err = getVpd80FromSysfs(h, c, t, l)
+		vendorName, _ := getVendorFromSysfs(h, c, t, l)
+		if strings.Contains(vendorName, "3PARdata"){
+			serialNumber, err = getWwidFromSysfs(h, c, t, l)
+		}else {
+		// obtain current path serial using sysfs vpd80 page
+			serialNumber, err = getVpd80FromSysfs(h, c, t, l)
+		}
+		//serialNumber, err = getVpd80FromSysfs(h, c, t, l)
 		if err != nil {
 			log.Debugf("unable to read vpd_pg80 from sysfs for %s:%s:%s:%s err=%s. Continue with other paths", h, c, t, l, err.Error())
 			continue
@@ -853,7 +860,15 @@ func cleanupUnmappedDevice(oldSerial string, volumelunID string) error {
 							continue
 						}
 						var currentSerial string
-						currentSerial, err = getVpd80FromSysfs(h, c, t, l)
+						vendorName, _ := getVendorFromSysfs(h, c, t, l)
+						if strings.Contains(vendorName, "3PARdata"){
+							currentSerial, err = getWwidFromSysfs(h, c, t, l)
+						}else {
+						// obtain current path serial using sysfs vpd80 page
+							currentSerial, err = getVpd80FromSysfs(h, c, t, l)
+						}						
+						
+						//currentSerial, err = getVpd80FromSysfs(h, c, t, l)
 						if err != nil {
 							log.Debugf("unable to get serial for h:c:t:l %s:%s:%s:%s err=%s, continue with other paths", h, c, t, l, err.Error())
 							continue
@@ -895,13 +910,20 @@ func cleanupUnmappedDevice(oldSerial string, volumelunID string) error {
 // check if a lun path has been remapped and update paths with new lun
 // serial in this case is volume serial (i.e without prefix 2) as we are directly getting from vpd page 80
 func checkRemappedLunPath(h string, c string, t string, l string, serial string, lunID string) (remappedLunFound bool, oldSerial string, err error) {
+	log.Tracef(">>>>> checkRemappedLunPath")
 	// check if the path is in offline state and assume its a stale path with same lunID so we rescan the path again.
 	state, err := getDeviceState(h, c, t, l)
 	if err != nil {
 		return false, "", err
 	}
-	// obtain current path serial using sysfs vpd80 page
-	oldSerial, err = getVpd80FromSysfs(h, c, t, l)
+	vendorName, _ := getVendorFromSysfs(h, c, t, l)
+	if strings.Contains(vendorName, "3PARdata"){
+		oldSerial, err = getWwidFromSysfs(h, c, t, l)
+	}else {
+		// obtain current path serial using sysfs vpd80 page
+		oldSerial, err = getVpd80FromSysfs(h, c, t, l)
+	}
+	
 	if err != nil {
 		return false, "", err
 	}
@@ -915,19 +937,24 @@ func checkRemappedLunPath(h string, c string, t string, l string, serial string,
 		log.Debugf("%s:%s:%s:%s lun-id %s is in offline state, assuming remapped-lun", h, c, t, l, lunID)
 		return true, oldSerial, nil
 	}
-
+   	if strings.Contains(vendorName, "3PARdata"){
+			log.Debugf("found remapped lun with oldserial %s and Serial %s", oldSerial, serial)		
+	} else{
 	// check for serial number mismatch
-	updatedSerial, err := getDeviceSerialByHctl(h, c, t, l)
-	if err != nil {
-		// continue with other paths
-		return false, "", err
-	}
+		updatedSerial, err := getDeviceSerialByHctl(h, c, t, l)
+		if err != nil {
+			// continue with other paths
+			return false, "", err
+		}
 
-	if updatedSerial != serial {
-		return false, "", nil
+		if updatedSerial != serial {
+			return false, "", nil
+		}
+		log.Debugf("found remapped lun with oldserial %s and updatedSerial %s", oldSerial, updatedSerial)		
 	}
+	
 	// updated path serial matches serial of the new lun attached
-	log.Debugf("found remapped lun with oldserial %s and updatedSerial %s", oldSerial, updatedSerial)
+
 	return true, oldSerial, nil
 }
 
@@ -987,6 +1014,37 @@ func getDeviceState(h string, c string, t string, l string) (state string, err e
 		return "", err
 	}
 	return state, nil
+}
+
+func getVendorFromSysfs(h string, c string, t string, l string) (vendorName string, err error){
+	log.Tracef(">>>>> getVendorFromSysfs")
+	vendorPath := fmt.Sprintf("/sys/class/scsi_device/%s:%s:%s:%s/device/vendor", h, c, t, l)
+	out, err := util.FileReadFirstLine(vendorPath)
+	log.Info("vendor: ", out)
+	if err != nil {
+		return "", err
+	}
+    return out, nil
+}
+
+func getWwidFromSysfs(h string, c string, t string, l string) (serial string, err error){
+
+	log.Tracef(">>>>> getWwidFromSysfs")
+
+	wwidPath := fmt.Sprintf("/sys/class/scsi_device/%s:%s:%s:%s/device/wwid", h, c, t, l)
+	wwidOut, wwidErr := util.FileReadFirstLine(wwidPath)
+	if wwidErr != nil {
+		return "", wwidErr
+	}
+	log.Info("wwidOut", wwidOut)
+	// extract serial from format: naa.60002ac0000000000a0066ef0001db2c
+	entries := strings.Split(wwidOut, ".")
+	if len(entries) > 1 {
+	   return entries[1], nil
+	}
+	return "", fmt.Errorf("invalid serial number found with wwid %s", wwidOut)
+	
+	
 }
 
 func getVpd80FromSysfs(h string, c string, t string, l string) (serial string, err error) {

@@ -1,9 +1,9 @@
 NAME = csi-driver
 ifndef REPO_NAME
-	REPO_NAME ?= hpestorage/csi-driver
+	REPO_NAME ?= quay.io/bhagyashree_sarawate/csi-driver
 endif
 
-TAG = edge
+TAG = edge-1
 
 # unless a BUILD_NUMBER is specified
 ifeq ($(IGNORE_BUILD_NUMBER),true)
@@ -94,7 +94,7 @@ image:
 	cp -r ../cmd/csi-driver/CentOS-Base.repo . && \
 	cp -r ../LICENSE . && \
 	rsync -r --no-perms --no-owner --no-group  $(TUNE_LINUX_CONFIG_PATH)/ tune/ && \
-	docker build -t $(IMAGE) .
+	docker build --rm=true --build-arg http_proxy=http://web-proxy.sgp.hpecorp.net:8080 --build-arg HTTP_PROXY=http://web-proxy.sgp.hpecorp.net:8080 --build-arg HTTPS_PROXY=http://web-proxy.sgp.hpecorp.net:8080 --build-arg https_proxy=http://web-proxy.sgp.hpecorp.net:8080 --build-arg no_proxy=$no_proxy -t $(IMAGE) .
 
 .PHONY: push
 push:
