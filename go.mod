@@ -65,4 +65,3 @@ replace k8s.io/client-go => k8s.io/client-go v0.17.0
 
 replace google.golang.org/grpc => google.golang.org/grpc v1.26.0
 
-//replace github.com/hpe-storage/common-host-libs => /root/bhagyashree/godemo/src/github.com/hpe-storage/common-host-libs
