@@ -1,5 +1,0 @@
-[BaseOS]
-name=CentOS-$releasever - Base
-mirrorlist=http://mirrorlist.centos.org/?release=$releasever&arch=$basearch&repo=BaseOS&infra=$infra
-gpgcheck=0
-enabled=1
