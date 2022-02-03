@@ -1,13 +1,13 @@
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.5
 
 RUN microdnf update -y && rm -rf /var/cache/yum
-ADD CentOS-Base.repo /etc/yum.repos.d/
+ADD AlmaLinux-Base.repo /etc/yum.repos.d/
 RUN microdnf install -y systemd && microdnf install -y cryptsetup
 
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \
       vendor="HPE" \
-      version="2.0.0" \
+      version="2.1.1" \
       summary="HPE CSI Driver for Kubernetes" \
       description="The HPE CSI Driver for Kubernetes enables container orchestrators, such as Kubernetes and OpenShift, to manage the life-cycle of persistent storage." \
       io.k8s.display-name="HPE CSI Driver for Kubernetes" \
