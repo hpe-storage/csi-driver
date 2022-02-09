@@ -1,8 +1,15 @@
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.5
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.4
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD AlmaLinux-Base.repo /etc/yum.repos.d/
-RUN microdnf install -y systemd && microdnf install -y cryptsetup
+
+RUN microdnf install -y cryptsetup
+
+COPY --from=registry.access.redhat.com/ubi7/ubi:7.9 /usr/bin/systemctl /usr/bin/systemctl
+COPY --from=registry.access.redhat.com/ubi7/ubi:7.9 /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11.8.2
+
+RUN ln -s /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11
+
 
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \
