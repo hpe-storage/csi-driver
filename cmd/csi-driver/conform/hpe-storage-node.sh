@@ -30,6 +30,10 @@ if [ -f /etc/os-release ]; then
     fi
 fi
 
+if [ ! -f /etc/multipath.conf ]; then
+    nomultipathconf=true
+fi
+
 if [ "$CONFORM_TO" = "ubuntu" ]; then
     #  Install multipath packages
     if [ ! -f /sbin/multipathd ]; then
@@ -112,6 +116,12 @@ elif [ "$CONFORM_TO" = "coreos" ]; then
 else
     echo "unsupported configuration for node package checks. os $os_name"
     exit 1
+fi
+
+# Remove multipath.conf if installed during conformance with default packages
+# Node driver will install correct multipath.conf
+if [ "$nomultipathconf" = "true" ] && [ -f /etc/multipath.conf ]; then
+	rm -f /etc/multipath.conf
 fi
 
 # Load iscsi_tcp modules, its a no-op if its already loaded
