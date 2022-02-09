@@ -15,7 +15,6 @@ import (
 
 	"github.com/hpe-storage/common-host-libs/dbservice/etcd"
 	log "github.com/hpe-storage/common-host-libs/logger"
-	"github.com/hpe-storage/common-host-libs/tunelinux"
 	"github.com/hpe-storage/common-host-libs/util"
 
 	"github.com/hpe-storage/csi-driver/pkg/driver"
@@ -121,18 +120,19 @@ func csiCliHandler(cmd *cobra.Command) error {
 	}
 
 	if nodeService {
+		// TODO: remove the conformance for iscsi/multipath to a sidecar
 		// perform conformance checks and service management
 		// configure iscsi
-		err = tunelinux.ConfigureIscsi()
-		if err != nil {
-			return fmt.Errorf("Unable to configure iscsid service, err %v", err.Error())
-		}
+		// err = tunelinux.ConfigureIscsi()
+		// if err != nil {
+		// 	return fmt.Errorf("Unable to configure iscsid service, err %v", err.Error())
+		// }
 
-		// configure multipath
-		err = tunelinux.ConfigureMultipath()
-		if err != nil {
-			return fmt.Errorf("Unable to configure multipathd service, err %v", err.Error())
-		}
+		// // configure multipath
+		// err = tunelinux.ConfigureMultipath()
+		// if err != nil {
+		// 	return fmt.Errorf("Unable to configure multipathd service, err %v", err.Error())
+		// }
 	}
 
 	monitorInterval, err := strconv.ParseInt(podMonitorInterval, 10, 64)

@@ -23,6 +23,7 @@ RUN chmod 777 /chroot/chroot-host-wrapper.sh
 RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/blockdev \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/iscsiadm \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/iscsid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/lsblk \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/lsscsi \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.ext3 \

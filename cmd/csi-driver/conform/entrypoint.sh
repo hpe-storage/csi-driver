@@ -24,8 +24,8 @@ if [ "$nodeservice" = true ]; then
 
         echo "running node conformance checks..."
         # Reload and run!
-        systemctl daemon-reload
-        systemctl restart hpe-storage-node
+        # systemctl daemon-reload
+        # systemctl restart hpe-storage-node
     fi
 
     # Copy HPE Log Collector diag script
