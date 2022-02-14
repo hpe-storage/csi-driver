@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -38,7 +37,6 @@ var (
 	dbPort             string
 	flavorName         string
 	podMonitorInterval string
-	cspClientTimeout   time.Duration
 
 	// RootCmd is the main CSI command
 	RootCmd = &cobra.Command{
@@ -79,7 +77,6 @@ func init() {
 	RootCmd.PersistentFlags().StringVarP(&flavorName, "flavor", "f", "", "CSI driver flavor")
 	RootCmd.PersistentFlags().BoolP("pod-monitor", "", false, "Enable monitoring of pod statuses on unreachable nodes")
 	RootCmd.PersistentFlags().StringVarP(&podMonitorInterval, "pod-monitor-interval", "", "30", "Interval in seconds to monitor pods")
-	RootCmd.PersistentFlags().DurationVarP(&cspClientTimeout, "csp-client-timeout", "", 60*time.Second, "Timeout for CSP client http call")
 
 }
 
@@ -96,7 +93,6 @@ func csiCliHandler(cmd *cobra.Command) error {
 	flavorName, _ := cmd.Flags().GetString("flavor")
 	podMonitor, _ := cmd.Flags().GetBool("pod-monitor")
 	podMonitorInterval, _ := cmd.Flags().GetString("pod-monitor-interval")
-	cspClientTimeout, _ := cmd.Flags().GetDuration("csp-client-timeout")
 
 	// Parse the endpoint
 	_, addr, err := driver.ParseEndpoint(endpoint)
@@ -150,8 +146,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 		dbServer,
 		dbPort,
 		podMonitor,
-		monitorInterval,
-		int64(cspClientTimeout.Seconds()))
+		monitorInterval)
 	if err != nil {
 		return fmt.Errorf("Error instantiating plugin %v, Err: %v", driverName, err.Error())
 	}

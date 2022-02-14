@@ -34,18 +34,17 @@ import (
 )
 
 const (
-	defaultTTL = 60
-	maxCSPClientTimeout = 360
-	alletra9000 = "alletra9000"
-	primera = "primera"
+	defaultTTL              = 60
+	primeraMaxClientTimeout = 360
+	alletra9000             = "alletra9000"
+	primera                 = "primera"
 )
 
 // Driver is the object that implements the CSI interfaces
 type Driver struct {
-	name             string
-	version          string
-	endpoint         string
-	cspClientTimeout int64
+	name     string
+	version  string
+	endpoint string
 
 	chapiDriver      chapi.Driver
 	storageProviders map[string]storageprovider.StorageProvider
@@ -65,13 +64,11 @@ type Driver struct {
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
-func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval, cspClientTimeout int64) (*Driver, error) {
+func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval int64) (*Driver, error) {
 
 	// Get CSI driver
 	driver := getDriver(name, version, endpoint)
 
-	// Set cspclient timeout
-	driver.cspClientTimeout = cspClientTimeout
 	// Configure flavor
 	if flavorName == flavor.Kubernetes {
 		flavor, err := kubernetes.NewKubernetesFlavor(nodeService, driver.chapiDriver)
@@ -322,8 +319,8 @@ func (driver *Driver) AddStorageProvider(credentials *storageprovider.Credential
 	log.Trace(">>>>> AddStorageProvider")
 	defer log.Trace("<<<<< AddStorageProvider")
 
-	log.Infof("Adding connection to CSP at IP %s, port %d, context path %s, with username %s, serviceName %s and timeout %d seconds",
-		credentials.Backend, credentials.ServicePort, credentials.ContextPath, credentials.Username, credentials.ServiceName, credentials.CspClientTimeout)
+	log.Infof("Adding connection to CSP at IP %s, port %d, context path %s, with username %s and serviceName %s",
+		credentials.Backend, credentials.ServicePort, credentials.ContextPath, credentials.Username, credentials.ServiceName)
 
 	// Get CSP instance
 	csp, err := csp.NewContainerStorageProvider(credentials)
@@ -358,15 +355,11 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 		return nil, err
 	}
 
-	// Save csp client timeout in secrets
 	if strings.Contains(strings.ToLower(credentials.ServiceName), alletra9000) ||
 		strings.Contains(strings.ToLower(credentials.ServiceName), primera) {
-		log.Tracef("Setting csp client timeout for alletra9000/primera service with %d seconds", driver.cspClientTimeout)
-		credentials.CspClientTimeout = driver.cspClientTimeout
-		if driver.cspClientTimeout > maxCSPClientTimeout {
-			log.Warnf("Timeout specified %d is more than max value. Setting it to max value %d", driver.cspClientTimeout, maxCSPClientTimeout)
-			credentials.CspClientTimeout = maxCSPClientTimeout
-		}
+		log.Tracef("Setting csp client timeout for alletra9000/primera service with %d seconds", primeraMaxClientTimeout)
+		credentials.CspClientTimeout = primeraMaxClientTimeout
+
 	}
 
 	cacheKey := driver.GenerateStorageProviderCacheKey(credentials)

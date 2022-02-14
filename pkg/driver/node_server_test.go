@@ -79,7 +79,7 @@ func TestKubeletRootDir(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			os.Setenv(KubeletRootDirEnvKey, tc.kubeletRootDir)
-			d, _ := NewDriver("test-driver", "0.1", endpoint, "", true, "", "", false, 0, 60)
+			d, _ := NewDriver("test-driver", "0.1", endpoint, "", true, "", "", false, 0)
 			expectVal := d.getDefaultMountPoint(volumeID)
 			if expectVal != tc.expectVal {
 				t.Fatalf("Got %s expected %s", expectVal, tc.expectVal)
