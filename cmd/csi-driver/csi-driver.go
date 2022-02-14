@@ -145,7 +145,8 @@ func csiCliHandler(cmd *cobra.Command) error {
 		nodeService,
 		dbServer,
 		dbPort,
-		podMonitor
+		podMonitor,
+		monitorInterval)
 	if err != nil {
 		return fmt.Errorf("Error instantiating plugin %v, Err: %v", driverName, err.Error())
 	}

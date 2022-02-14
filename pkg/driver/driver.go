@@ -34,8 +34,10 @@ import (
 )
 
 const (
-	defaultTTL = 60
+	defaultTTL              = 60
 	primeraMaxClientTimeout = 360
+	alletra9000             = "alletra9000"
+	primera                 = "primera"
 )
 
 // Driver is the object that implements the CSI interfaces
@@ -62,7 +64,7 @@ type Driver struct {
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
-func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval) (*Driver, error) {
+func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval int64) (*Driver, error) {
 
 	// Get CSI driver
 	driver := getDriver(name, version, endpoint)
@@ -352,13 +354,13 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 		log.Errorf("Failed to create credentials, err: %s", err.Error())
 		return nil, err
 	}
-    
+
 	if strings.Contains(strings.ToLower(credentials.ServiceName), alletra9000) ||
-	strings.Contains(strings.ToLower(credentials.ServiceName), primera) {
-	log.Tracef("Setting csp client timeout for alletra9000/primera service with %d seconds",primeraMaxClientTimeout)
-	credentials.CspClientTimeout = primeraMaxClientTimeout
-	
-}
+		strings.Contains(strings.ToLower(credentials.ServiceName), primera) {
+		log.Tracef("Setting csp client timeout for alletra9000/primera service with %d seconds", primeraMaxClientTimeout)
+		credentials.CspClientTimeout = primeraMaxClientTimeout
+
+	}
 
 	cacheKey := driver.GenerateStorageProviderCacheKey(credentials)
 	if csp, ok := driver.storageProviders[cacheKey]; ok {
