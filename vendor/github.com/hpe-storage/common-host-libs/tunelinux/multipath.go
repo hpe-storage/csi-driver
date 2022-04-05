@@ -19,8 +19,14 @@ const (
 	multipath = "multipath"
 
 	// multipath params
-	deviceBlockPattern    = "(?s)devices\\s+{\\s*.*device\\s*{(?P<device_block>.*Nimble.*?)}"
 	multipathParamPattern = "\\s*(?P<name>.*?)\\s+(?P<value>.*)"
+)
+
+var (
+	deviceBlockPattern = map[string]string{
+		"Nimble": "(?s)devices\\s+{\\s*.*device\\s*{(?P<device_block>.*Nimble.*?)}",
+		"3par":   "(?s)devices\\s+{\\s*.*device\\s*{(?P<device_block>.*3PAR.*?)}",
+	}
 )
 
 // GetMultipathConfigFile returns path of the template multipath.conf file according to OS distro
@@ -99,62 +105,71 @@ func getMultipathDeviceParamRecommendation(paramKey string, currentValue string,
 }
 
 // getMultipathDeviceScopeRecommendations obtain recommendations for block section of multipath.conf
-func getMultipathDeviceScopeRecommendations(deviceBlock string) (settings []*Recommendation, err error) {
+func getMultipathDeviceScopeRecommendations(deviceBlock string) (settings []DeviceRecommendation, err error) {
 	log.Trace("getMultipathDeviceScopeRecommendations called")
-	var recommendations []*Recommendation
 	var recommendation *Recommendation
+	var deviceRecommendations []DeviceRecommendation
 	var keyFound bool
 	var paramValue string
 	var paramKey string
+
 	deviceBlockRecommendationMap, _ := getParamToTemplateFieldMap(Multipath, "recommendation", "")
 	deviceSettingsDescriptionMap, _ := getParamToTemplateFieldMap(Multipath, "description", "")
 	deviceSettingsSeverityMap, _ := getParamToTemplateFieldMap(Multipath, "severity", "")
 
 	// get individual parameters from device block
 	currentSettings := strings.Split(string(deviceBlock), "\n")
-	for key := range deviceBlockRecommendationMap {
-		keyFound = false
-		for _, setting := range currentSettings {
-			if setting != "" {
-				r := regexp.MustCompile(multipathParamPattern)
-				// extract key value from parameter string
-				if r.MatchString(setting) {
-					result := util.FindStringSubmatchMap(setting, r)
-					paramKey = result["name"]
-					paramValue = result["value"]
-				} else {
-					log.Error("Invalid multipath device param value for recommendation ", setting)
+
+	for index, _ := range deviceBlockRecommendationMap {
+
+		var currRecommendation DeviceRecommendation
+		for key := range deviceBlockRecommendationMap[index].deviceMap {
+
+			keyFound = false
+			for _, setting := range currentSettings {
+				if setting != "" {
+					r := regexp.MustCompile(multipathParamPattern)
+					// extract key value from parameter string
+					if r.MatchString(setting) {
+						result := util.FindStringSubmatchMap(setting, r)
+						paramKey = result["name"]
+						paramValue = result["value"]
+					} else {
+						log.Error("Invalid multipath device param value for recommendation ", setting)
+						continue
+					}
+					if paramKey == key {
+						// found the matching key for recommended parameter in /etc/multipath.conf
+						keyFound = true
+						break
+					}
+				}
+			}
+			var description = deviceSettingsDescriptionMap[index].deviceMap[key]
+			var recommendedValue = deviceBlockRecommendationMap[index].deviceMap[key]
+			var severity = deviceSettingsSeverityMap[index].deviceMap[key]
+			if keyFound == true {
+				log.Info(" Keyfound = ", keyFound)
+				// entry found in /etc/multipath.conf
+				recommendation, err = getMultipathDeviceParamRecommendation(paramKey, strings.TrimSpace(paramValue), recommendedValue, description, severity)
+				if err != nil {
+					log.Error("Unable to get recommendation for multipath param", paramKey, "value ", paramValue)
 					continue
 				}
-				if paramKey == key {
-					// found the matching key for recommended parameter in /etc/multipath.conf
-					keyFound = true
-					break
+			} else {
+				// missing needed parameters in /etc/multipath.conf
+				recommendation, err = getMultipathDeviceParamRecommendation(key, "", recommendedValue, description, severity)
+				if err != nil {
+					log.Error("Unable to get recommendation for multipath param", paramKey, "value ", paramValue)
+					continue
 				}
 			}
+			currRecommendation.RecomendArray = append(currRecommendation.RecomendArray, recommendation)
 		}
-		var description = deviceSettingsDescriptionMap[key]
-		var recommendedValue = deviceBlockRecommendationMap[key]
-		var severity = deviceSettingsSeverityMap[key]
-		if keyFound == true {
-			// entry found in /etc/multipath.conf
-			recommendation, err = getMultipathDeviceParamRecommendation(paramKey, strings.TrimSpace(paramValue), recommendedValue, description, severity)
-			if err != nil {
-				log.Error("Unable to get recommendation for multipath param", paramKey, "value ", paramValue)
-				continue
-			}
-		} else {
-			// missing needed parameters in /etc/multipath.conf
-			recommendation, err = getMultipathDeviceParamRecommendation(key, "", recommendedValue, description, severity)
-			if err != nil {
-				log.Error("Unable to get recommendation for multipath param", paramKey, "value ", paramValue)
-				continue
-			}
-		}
-		// append the recommendation to the list
-		recommendations = append(recommendations, recommendation)
+		currRecommendation.DeviceType = deviceBlockRecommendationMap[index].DeviceType
+		deviceRecommendations = append(deviceRecommendations, currRecommendation)
 	}
-	return recommendations, nil
+	return deviceRecommendations, nil
 }
 
 // IsMultipathRequired returns if multipath needs to be enabled on the system
@@ -175,9 +190,9 @@ func IsMultipathRequired() (required bool, err error) {
 }
 
 // GetMultipathRecommendations obtain various recommendations for multipath settings on host
-func GetMultipathRecommendations() (settings []*Recommendation, err error) {
+func GetMultipathRecommendations() (settings []DeviceRecommendation, err error) {
 	log.Trace("GetMultipathRecommendations called")
-	var deviceRecommendations []*Recommendation
+	var deviceRecommendations []DeviceRecommendation
 
 	var isMultipathRequired bool
 
@@ -197,39 +212,40 @@ func GetMultipathRecommendations() (settings []*Recommendation, err error) {
 		return nil, err
 	}
 
-	// Check if /etc/multipath.conf present
-	if _, err = os.Stat(linux.MultipathConf); os.IsNotExist(err) {
-		log.Error("/etc/multipath.conf file missing")
-		// Generate All Recommendations By default
-		deviceRecommendations, err = getMultipathDeviceScopeRecommendations("")
-		if err != nil {
-			log.Error("Unable to get recommendations for multipath device settings ", err.Error())
+	for _, devicePattern := range deviceBlockPattern {
+		// Check if /etc/multipath.conf present
+		if _, err = os.Stat(linux.MultipathConf); os.IsNotExist(err) {
+			log.Error("/etc/multipath.conf file missing")
+			// Generate All Recommendations By default
+			deviceRecommendations, err = getMultipathDeviceScopeRecommendations("")
+			if err != nil {
+				log.Error("Unable to get recommendations for multipath device settings ", err.Error())
+			}
+			return deviceRecommendations, err
 		}
-		return deviceRecommendations, err
-	}
-	// Obtain contents of /etc/multipath.conf
-	content, err := ioutil.ReadFile(linux.MultipathConf)
-	if err != nil {
-		log.Error(err.Error())
-		return nil, err
-	}
+		// Obtain contents of /etc/multipath.conf
+		content, err := ioutil.ReadFile(linux.MultipathConf)
+		if err != nil {
+			log.Error(err.Error())
+			return nil, err
+		}
 
-	// Obtain device block
-	r := regexp.MustCompile(deviceBlockPattern)
-	if r.MatchString(string(content)) {
-		// found Nimble Device block
-		result := util.FindStringSubmatchMap(string(content), r)
-		deviceBlock := result["device_block"]
-		deviceRecommendations, err = getMultipathDeviceScopeRecommendations(strings.TrimSpace(deviceBlock))
-		if err != nil {
-			log.Error("Unable to get recommendations for multipath device settings ", err.Error())
-		}
-	} else {
-		// Nimble device section missing.
-		// Generate All Recommendations By default
-		deviceRecommendations, err = getMultipathDeviceScopeRecommendations("")
-		if err != nil {
-			log.Error("Unable to get recommendations for multipath device settings ", err.Error())
+		r := regexp.MustCompile(devicePattern)
+		if r.MatchString(string(content)) {
+			// found Device block
+			result := util.FindStringSubmatchMap(string(content), r)
+			deviceBlock := result["device_block"]
+			deviceRecommendations, err = getMultipathDeviceScopeRecommendations(strings.TrimSpace(deviceBlock))
+			if err != nil {
+				log.Error("Unable to get recommendations for multipath device settings ", err.Error())
+			}
+		} else {
+			// Device section missing.
+			// Generate All Recommendations By default
+			deviceRecommendations, err = getMultipathDeviceScopeRecommendations("")
+			if err != nil {
+				log.Error("Unable to get recommendations for multipath device settings ", err.Error())
+			}
 		}
 	}
 
@@ -237,7 +253,7 @@ func GetMultipathRecommendations() (settings []*Recommendation, err error) {
 }
 
 // setMultipathRecommendations sets device scope recommendations in multipath.conf
-func setMultipathRecommendations(recommendations []*Recommendation) (err error) {
+func setMultipathRecommendations(recommendations []*Recommendation, device string) (err error) {
 	var devicesSection *mpathconfig.Section
 	var deviceSection *mpathconfig.Section
 	var defaultsSection *mpathconfig.Section
@@ -247,11 +263,11 @@ func setMultipathRecommendations(recommendations []*Recommendation) (err error) 
 		return err
 	}
 
-	deviceSection, err = config.GetNimbleSection()
+	deviceSection, err = config.GetDeviceSection(device)
 	if err != nil {
-		// Nimble device section is not found, get or create devices{} and then add device{} section
 		devicesSection, err = config.GetSection("devices", "")
 		if err != nil {
+			// Device section is not found, get or create devices{} and then add device{} section
 			devicesSection, err = config.AddSection("devices", config.GetRoot())
 			if err != nil {
 				return errors.New("Unable to add new devices section")
@@ -301,23 +317,8 @@ func SetMultipathRecommendations() (err error) {
 
 	// Take a backup of existing multipath.conf
 	f, err := os.Stat(linux.MultipathConf)
-	if err == nil && f.Size() != 0 {
-		// Get current recommendations
-		var recommendations []*Recommendation
-		recommendations, err = GetMultipathRecommendations()
-		if err != nil {
-			return err
-		}
-		if len(recommendations) == 0 {
-			log.Info("no recommendations found for multipath.conf settings")
-			return nil
-		}
-		// Apply new recommendations for mismatched values
-		err = setMultipathRecommendations(recommendations)
-		if err != nil {
-			return err
-		}
-	} else {
+
+	if err != nil || f.Size() == 0 {
 		multipathTemplate, err := GetMultipathTemplateFile()
 		if err != nil {
 			return err
@@ -327,6 +328,23 @@ func SetMultipathRecommendations() (err error) {
 		if err != nil {
 			return err
 		}
+	}
+	// Get current recommendations
+	recommendations, err := GetMultipathRecommendations()
+	if err != nil {
+		return err
+	}
+	if len(recommendations) == 0 {
+		log.Warning("no recommendations found for multipath.conf settings")
+		return nil
+	}
+
+	// Apply new recommendations for mismatched values
+	for _, dev := range recommendations {
+		err = setMultipathRecommendations(dev.RecomendArray, dev.DeviceType)
+	}
+	if err != nil {
+		return err
 	}
 	// Start service as it would have failed to start initially if multipath.conf is missing
 	err = linux.ServiceCommand(multipath, "start")

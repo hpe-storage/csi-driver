@@ -6,8 +6,6 @@ import (
 	"container/list"
 	"errors"
 	"fmt"
-	log "github.com/hpe-storage/common-host-libs/logger"
-	"github.com/hpe-storage/common-host-libs/util"
 	"os"
 	"path"
 	"regexp"
@@ -15,6 +13,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/hpe-storage/common-host-libs/logger"
+	"github.com/hpe-storage/common-host-libs/util"
 )
 
 const (
@@ -239,25 +240,21 @@ func addOption(section *Section, option string) {
 
 //checks for the section
 func isSection(line string) (bool, error) {
-        line = strings.TrimSpace(line)
-        prefixes := []string{"defaults", "blacklist", "blacklist_exceptions", "devices", "device", "multipaths", "multipath"}
-        for _, prefix := range prefixes {
-                r, err := regexp.Compile("^"+prefix+"\\s*[{]*$")
-                if err != nil {
-                        return false, err
-                }
+	line = strings.TrimSpace(line)
+	prefixes := []string{"defaults", "blacklist", "blacklist_exceptions", "devices", "device", "multipaths", "multipath"}
+	for _, prefix := range prefixes {
+		r, err := regexp.Compile("^" + prefix + "\\s*[{]*$")
+		if err != nil {
+			return false, err
+		}
 
-                if(r.MatchString(line)) {
-                        return true, nil
-                }
-        }
+		if r.MatchString(line) {
+			return true, nil
+		}
+	}
 
-        return false, nil
+	return false, nil
 }
-
-
-
-
 
 // ParseConfig reads and parses give config file into sections
 func ParseConfig(filePath string) (config *Configuration, err error) {
@@ -349,9 +346,9 @@ func SaveConfig(config *Configuration, filePath string) (err error) {
 	return err
 }
 
-// GetNimbleSection gets nimble device section in /etc/multipath.conf
-func (config *Configuration) GetNimbleSection() (section *Section, err error) {
-	log.Trace("GetNimbleSection called")
+// GetDeviceSection gets device section in /etc/multipath.conf
+func (config *Configuration) GetDeviceSection(deviceType string) (section *Section, err error) {
+	log.Trace("GetDeviceSection called for device: ", deviceType)
 	config.mutex.RLock()
 	defer config.mutex.RUnlock()
 
@@ -363,7 +360,7 @@ func (config *Configuration) GetNimbleSection() (section *Section, err error) {
 				if s.GetChildren().Len() != 0 {
 					for e := s.GetChildren().Front(); e != nil; e = e.Next() {
 						childSection := e.Value.(*Section)
-						if childSection.GetName() == "device" && strings.Contains(childSection.properties["vendor"], "Nimble") {
+						if childSection.GetName() == "device" && strings.Contains(childSection.properties["vendor"], deviceType) {
 							return childSection, nil
 						}
 					}
