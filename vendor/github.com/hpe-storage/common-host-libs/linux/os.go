@@ -19,13 +19,14 @@ package linux
 import (
 	"errors"
 	"fmt"
-	log "github.com/hpe-storage/common-host-libs/logger"
-	"github.com/hpe-storage/common-host-libs/util"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+
+	log "github.com/hpe-storage/common-host-libs/logger"
+	"github.com/hpe-storage/common-host-libs/util"
 )
 
 const (
@@ -94,6 +95,42 @@ func GetOsInfo() (*OsInfo, error) {
 		log.Infof("got OS details as [%s %s %s %s]\n", osInfo.GetOsDistro(), osInfo.GetOsMajorVersion(), osInfo.GetOsMinorVersion(), osInfo.GetKernelVersion())
 	}
 	return osInfo, nil
+}
+
+func GetDistro() (string, error) {
+	osInfoLock.Lock()
+	defer osInfoLock.Unlock()
+	var out, distro string
+	if f, err := os.Stat(osReleaseFile); err == nil && !f.IsDir() && f.Size() != 0 {
+		// get only PRETTY_NAME field of os-release
+		var lines []string
+		lines, err = util.FileGetStrings(osReleaseFile)
+		for _, line := range lines {
+			if strings.Contains(line, "PRETTY_NAME") {
+				// remove quotes and key
+				out = strings.Replace(strings.Replace(line, "\"", "", -1), "PRETTY_NAME=", "", -1)
+				break
+			}
+		}
+
+		if out != "" {
+			if strings.Contains(out, "Ubuntu") {
+				distro = "Ubuntu"
+			} else if strings.Contains(out, "Red Hat") {
+				distro = "Red Hat"
+			} else if strings.Contains(out, "Centos") {
+				distro = "Centos"
+			} else if strings.Contains(out, "SUSE") {
+				distro = "SUSE"
+			} else {
+				log.Info("Cannot determine Distro")
+				return "", errors.New("Undefined DistroType")
+			}
+			return distro, nil
+		}
+	}
+	return "", errors.New("Unable to determine DistroType")
+
 }
 
 // GetKernelVersion returns OS kernel version

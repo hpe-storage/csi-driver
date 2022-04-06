@@ -3,13 +3,14 @@ package tunelinux
 // Copyright 2019 Hewlett Packard Enterprise Development LP.
 import (
 	"fmt"
+	"io/ioutil"
+	"regexp"
+	"strings"
+
 	"github.com/hpe-storage/common-host-libs/linux"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/util"
-	"io/ioutil"
-	"regexp"
-	"strings"
 )
 
 const (
@@ -46,7 +47,7 @@ func getBlockParamRecommendation(param string, value string, recommended string)
 }
 
 // getBlockQueueRecommendation obtains recommendation for given block queue parameter and value
-func getBlockQueueRecommendation(device *model.Device, param string, value string) (setting *Recommendation, err error) {
+func getBlockQueueRecommendation(device *model.Device, param string, value string, deviceType string) (setting *Recommendation, err error) {
 	log.Trace("getBlockQueueRecommendation called")
 	var optionSetting *Recommendation
 	var recommendation string
@@ -63,25 +64,31 @@ func getBlockQueueRecommendation(device *model.Device, param string, value strin
 		value = scheduler
 	}
 	// Get recommendation settings for given parameter and value obtained
-	recommendation, status = getBlockParamRecommendation(param, value, blockParamMap[param])
-	optionSetting = &Recommendation{
-		ID:              linux.HashMountID(param + device.AltFullPathName + device.SerialNumber),
-		Category:        Category.String(Disk),
-		Level:           blockParamSeverityMap[param],
-		Description:     blockParamDescriptionMap[param],
-		Parameter:       param,
-		Value:           value,
-		Recommendation:  recommendation,
-		CompliantStatus: status,
-		Device:          All,
-		FsType:          "",
-		Vendor:          "",
+
+	for index, dev := range blockParamMap {
+		if dev.DeviceType == deviceType {
+			recommendation, status = getBlockParamRecommendation(param, value, blockParamMap[index].deviceMap[param])
+			optionSetting = &Recommendation{
+				ID:              linux.HashMountID(param + device.AltFullPathName + device.SerialNumber),
+				Category:        Category.String(Disk),
+				Level:           blockParamSeverityMap[index].deviceMap[param],
+				Description:     blockParamDescriptionMap[index].deviceMap[param],
+				Parameter:       param,
+				Value:           value,
+				Recommendation:  recommendation,
+				CompliantStatus: status,
+				Device:          All,
+				FsType:          "",
+				Vendor:          "",
+			}
+		}
 	}
 	return optionSetting, nil
+
 }
 
 // GetBlockQueueRecommendations obtain block queue settings of the device
-func GetBlockQueueRecommendations(device *model.Device) (settings []*Recommendation, err error) {
+func GetBlockQueueRecommendations(device *model.Device, deviceType string) (settings []*Recommendation, err error) {
 	log.Trace("GetBlockQueueRecommendations called with ", device.AltFullPathName)
 	// Read block queue settings and keep adding recommendations
 	params := []string{"add_random", "rq_affinity", "scheduler", "rotational", "nr_requests", "max_sectors_kb", "read_ahead_kb"}
@@ -96,7 +103,7 @@ func GetBlockQueueRecommendations(device *model.Device) (settings []*Recommendat
 			continue
 		}
 		paramValue := strings.TrimRight(string(value), "\n")
-		optionSetting, err := getBlockQueueRecommendation(device, param, string(paramValue))
+		optionSetting, err := getBlockQueueRecommendation(device, param, string(paramValue), deviceType)
 		if err != nil {
 			log.Error("Unable to get block queue recommendation for ", device.AltFullPathName, " param ", param, " value ", string(value))
 		}
@@ -106,18 +113,24 @@ func GetBlockQueueRecommendations(device *model.Device) (settings []*Recommendat
 }
 
 // GetDeviceRecommendations obtain various recommendations for block device settings on host
-func GetDeviceRecommendations(devices []*model.Device) (settings []*Recommendation, err error) {
+func GetDeviceRecommendations(devices []*model.Device, deviceParam ...string) (settings []*Recommendation, err error) {
 	log.Trace("GetDeviceRecommendations called")
 	var recommendations []*Recommendation
 	var deviceRecommendations []*Recommendation
-	// load settings from template config file
+
+	// If no deviceType is passed, we assume Nimble as deviceType
+	deviceType := "Nimble"
+	if len(deviceParam) != 0 {
+		deviceType = deviceParam[0]
+	}
+
 	err = loadTemplateSettings()
 	if err != nil {
 		return nil, err
 	}
 	for _, device := range devices {
 		// get device specific recommendations
-		deviceRecommendations, err = GetBlockQueueRecommendations(device)
+		deviceRecommendations, err = GetBlockQueueRecommendations(device, deviceType)
 		if err != nil {
 			log.Error("Unable to get recommendations for block device queue parameters ", err.Error())
 			return nil, err
