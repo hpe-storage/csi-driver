@@ -528,7 +528,7 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 					if !isLuksDev {
 						log.Infof("Device %s is a new device. LUKS formatting it...", originalDevPath)
 						_, _, err := util.ExecCommandOutputWithStdinArgs("cryptsetup",
-							[]string{"luksFormat", "--batch-mode", originalDevPath},
+							[]string{"luksFormat", "--type", "luks1", "--batch-mode", originalDevPath},
 							[]string{volume.EncryptionKey})
 						if err != nil {
 							err = fmt.Errorf("LUKS format command failed with error: %v", err)
