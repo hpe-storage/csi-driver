@@ -24,7 +24,7 @@ import (
 const (
 	nfsPrefix           = "hpe-nfs-"
 	defaultNFSNamespace = "hpe-nfs"
-	defaultNFSImage     = "quay.io/hpestorage/nfs-provisioner:v2.0.0"
+	defaultNFSImage     = "quay.io/hpestorage/nfs-provisioner:v3.0.0"
 
 	creationInterval           = 60 // 300s with sleep interval of 5s
 	creationDelay              = 5 * time.Second
@@ -763,21 +763,21 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 
 	volumes = append(volumes, configMapVol)
 
-        var seconds int64 = 30
+	var seconds int64 = 30
 
-        tolerationsNotReady := core_v1.Toleration{
-            Key: "node.kubernetes.io/not-ready",
-            Operator: "Exists",
-            Effect: "NoExecute",
-            TolerationSeconds: &seconds,
-          }
+	tolerationsNotReady := core_v1.Toleration{
+		Key:               "node.kubernetes.io/not-ready",
+		Operator:          "Exists",
+		Effect:            "NoExecute",
+		TolerationSeconds: &seconds,
+	}
 
-        tolerationsUnReachable := core_v1.Toleration{
-            Key: "node.kubernetes.io/unreachable",
-            Operator: "Exists",
-            Effect: "NoExecute",
-            TolerationSeconds: &seconds,
-          }
+	tolerationsUnReachable := core_v1.Toleration{
+		Key:               "node.kubernetes.io/unreachable",
+		Operator:          "Exists",
+		Effect:            "NoExecute",
+		TolerationSeconds: &seconds,
+	}
 
 	podSpec := core_v1.PodTemplateSpec{
 		ObjectMeta: meta_v1.ObjectMeta{
@@ -792,7 +792,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 			Volumes:            volumes,
 			HostIPC:            false,
 			HostNetwork:        false,
-                        Tolerations:        []core_v1.Toleration{tolerationsNotReady, tolerationsUnReachable},
+			Tolerations:        []core_v1.Toleration{tolerationsNotReady, tolerationsUnReachable},
 		},
 	}
 
