@@ -3,13 +3,14 @@ package tunelinux
 // Copyright 2019 Hewlett Packard Enterprise Development LP.
 import (
 	"errors"
-	"github.com/hpe-storage/common-host-libs/linux"
-	log "github.com/hpe-storage/common-host-libs/logger"
-	"github.com/hpe-storage/common-host-libs/util"
 	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/hpe-storage/common-host-libs/linux"
+	log "github.com/hpe-storage/common-host-libs/logger"
+	"github.com/hpe-storage/common-host-libs/util"
 )
 
 const (
@@ -169,7 +170,7 @@ func IsIscsiEnabled() (enabled bool) {
 }
 
 // GetIscsiRecommendations obtain various recommendations for iSCSI settings on host
-func GetIscsiRecommendations() (settings []*Recommendation, err error) {
+func GetIscsiRecommendations(deviceParam ...string) (settings []*Recommendation, err error) {
 	log.Trace("GetIscsiRecommendations called")
 
 	// check if iscsi services are installed and enabled
@@ -188,6 +189,12 @@ func GetIscsiRecommendations() (settings []*Recommendation, err error) {
 	iscsiParamDescriptionMap, _ := getParamToTemplateFieldMap(Iscsi, "description", "")
 	iscsiParamSeverityMap, _ := getParamToTemplateFieldMap(Iscsi, "severity", "")
 
+	// If no deviceType is passed, we assume Nimble as deviceType
+	deviceType := "Nimble"
+	if len(deviceParam) != 0 {
+		deviceType = deviceParam[0]
+	}
+
 	configLock.Lock()
 	defer configLock.Unlock()
 	content, err := ioutil.ReadFile(linux.IscsiConf)
@@ -197,23 +204,28 @@ func GetIscsiRecommendations() (settings []*Recommendation, err error) {
 	}
 	lines := strings.Split(string(content), "\n")
 	// get recommendation for each param in the map matching with the iscsid.conf param
-	for param, recommendedValue := range iscsiParamMap {
-		formattedParam, _ := getIscsiFormattedParam(param)
-		for _, line := range lines {
-			if false == strings.HasPrefix(line, formattedParam) {
-				// skip other parameters in iscsid.conf
-				continue
+
+	for index, dev := range iscsiParamMap {
+		if dev.DeviceType == deviceType {
+			for param, recommendedValue := range iscsiParamMap[index].deviceMap {
+				formattedParam, _ := getIscsiFormattedParam(param)
+				for _, line := range lines {
+					if false == strings.HasPrefix(line, formattedParam) {
+						// skip other parameters in iscsid.conf
+						continue
+					}
+					var description = iscsiParamDescriptionMap[index].deviceMap[param]
+					var severity = iscsiParamSeverityMap[index].deviceMap[param]
+					recommendation, err = getIscsiParamRecommendation(param, recommendedValue, line, description, severity)
+					if err != nil {
+						log.Error("Unable to get recommendation for iscsi param ", param, "error: ", err.Error())
+					}
+					if recommendation != nil {
+						recommendations = append(recommendations, recommendation)
+					}
+					break
+				}
 			}
-			var description = iscsiParamDescriptionMap[param]
-			var severity = iscsiParamSeverityMap[param]
-			recommendation, err = getIscsiParamRecommendation(param, recommendedValue, line, description, severity)
-			if err != nil {
-				log.Error("Unable to get recommendation for iscsi param ", param, "error: ", err.Error())
-			}
-			if recommendation != nil {
-				recommendations = append(recommendations, recommendation)
-			}
-			break
 		}
 	}
 	// ignore errors during iface recommendations

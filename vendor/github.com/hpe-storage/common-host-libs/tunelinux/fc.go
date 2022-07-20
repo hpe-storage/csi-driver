@@ -4,11 +4,12 @@ package tunelinux
 import (
 	"errors"
 	"fmt"
-	"github.com/hpe-storage/common-host-libs/linux"
-	log "github.com/hpe-storage/common-host-libs/logger"
 	"io/ioutil"
 	"os"
 	"strings"
+
+	"github.com/hpe-storage/common-host-libs/linux"
+	log "github.com/hpe-storage/common-host-libs/logger"
 )
 
 // HbaVendor indicates the vendor type of the Fibre Channel HBA
@@ -146,9 +147,6 @@ func getFcModuleParamRecommendations(module string) (settings []*Recommendation,
 	log.Trace("getFcModuleParamRecommendations called with module ", module)
 	var recommendation *Recommendation
 	var recommendations []*Recommendation
-	var paramMap map[string]string
-	var paramDescriptionMap map[string]string
-	var paramSeverityMap map[string]string
 
 	// load template recommendations from config file
 	err = loadTemplateSettings()
@@ -156,27 +154,31 @@ func getFcModuleParamRecommendations(module string) (settings []*Recommendation,
 		return nil, err
 	}
 
-	paramMap, _ = getParamToTemplateFieldMap(Fc, "recommendation", module)
-	paramDescriptionMap, _ = getParamToTemplateFieldMap(Fc, "description", module)
-	paramSeverityMap, _ = getParamToTemplateFieldMap(Fc, "severity", module)
+	paramMap, _ := getParamToTemplateFieldMap(Fc, "recommendation", module)
+	paramDescriptionMap, _ := getParamToTemplateFieldMap(Fc, "description", module)
+	paramSeverityMap, _ := getParamToTemplateFieldMap(Fc, "severity", module)
 
-	for key, value := range paramMap {
-		path := fmt.Sprintf("/sys/module/%s/parameters/%s", module, key)
-		_, err = os.Stat(path)
-		if err != nil {
-			log.Trace("parameter path not found for module ", module, " ", key)
-			return nil, err
+	for index, dev := range paramMap {
+		if dev.DeviceType == defaultDeviceType {
+			for key, value := range paramMap[index].deviceMap {
+				path := fmt.Sprintf("/sys/module/%s/parameters/%s", module, key)
+				_, err = os.Stat(path)
+				if err != nil {
+					log.Trace("parameter path not found for module ", module, " ", key)
+					return nil, err
+				}
+				out, _ := ioutil.ReadFile(path)
+				currentValue := string(out)
+				description := paramDescriptionMap[index].deviceMap[key]
+				severity := paramSeverityMap[index].deviceMap[key]
+				recommendation, err = getFcParamRecommendation(module, key, strings.TrimRight(currentValue, "\n"), value, description, severity)
+				if err != nil {
+					log.Trace("parameter recommendation failed for module ", module, " ", key)
+					return nil, err
+				}
+				recommendations = append(recommendations, recommendation)
+			}
 		}
-		out, _ := ioutil.ReadFile(path)
-		currentValue := string(out)
-		description := paramDescriptionMap[key]
-		severity := paramSeverityMap[key]
-		recommendation, err = getFcParamRecommendation(module, key, strings.TrimRight(currentValue, "\n"), value, description, severity)
-		if err != nil {
-			log.Trace("parameter recommendation failed for module ", module, " ", key)
-			return nil, err
-		}
-		recommendations = append(recommendations, recommendation)
 	}
 	return recommendations, err
 }

@@ -4,12 +4,13 @@ package tunelinux
 import (
 	"encoding/json"
 	"errors"
-	"github.com/hpe-storage/common-host-libs/linux"
-	log "github.com/hpe-storage/common-host-libs/logger"
-	"github.com/hpe-storage/common-host-libs/util"
 	"io/ioutil"
 	"os"
 	"sync"
+
+	"github.com/hpe-storage/common-host-libs/linux"
+	log "github.com/hpe-storage/common-host-libs/logger"
+	"github.com/hpe-storage/common-host-libs/util"
 )
 
 // Category recommendation category type
@@ -136,13 +137,29 @@ type TemplateSetting struct {
 	Driver string `json:"driver,omitempty"`
 }
 
+type DeviceTemplate struct {
+	DeviceType    string
+	TemplateArray []TemplateSetting
+}
+
+type DeviceRecommendation struct {
+	DeviceType    string
+	RecomendArray []*Recommendation
+}
+
+type DeviceMap struct {
+	DeviceType string
+	deviceMap  map[string]string
+}
+
 var (
 	// Global config of template settings
-	templateSettings []TemplateSetting
+	deviceTemplate []DeviceTemplate
 	// RW lock to prevent concurrent loading
 	configLock = new(sync.RWMutex)
 	// ConfigFile file path of template settings for recommendation.
-	ConfigFile = GetConfigFile()
+	ConfigFile        = GetConfigFile()
+	defaultDeviceType = "Nimble"
 )
 
 const (
@@ -179,55 +196,134 @@ func SetConfigFile(configFile string) {
 
 // loadTemplateSettings synchronize and load configuration for template of recommended settings
 // File read will only happen during initial load, so we take lock for complete loading.
-// TODO: make this optional only when configfile option is provided. Use in-memory settings
 func loadTemplateSettings() (err error) {
 	configLock.Lock()
 	defer configLock.Unlock()
-	if len(templateSettings) != 0 {
+
+	DeviceType := [2]string{"Nimble", "3PARdata"}
+	for _, deviceType := range DeviceType {
+		var configExist bool = false
+
+		/* check if the initial device config is already read */
+		/* TODO Find a more efficient way to check deviceType config exists */
+		for _, devType := range deviceTemplate {
+			if devType.DeviceType == deviceType {
+				log.Tracef("%s device config exists. Skipping", deviceType)
+				configExist = true
+			}
+		}
+
 		// already loaded template settings from config file
-		// once the initial config is loaded, we should return most of the time from here
-		return nil
-	}
-	log.Traceln("Reading template config file:", ConfigFile)
-	file, err := ioutil.ReadFile(ConfigFile)
-	if err != nil {
-		log.Error("Template Config File read error: ", err.Error())
-		return err
-	}
-	err = json.Unmarshal(file, &templateSettings)
-	if err != nil {
-		log.Error("Template Config File Unmarshall error: ", err.Error())
-		return err
+		// once the initial config for deviceType is loaded, we should not repopulate it
+		if !configExist {
+			var devicetemplateSettings DeviceTemplate
+			log.Tracef("Reading template config file: %s , for device: %s", ConfigFile, deviceType)
+
+			file, err := ioutil.ReadFile(ConfigFile)
+			if err != nil {
+				log.Error("Template Config File read error: ", err.Error())
+				return err
+			}
+
+			// Fetch device section from config.json
+			var result map[string]interface{}
+			err = json.Unmarshal(file, &result)
+
+			if err != nil {
+				log.Error("Template Config File Unmarshal error: ", err.Error())
+				return err
+			}
+			deviceSection := result[deviceType]
+			if deviceSection != nil {
+				distroType, err := linux.GetDistro()
+				if err != nil {
+					log.Trace("Received error while fetching distroType , using default configuration ", err.Error())
+					distroType = "Default"
+				}
+
+				log.Trace("Os DistroType ", distroType)
+				config := (deviceSection.(map[string]interface{}))[distroType]
+				if config == nil {
+					log.Warningf("Distro section: %s , not present for deviceType: %s , using default config", distroType, deviceType)
+					config = deviceSection.(map[string]interface{})["Default"] /* Default section is alays expected to present, hence no error check */
+				}
+				// TODO Add version specific parsing for the distroType
+				switch config.(type) {
+				case interface{}:
+					for _, v := range config.([]interface{}) {
+						var temp TemplateSetting
+						convertmap := v.(map[string]interface{})
+						temp.Category = convertmap["category"].(string)
+						temp.Parameter = convertmap["parameter"].(string)
+						temp.Recommendation = convertmap["recommendation"].(string)
+						temp.Level = convertmap["severity"].(string)
+						temp.Description = convertmap["description"].(string)
+
+						if _, ok := convertmap["driver"]; ok {
+							temp.Driver = convertmap["driver"].(string)
+						}
+
+						devicetemplateSettings.TemplateArray = append(devicetemplateSettings.TemplateArray, temp)
+					}
+
+				default:
+					log.Tracef("%v is unknown \n ", config)
+					return errors.New("error: while Parsing section for deviceType : " + deviceType)
+				}
+
+			} else {
+				log.Tracef("DeviceType:  %s absent in config.json", deviceType)
+				return errors.New("error: unable to get deviceType " + deviceType)
+			}
+
+			devicetemplateSettings.DeviceType = deviceType
+			deviceTemplate = append(deviceTemplate, devicetemplateSettings)
+		}
 	}
 	return nil
 }
 
 // get map of either parameter -> recommended value or param -> description fields for given category
-func getParamToTemplateFieldMap(category Category, field string, driver string) (paramTemplateFieldMap map[string]string, err error) {
-	paramTemplateFieldMap = make(map[string]string)
-	for index := range templateSettings {
-		if templateSettings[index].Category == Category.String(category) {
-			if driver != "" && templateSettings[index].Driver != driver {
-				// obtain only specific driver params in a given category
-				continue
-			}
-			switch field {
-			case "recommendation":
-				// populate parameter -> recommended value map
-				paramTemplateFieldMap[templateSettings[index].Parameter] = templateSettings[index].Recommendation
-			case "description":
-				// populate parameter -> description map
-				paramTemplateFieldMap[templateSettings[index].Parameter] = templateSettings[index].Description
-			case "severity":
-				// populate parameter -> severity map
-				paramTemplateFieldMap[templateSettings[index].Parameter] = templateSettings[index].Level
-			default:
-				// populate parameter -> recommended value map by default
-				paramTemplateFieldMap[templateSettings[index].Parameter] = templateSettings[index].Recommendation
+func getParamToTemplateFieldMap(category Category, field string, driver string) ([]DeviceMap, error) {
+	var deviceTypeMap []DeviceMap
+
+	for _, dev := range deviceTemplate {
+		var tempMap DeviceMap
+
+		tempMap = DeviceMap{
+			deviceMap: make(map[string]string),
+		}
+
+		for index := range dev.TemplateArray {
+
+			if dev.TemplateArray[index].Category == Category.String(category) {
+				if driver != "" && dev.TemplateArray[index].Driver != driver {
+					// obtain only specific driver params in a given category
+					continue
+				}
+
+				switch field {
+				case "recommendation":
+					// populate parameter -> recommended value map
+					tempMap.deviceMap[dev.TemplateArray[index].Parameter] = dev.TemplateArray[index].Recommendation
+				case "description":
+					// populate parameter -> description map
+					tempMap.deviceMap[dev.TemplateArray[index].Parameter] = dev.TemplateArray[index].Description
+				case "severity":
+					// populate parameter -> severity map
+					tempMap.deviceMap[dev.TemplateArray[index].Parameter] = dev.TemplateArray[index].Level
+				default:
+					// populate parameter -> recommended value map by default
+					tempMap.deviceMap[dev.TemplateArray[index].Parameter] = dev.TemplateArray[index].Recommendation
+				}
 			}
 		}
+
+		tempMap.DeviceType = dev.DeviceType
+		deviceTypeMap = append(deviceTypeMap, tempMap)
 	}
-	return paramTemplateFieldMap, nil
+
+	return deviceTypeMap, nil
 }
 
 // copyTemplateFile copies the template config files supplied with the tool as destination file
@@ -253,7 +349,7 @@ func appendRecommendations(current []*Recommendation, final []*Recommendation) (
 }
 
 // GetRecommendations obtain various recommendations for non-compliant settings on host
-func GetRecommendations() (settings []*Recommendation, err error) {
+func GetRecommendations(deviceParam ...string) (settings []*Recommendation, err error) {
 	log.Trace(">>>>> GetRecommendations")
 	defer log.Trace("<<<<< GetRecommendations")
 
@@ -262,13 +358,18 @@ func GetRecommendations() (settings []*Recommendation, err error) {
 	var fileSystemRecommendations []*Recommendation
 	var deviceRecommendations []*Recommendation
 	var iscsiRecommendations []*Recommendation
-	var multipathRecommendations []*Recommendation
 	var fcRecommendations []*Recommendation
 
-	// Get all nimble devices
+	deviceType := defaultDeviceType
+	// If no deviceType is passed, we assume Nimble as deviceType
+	if len(deviceParam) != 0 {
+		deviceType = deviceParam[0]
+	}
+
+	// Get all devices
 	devices, err := linux.GetLinuxDmDevices(false, util.GetVolumeObject("", ""))
 	if err != nil {
-		log.Error("Unable to get Nimble devices ", err.Error())
+		log.Error("Unable to get devices ", err.Error())
 		return nil, err
 	}
 	// Get filesystem recommendations
@@ -281,7 +382,7 @@ func GetRecommendations() (settings []*Recommendation, err error) {
 	recommendations, _ = appendRecommendations(fileSystemRecommendations, recommendations)
 
 	// Get block device recommendations
-	deviceRecommendations, err = GetDeviceRecommendations(devices)
+	deviceRecommendations, err = GetDeviceRecommendations(devices, deviceType)
 	if err != nil {
 		log.Error("Unable to get device recommendations ", err.Error())
 		return nil, err
@@ -291,7 +392,7 @@ func GetRecommendations() (settings []*Recommendation, err error) {
 
 	if _, err = os.Stat(linux.IscsiConf); os.IsNotExist(err) == false {
 		// Get iscsi recommendations
-		iscsiRecommendations, err = GetIscsiRecommendations()
+		iscsiRecommendations, err = GetIscsiRecommendations(deviceType)
 		if err != nil {
 			log.Error("Unable to get iscsi recommendations ", err.Error())
 			return nil, err
@@ -301,13 +402,17 @@ func GetRecommendations() (settings []*Recommendation, err error) {
 	}
 
 	// Get multipath recommendations
-	multipathRecommendations, err = GetMultipathRecommendations()
+	multipathRecommendations, err := GetMultipathRecommendations()
 	if err != nil {
 		log.Error("Unable to get multipath recommendations ", err.Error())
 		return nil, err
 	}
 	// get the appended final list
-	recommendations, _ = appendRecommendations(multipathRecommendations, recommendations)
+	for _, mRecomendation := range multipathRecommendations {
+		if mRecomendation.DeviceType == deviceType {
+			recommendations, _ = appendRecommendations(mRecomendation.RecomendArray, recommendations)
+		}
+	}
 
 	// Get multipath recommendations
 	fcRecommendations, err = GetFcRecommendations()
