@@ -12,7 +12,7 @@ require (
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
 	github.com/elazarl/goproxy v0.0.0-20180725130230-947c36da3153 // indirect
-	github.com/gogo/protobuf v1.3.1 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.4.2
 	github.com/google/gofuzz v1.1.0 // indirect
 	github.com/gorilla/mux v1.7.3 // indirect
@@ -40,8 +40,8 @@ require (
 	go.etcd.io/bbolt v1.3.3 // indirect
 	go.uber.org/multierr v1.4.0 // indirect
 	go.uber.org/zap v1.12.0 // indirect
-	golang.org/x/mod v0.2.0
-	golang.org/x/net v0.0.0-20200707034311-ab3426394381
+	golang.org/x/mod v0.3.0
+	golang.org/x/net v0.0.0-20201021035429-f5854403a974
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
 	google.golang.org/appengine v1.6.5 // indirect
 	google.golang.org/grpc v1.27.0
