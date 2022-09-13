@@ -1,4 +1,4 @@
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.6
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.0.0
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD AlmaLinux-Base.repo /etc/yum.repos.d/
