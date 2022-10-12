@@ -1,0 +1,10 @@
+time="2021-08-04T10:13:40-07:00" level=info msg="Initialized logging." alsoLogToStderr=true logFileLocation=test.log logLevel=info
+time="2021-08-04T10:13:40-07:00" level=info msg="Span Context --- Traceid:Spanid:ParentSpanid:Flags  : 11408528cb21a24e:11408528cb21a24e:0000000000000000:1"
+time="2021-08-04T10:13:40-07:00" level=info msg="************** Start Workflow 1 **************" file="logger_test.go:153"
+time="2021-08-04T10:13:40-07:00" level=info msg="********** Workflow 1 Line 1 **********" file="logger_test.go:153"
+time="2021-08-04T10:13:40-07:00" level=info msg="**************** Start Workflow 2 *****************" file="logger_test.go:153"
+time="2021-08-04T10:13:40-07:00" level=info msg="********** Workflow 2 Line 1 ******************" file="logger_test.go:153"
+time="2021-08-04T10:13:40-07:00" level=info msg="**************** Start Workflow 2 *****************" file="logger_test.go:153"
+time="2021-08-04T10:13:40-07:00" level=info msg="********** Workflow 2 Line 1 ******************" file="logger_test.go:153"
+time="2021-08-04T10:13:40-07:00" level=info msg="**************** Start Workflow 3 *****************" file="logger_test.go:153"
+time="2021-08-04T10:13:40-07:00" level=info msg="********** Workflow 3 Line 1 ******************" file="logger_test.go:153"
