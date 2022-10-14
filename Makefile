@@ -1,6 +1,6 @@
 NAME = csi-driver
 ifndef REPO_NAME
-	REPO_NAME ?= quay.io/maddiegos/csi-driver
+	REPO_NAME ?= hpestorage/csi-driver
 endif
 
 TAG = edge
@@ -96,10 +96,7 @@ image:
 	cp -r ../cmd/csi-driver/AlmaLinux-Base.repo . && \
 	cp -r ../LICENSE . && \
 	rsync -r --no-perms --no-owner --no-group  $(TUNE_LINUX_CONFIG_PATH)/ tune/ && \
-        docker build --rm=true --build-arg http_proxy=http://web-proxy.in.hpecorp.net:8080  \
-	--build-arg HTTP_PROXY=http://web-proxy.in.hpecorp.net:8080  \
-  	--build-arg HTTPS_PROXY=http://web-proxy.in.hpecorp.net:8080  \
- 	--build-arg https_proxy=http://web-proxy.in.hpecorp.net:8080  --tag=$(IMAGE) .
+        docker build -t $(IMAGE) .
 
 .PHONY: push
 push:
