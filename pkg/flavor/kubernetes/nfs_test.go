@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
-
+        "context"
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -52,7 +52,7 @@ func NewCluster(nodes int) (*fake.Clientset, error) {
 				},
 			},
 		}
-		_, err := clientset.CoreV1().Nodes().Create(n)
+		_, err := clientset.CoreV1().Nodes().Create(context.Background(),n,metav1.CreateOptions{})
 		if err != nil {
 			return nil, err
 		}
@@ -87,7 +87,7 @@ func TestCreateNFSService(t *testing.T) {
 func TestCreateServiceAccount(t *testing.T) {
 	err := flavor.createServiceAccount(defaultNFSNamespace)
 	assert.Nil(t, err)
-	serviceAccount, err := flavor.kubeClient.CoreV1().ServiceAccounts(defaultNFSNamespace).Get(nfsServiceAccount, metav1.GetOptions{})
+	serviceAccount, err := flavor.kubeClient.CoreV1().ServiceAccounts(defaultNFSNamespace).Get(context.Background(),nfsServiceAccount, metav1.GetOptions{})
 	assert.Nil(t, err)
 	assert.Equal(t, serviceAccount.ObjectMeta.Name, nfsServiceAccount)
 	// run duplicate call and make sure we don't throw an error if service account already exists
@@ -98,7 +98,7 @@ func TestCreateServiceAccount(t *testing.T) {
 func TestCreateConfigMap(t *testing.T) {
 	err := flavor.createNFSConfigMap(defaultNFSNamespace, "testdomain.com")
 	assert.Nil(t, err)
-	configMap, err := flavor.kubeClient.CoreV1().ConfigMaps(defaultNFSNamespace).Get(nfsConfigMap, metav1.GetOptions{})
+	configMap, err := flavor.kubeClient.CoreV1().ConfigMaps(defaultNFSNamespace).Get(context.Background(),nfsConfigMap, metav1.GetOptions{})
 	assert.Nil(t, err)
 	assert.Equal(t, configMap.ObjectMeta.Name, nfsConfigMap)
 }

@@ -1,0 +1,36 @@
+##
+# Copyright 2019 Hewlett Packard Enterprise Development LP.
+#
+##
+ACTION!="add|change", GOTO="nimble_tuning_end"
+SUBSYSTEM!="block", GOTO="nimble_tuning_end"
+KERNEL!="sd*|dm-*", GOTO="nimble_tuning_end"
+KERNEL=="dm-*", ENV{DM_UUID}!="*6c9ce9*", GOTO="nimble_tuning_end"
+ENV{DEVTYPE}=="partition", GOTO="nimble_tuning_end"
+
+#Comment the below line to enable these rules for devices attached to VM as VMDK disks
+KERNEL=="sd*", ENV{ID_SERIAL}!="*6c9ce9*", GOTO="nimble_tuning_end"
+#Uncommend the below line to enable these rules for devices attached to VM as VMDK disks
+#KERNEL=="sd*", ENV{ID_SERIAL}!="*6c9ce9*", ENV{ID_VENDOR}!="VMware", GOTO="nimble_tuning_end"
+
+# Below rules are to assist in easily setting block device configurations
+# suiting user application needs.
+# Please uncomment the lines beginning with ATTR to enable these rules
+# and run "udevadm control --reload-rules" and "udevadm trigger" to apply for all Nimble devices.
+
+# set max_sectors_kb to max_hw_sectors_kb.
+ATTR{queue/max_sectors_kb}="4096"
+# set read_ahead_kb to 128
+ATTR{queue/read_ahead_kb}="128"
+# set nr_requests to 512.
+ATTR{queue/nr_requests}="512"
+# set scheduler to noop.
+ATTR{queue/scheduler}="noop"
+# disable add_random.
+ATTR{queue/add_random}="0"
+# disable rotational.
+ATTR{queue/rotational}="0"
+# set rq_affinity to 2.
+ATTR{queue/rq_affinity}="2"
+
+LABEL="nimble_tuning_end"
