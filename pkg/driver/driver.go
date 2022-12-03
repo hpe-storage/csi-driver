@@ -757,6 +757,9 @@ func (driver *Driver) ScrubEphemeralPods(podsDirPath string) error {
 	// Fetch all ephemeral pods and populate it
 	//ephemeralPods := map[string][]*StagingDeviceEphemeralData{}
 	ephemeralPods := map[string][]*VolumeHandleTargetPath{}
+
+	baseDepth := strings.Count(podsDirPath, string(os.PathSeparator));
+
 	err = filepath.Walk(podsDirPath, func(fileFullPath string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			log.Errorf("Error while processing the path [%s], %s", fileFullPath, walkErr.Error())
@@ -767,8 +770,20 @@ func (driver *Driver) ScrubEphemeralPods(podsDirPath string) error {
 			return filepath.SkipDir /* Skip processing current directory and continue processing other directories */
 		}
 
+		log.Tracef("Walking path [%s]", fileFullPath)
+		
+		if info.IsDir() && (strings.Count(fileFullPath, string(os.PathSeparator)) - baseDepth) == 2 && info.Name() != "volumes" {
+			log.Tracef("Skipping non-volumes path [%s]", fileFullPath)
+			return filepath.SkipDir
+		}
+
+		if info.IsDir() && (strings.Count(fileFullPath, string(os.PathSeparator)) - baseDepth) == 5 {
+			log.Tracef("Skipping user-data path [%s]", fileFullPath)
+			return filepath.SkipDir
+		}
+
 		// Process only 'ephemeral_data.json' files
-		if !info.IsDir() && info.Name() == ephemeralDataFileName {
+		if !info.IsDir() && (strings.Count(fileFullPath, string(os.PathSeparator)) - baseDepth) == 5 && info.Name() == ephemeralDataFileName {
 			log.Tracef("Found Ephemeral data file [%s]", fileFullPath)
 			targetDirPath := filepath.Dir(fileFullPath)
 			targetPath := fmt.Sprintf("%s/%s", targetDirPath, "mount")
