@@ -112,7 +112,7 @@ github.com/google/uuid
 # github.com/gorilla/mux v1.8.0
 ## explicit; go 1.12
 github.com/gorilla/mux
-# github.com/hpe-storage/common-host-libs v4.6.1-0.20220509043010-9f9dfdcc3129+incompatible
+# github.com/hpe-storage/common-host-libs v4.6.1-0.20221031215715-c3ec1593534b+incompatible
 ## explicit
 github.com/hpe-storage/common-host-libs/chapi
 github.com/hpe-storage/common-host-libs/concurrent
@@ -258,8 +258,8 @@ github.com/satori/go.uuid
 # github.com/sirupsen/logrus v1.8.1
 ## explicit; go 1.13
 github.com/sirupsen/logrus
-# github.com/smartystreets/goconvey v1.6.4
-## explicit
+# github.com/smartystreets/goconvey v1.7.2
+## explicit; go 1.16
 # github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c
 ## explicit
 github.com/sparrc/go-ping
@@ -324,7 +324,7 @@ golang.org/x/sys/windows
 # golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
 ## explicit; go 1.17
 golang.org/x/term
-# golang.org/x/text v0.3.7
+# golang.org/x/text v0.3.8
 ## explicit; go 1.17
 golang.org/x/text/encoding
 golang.org/x/text/encoding/charmap
@@ -453,7 +453,7 @@ gopkg.in/yaml.v2
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# k8s.io/api v0.25.2 => k8s.io/api v0.25.0
+# k8s.io/api v0.25.4 => k8s.io/api v0.25.0
 ## explicit; go 1.19
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1beta1
@@ -501,7 +501,7 @@ k8s.io/api/scheduling/v1beta1
 k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
-# k8s.io/apimachinery v0.25.2 => k8s.io/apimachinery v0.26.0-alpha.0
+# k8s.io/apimachinery v0.25.4 => k8s.io/apimachinery v0.26.0-alpha.0
 ## explicit; go 1.19
 k8s.io/apimachinery/pkg/api/errors
 k8s.io/apimachinery/pkg/api/meta
@@ -551,7 +551,7 @@ k8s.io/apimachinery/third_party/forked/golang/reflect
 ## explicit; go 1.19
 k8s.io/apiserver/pkg/features
 k8s.io/apiserver/pkg/util/feature
-# k8s.io/client-go v0.25.2 => k8s.io/client-go v0.25.0
+# k8s.io/client-go v0.25.4 => k8s.io/client-go v0.25.0
 ## explicit; go 1.19
 k8s.io/client-go/applyconfigurations/admissionregistration/v1
 k8s.io/client-go/applyconfigurations/admissionregistration/v1beta1
@@ -856,7 +856,7 @@ k8s.io/kube-openapi/pkg/schemamutation
 k8s.io/kube-openapi/pkg/spec3
 k8s.io/kube-openapi/pkg/util/proto
 k8s.io/kube-openapi/pkg/validation/spec
-# k8s.io/kubernetes v1.25.2
+# k8s.io/kubernetes v1.25.4
 ## explicit; go 1.19
 k8s.io/kubernetes/pkg/apis/core
 k8s.io/kubernetes/pkg/apis/core/helper
