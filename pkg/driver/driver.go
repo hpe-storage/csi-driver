@@ -757,6 +757,14 @@ func (driver *Driver) ScrubEphemeralPods(podsDirPath string) error {
 	// Fetch all ephemeral pods and populate it
 	//ephemeralPods := map[string][]*StagingDeviceEphemeralData{}
 	ephemeralPods := map[string][]*VolumeHandleTargetPath{}
+
+	// Look for ephemeral pods by finding 'ephemeral_data.json' files in mounted volumes of pods.
+	// The 'ephemeral_data.json' files are located in podDirPath/POD/volumes/kubernetes.io~csi/PVC-ID/
+	// We are using filepath.Walk, so we should avoid walking the full filesystem of every mounted volume.
+	// The only way to do that with filepath.Walk is to use the directories names and their depth.
+	// First, we need to know the base depth of the pods dir path (usually /var/lib/kubelet/pods)
+	baseDepth := strings.Count(podsDirPath, string(os.PathSeparator));
+
 	err = filepath.Walk(podsDirPath, func(fileFullPath string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
 			log.Errorf("Error while processing the path [%s], %s", fileFullPath, walkErr.Error())
@@ -767,8 +775,22 @@ func (driver *Driver) ScrubEphemeralPods(podsDirPath string) error {
 			return filepath.SkipDir /* Skip processing current directory and continue processing other directories */
 		}
 
+		log.Tracef("Walking path [%s]", fileFullPath)
+		
+		// Only look into podDirPath/POD/volumes, which is 2 directories lower from podDirPath
+		if info.IsDir() && (strings.Count(fileFullPath, string(os.PathSeparator)) - baseDepth) == 2 && info.Name() != "volumes" {
+			log.Tracef("Skipping non-volumes path [%s]", fileFullPath)
+			return filepath.SkipDir
+		}
+
+		// Don't walk user data in directories lower than podDirPath/POD/volumes/kubernetes.io~csi/PVC-ID (maxdepth=5)
+		if info.IsDir() && (strings.Count(fileFullPath, string(os.PathSeparator)) - baseDepth) == 5 {
+			log.Tracef("Skipping user-data path [%s]", fileFullPath)
+			return filepath.SkipDir
+		}
+
 		// Process only 'ephemeral_data.json' files
-		if !info.IsDir() && info.Name() == ephemeralDataFileName {
+		if !info.IsDir() && (strings.Count(fileFullPath, string(os.PathSeparator)) - baseDepth) == 5 && info.Name() == ephemeralDataFileName {
 			log.Tracef("Found Ephemeral data file [%s]", fileFullPath)
 			targetDirPath := filepath.Dir(fileFullPath)
 			targetPath := fmt.Sprintf("%s/%s", targetDirPath, "mount")
