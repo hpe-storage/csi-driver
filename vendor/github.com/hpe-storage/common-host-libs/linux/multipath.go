@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	showPathsFormat      = []string{"show", "paths", "format", "%w %d %t %i %o %T %c %s %m"}
+	showPathsFormat      = []string{"show", "paths", "format", "%w %d %t %i %o %T %z %s %m"}
 	showMapsFormat       = []string{"show", "maps", "format", "%w %d %n %s"}
 	orphanPathRegexp     = regexp.MustCompile(getOrphanPathsPattern())
 	multipathMutex       sync.Mutex
