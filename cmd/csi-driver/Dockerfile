@@ -1,12 +1,12 @@
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.1.0-1656.1669627757
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.1.0-1760.1675784957
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD AlmaLinux-Base.repo /etc/yum.repos.d/
 
 RUN microdnf install -y cryptsetup
 
-COPY --from=registry.access.redhat.com/ubi7/ubi:7.9-861 /usr/bin/systemctl /usr/bin/systemctl
-COPY --from=registry.access.redhat.com/ubi7/ubi:7.9-861 /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11.8.2
+COPY --from=registry.access.redhat.com/ubi7/ubi:7.9-937 /usr/bin/systemctl /usr/bin/systemctl
+COPY --from=registry.access.redhat.com/ubi7/ubi:7.9-937 /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11.8.2
 
 RUN ln -s /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11
 
