@@ -20,7 +20,7 @@ package v1
 
 import (
 	"time"
-        "context"
+
 	v1 "github.com/hpe-storage/k8s-custom-resources/pkg/apis/hpestorage/v1"
 	scheme "github.com/hpe-storage/k8s-custom-resources/pkg/client/clientset/versioned/scheme"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -67,7 +67,7 @@ func (c *hPENodeInfos) Get(name string, options metav1.GetOptions) (result *v1.H
 		Resource("hpenodeinfos").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do(context.Background()).
+		Do().
 		Into(result)
 	return
 }
@@ -83,7 +83,7 @@ func (c *hPENodeInfos) List(opts metav1.ListOptions) (result *v1.HPENodeInfoList
 		Resource("hpenodeinfos").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Do(context.Background()).
+		Do().
 		Into(result)
 	return
 }
@@ -99,7 +99,7 @@ func (c *hPENodeInfos) Watch(opts metav1.ListOptions) (watch.Interface, error) {
 		Resource("hpenodeinfos").
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Timeout(timeout).
-		Watch(context.Background())
+		Watch()
 }
 
 // Create takes the representation of a hPENodeInfo and creates it.  Returns the server's representation of the hPENodeInfo, and an error, if there is any.
@@ -108,7 +108,7 @@ func (c *hPENodeInfos) Create(hPENodeInfo *v1.HPENodeInfo) (result *v1.HPENodeIn
 	err = c.client.Post().
 		Resource("hpenodeinfos").
 		Body(hPENodeInfo).
-		Do(context.Background()).
+		Do().
 		Into(result)
 	return
 }
@@ -120,7 +120,7 @@ func (c *hPENodeInfos) Update(hPENodeInfo *v1.HPENodeInfo) (result *v1.HPENodeIn
 		Resource("hpenodeinfos").
 		Name(hPENodeInfo.Name).
 		Body(hPENodeInfo).
-		Do(context.Background()).
+		Do().
 		Into(result)
 	return
 }
@@ -131,7 +131,7 @@ func (c *hPENodeInfos) Delete(name string, options *metav1.DeleteOptions) error 
 		Resource("hpenodeinfos").
 		Name(name).
 		Body(options).
-		Do(context.Background()).
+		Do().
 		Error()
 }
 
@@ -146,7 +146,7 @@ func (c *hPENodeInfos) DeleteCollection(options *metav1.DeleteOptions, listOptio
 		VersionedParams(&listOptions, scheme.ParameterCodec).
 		Timeout(timeout).
 		Body(options).
-		Do(context.Background()).
+		Do().
 		Error()
 }
 
@@ -158,7 +158,7 @@ func (c *hPENodeInfos) Patch(name string, pt types.PatchType, data []byte, subre
 		SubResource(subresources...).
 		Name(name).
 		Body(data).
-		Do(context.Background()).
+		Do().
 		Into(result)
 	return
 }
