@@ -23,8 +23,11 @@ import (
 
 const (
 	nfsPrefix           = "hpe-nfs-"
+	pvcPrefix           = "pvc-" // this is hardcoded at csi-provisioner runtime
 	defaultNFSNamespace = "hpe-nfs"
 	defaultNFSImage     = "quay.io/hpestorage/nfs-provisioner:v3.0.1"
+	defaultRLimitCPU    = "1000m"
+	defaultRLimitMemory = "2Gi"
 
 	creationInterval           = 60 // 300s with sleep interval of 5s
 	creationDelay              = 5 * time.Second
@@ -44,6 +47,9 @@ const (
 	nfsServiceAccount          = "hpe-csi-nfs-sa"
 	defaultPodLabelKey         = "monitored-by"
 	defaultPodLabelValue       = "hpe-csi"
+	nfsAffinityLabelKey        = "spread-by"
+	nfsAffinityLabelValue      = "hpe-nfs"
+	nfsPodSpecAffinityKey      = "provisioned-by"
 )
 
 // NFSSpec for creating NFS resources
@@ -139,7 +145,7 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 
 	// get underlying NFS volume properties and copy onto original volume
 	volumeContext := make(map[string]string)
-	pv, err := flavor.getPvFromName(fmt.Sprintf("pvc-%s", newClaim.ObjectMeta.UID))
+	pv, err := flavor.getPvFromName(fmt.Sprintf("%s%s", pvcPrefix, newClaim.ObjectMeta.UID))
 	if err != nil {
 		return nil, true, err
 	}
@@ -426,7 +432,20 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 
 	var nfsSpec NFSSpec
 	resourceLimits := make(core_v1.ResourceList)
-	var err error
+
+	// set factory default cpu
+	cpuQuantity, err := resource.ParseQuantity(defaultRLimitCPU)
+	if err != nil {
+		return nil, fmt.Errorf("invalid nfs cpu resource limit %s provided in defaults, err %s", defaultRLimitCPU, err.Error())
+	}
+	resourceLimits[core_v1.ResourceCPU] = cpuQuantity
+
+	// set factory default memory
+	memoryQuantity, err := resource.ParseQuantity(defaultRLimitMemory)
+	if err != nil {
+		return nil, fmt.Errorf("invalid nfs memory resource limit %s provided in defaults, err %s", defaultRLimitMemory, err.Error())
+	}
+	resourceLimits[core_v1.ResourceMemory] = memoryQuantity
 
 	// nfs cpu limits eg: cpu=500m
 	if val, ok := scParams[nfsResourceLimitsCPUKey]; ok {
@@ -446,9 +465,7 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 		resourceLimits[core_v1.ResourceMemory] = quantity
 	}
 
-	if len(resourceLimits) != 0 {
-		nfsSpec.resourceRequirements = &core_v1.ResourceRequirements{Limits: resourceLimits}
-	}
+	nfsSpec.resourceRequirements = &core_v1.ResourceRequirements{Limits: resourceLimits}
 
 	// get nodes with hpe-nfs labels
 	nodes, err := flavor.getNFSNodes()
@@ -763,6 +780,12 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 
 	volumes = append(volumes, configMapVol)
 
+	podLabels := map[string]string{
+		"app":                 name,
+		nfsSpec.labelKey:      nfsSpec.labelValue,
+	        nfsAffinityLabelKey:   nfsAffinityLabelValue,
+	}
+
 	var seconds int64 = 30
 
 	tolerationsNotReady := core_v1.Toleration{
@@ -779,20 +802,34 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		TolerationSeconds: &seconds,
 	}
 
+	podLabelSelector := meta_v1.LabelSelector{
+		MatchLabels: map[string]string{
+			nfsAffinityLabelKey: nfsAffinityLabelValue,
+		},
+	}
+
+	podTopologySpreadConstraints := core_v1.TopologySpreadConstraint{
+		MaxSkew:           1,
+		TopologyKey:       "node",
+		WhenUnsatisfiable: "ScheduleAnyway",
+		LabelSelector:     &podLabelSelector,
+	}
+
 	podSpec := core_v1.PodTemplateSpec{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:        name,
-			Labels:      map[string]string{"app": name, nfsSpec.labelKey: nfsSpec.labelValue},
+			Labels:      podLabels,
 			Annotations: map[string]string{"tags": name},
 		},
 		Spec: core_v1.PodSpec{
-			ServiceAccountName: nfsServiceAccount,
-			Containers:         []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)},
-			RestartPolicy:      core_v1.RestartPolicyAlways,
-			Volumes:            volumes,
-			HostIPC:            false,
-			HostNetwork:        false,
-			Tolerations:        []core_v1.Toleration{tolerationsNotReady, tolerationsUnReachable},
+			ServiceAccountName:        nfsServiceAccount,
+			Containers:                []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)},
+			RestartPolicy:             core_v1.RestartPolicyAlways,
+			Volumes:                   volumes,
+			HostIPC:                   false,
+			HostNetwork:               false,
+			Tolerations:               []core_v1.Toleration{tolerationsNotReady, tolerationsUnReachable},
+			TopologySpreadConstraints: []core_v1.TopologySpreadConstraint{podTopologySpreadConstraints},
 		},
 	}
 
