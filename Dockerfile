@@ -1,15 +1,33 @@
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.1.0-1793
+# throw away builder image
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.1.0-1817 AS build
+
+# install prereqs
+RUN dnf install -y make wget golang
+
+# build driver
+WORKDIR /usr/src/hpe-csi-driver
+ADD cmd ./cmd
+ADD vendor ./vendor
+ADD pkg ./pkg
+ADD Makefile .
+ADD go.mod .
+ADD go.sum .
+ARG TARGETARCH
+ARG TARGETPLATFORM
+RUN make ARCH=$TARGETARCH compile # $TARGETPLATFORM
+
+# image build
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.1.0-1829
 
 RUN microdnf update -y && rm -rf /var/cache/yum
-ADD AlmaLinux-Base.repo /etc/yum.repos.d/
+ADD cmd/csi-driver/AlmaLinux-Base.repo /etc/yum.repos.d/
 
 RUN microdnf install -y cryptsetup
 
-COPY --from=registry.access.redhat.com/ubi7/ubi:7.9-937 /usr/bin/systemctl /usr/bin/systemctl
-COPY --from=registry.access.redhat.com/ubi7/ubi:7.9-937 /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11.8.2
+COPY --from=centos:centos7.9.2009 /usr/bin/systemctl /usr/bin/systemctl
+COPY --from=centos:7.9.2009 /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11.8.2
 
 RUN ln -s /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11
-
 
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \
@@ -22,10 +40,10 @@ LABEL name="HPE CSI Driver for Kubernetes" \
       io.openshift.tags=hpe,csi,hpe-csi-driver
 
 WORKDIR /root
-COPY /LICENSE /licenses/
+COPY LICENSE /licenses/
 
 RUN mkdir /chroot
-ADD chroot-host-wrapper.sh /chroot
+ADD cmd/csi-driver/chroot-host-wrapper.sh /chroot
 RUN chmod 777 /chroot/chroot-host-wrapper.sh
 RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/blockdev \
@@ -53,23 +71,23 @@ RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
 ENV PATH="/chroot:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
 # add host conformance checks and configuration
-ADD [ "conform/*", "/opt/hpe-storage/lib/" ]
+ADD [ "cmd/csi-driver/conform/*", "/opt/hpe-storage/lib/" ]
 
 # diag log script
-ADD [ "diag/*",  "/opt/hpe-storage/bin/" ]
+ADD [ "cmd/csi-driver/diag/*",  "/opt/hpe-storage/bin/" ]
 
 # add config files to tune multipath settings
-ADD [ "tune/*", "/opt/hpe-storage/nimbletune/"]
+ADD [ "vendor/github.com/hpe-storage/common-host-libs/tunelinux/config/*", "/opt/hpe-storage/nimbletune/"]
 
 # add rescan script for resize operation
-ADD ["rescan-scsi-bus.sh", "/usr/bin/rescan-scsi-bus.sh"]
+ADD ["cmd/csi-driver/rescan-scsi-bus.sh", "/usr/bin/rescan-scsi-bus.sh"]
 RUN ["chmod", "+x", "/usr/bin/rescan-scsi-bus.sh"]
 
 # add plugin binary
-ADD [ "csi-driver", "/bin/" ]
+COPY --from=build /usr/src/hpe-csi-driver/build/csi-driver /bin/
 
 # entrypoint
-ADD [ "conform/entrypoint.sh", "/entrypoint.sh" ]
+ADD [ "cmd/csi-driver/conform/entrypoint.sh", "/entrypoint.sh" ]
 RUN [ "chmod", "+x", "/entrypoint.sh" ]
 
 ENTRYPOINT [ "/entrypoint.sh" ]

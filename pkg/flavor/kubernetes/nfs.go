@@ -49,7 +49,6 @@ const (
 	defaultPodLabelValue       = "hpe-csi"
 	nfsAffinityLabelKey        = "spread-by"
 	nfsAffinityLabelValue      = "hpe-nfs"
-	nfsPodSpecAffinityKey      = "provisioned-by"
 )
 
 // NFSSpec for creating NFS resources

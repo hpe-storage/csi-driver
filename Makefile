@@ -66,8 +66,6 @@ lint:
 clean:
 	@echo "Removing build artifacts"
 	@rm -rf build
-	@echo "Removing the image"
-	-docker image rm $(IMAGE) > /dev/null 2>&1
 
 .PHONY: compile
 compile:
@@ -80,25 +78,14 @@ test:
 	@echo "Testing all packages"
 	@go test -v ./...
 
-# Hack to by pass go mod's inability to pull directories that are not directly referenced
-# Note the use of rsync to drop perms, owner, and group on copy
-TUNE_LINUX_CONFIG_PATH=$(shell go list -f {{.Dir}} github.com/hpe-storage/common-host-libs/tunelinux/config)
 .PHONY: image
 image:
-	@echo "Building the docker image"
-
-	cd build && \
-	cp ../cmd/csi-driver/Dockerfile . && \
-	cp ../cmd/csi-driver/rescan-scsi-bus.sh . && \
-	cp -r ../cmd/csi-driver/conform/ conform/ && \
-	cp -r ../cmd/csi-driver/diag/ diag/ && \
-	cp -r ../cmd/csi-driver/chroot-host-wrapper.sh . && \
-	cp -r ../cmd/csi-driver/AlmaLinux-Base.repo . && \
-	cp -r ../LICENSE . && \
-	rsync -r --no-perms --no-owner --no-group  $(TUNE_LINUX_CONFIG_PATH)/ tune/ && \
-        docker build -t $(IMAGE) .
+	@echo "Building multiarch docker images and manifest"
+	docker-buildx build --platform=linux/amd64,linux/arm64 --progress=plain \
+		--provenance=false -t $(IMAGE) .
 
 .PHONY: push
 push:
-	@echo "Publishing csi-driver:$(VERSION)"
-	@docker push $(IMAGE)
+	@echo "Publishing $(IMAGE)"
+	docker-buildx build --platform=linux/amd64,linux/arm64 --progress=plain \
+		--provenance=false --push -t $(IMAGE) .
