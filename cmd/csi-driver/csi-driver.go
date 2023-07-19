@@ -116,7 +116,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 		flavorName = flavor.Vanilla
 	}
 
-	if nodeService {
+	if nodeService && os.Getenv("DISABLE_NODE_CONFIGURATION") == "false" {
 		// perform conformance checks and service management
 		// configure iscsi
 		err = tunelinux.ConfigureIscsi()
