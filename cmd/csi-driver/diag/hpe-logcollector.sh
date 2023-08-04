@@ -59,8 +59,8 @@ echo "Command :hostname " >> $destinationDir/host-info
 hostname >> $destinationDir/host-info 2>&1
 echo "Command :uname -a " >> $destinationDir/host-info
 uname -a >> $destinationDir/host-info 2>&1
-echo "Command :lsb_release -a" >> $destinationDir/host-info
-lsb_release -a >> $destinationDir/host-info 2>&1
+echo "Command :cat /etc/os-release" >> $destinationDir/host-info
+cat /etc/os-release >> $destinationDir/host-info 2>&1
 echo "Command :cat /etc/redhat-release" >> $destinationDir/host-info
 cat /etc/redhat-release >> $destinationDir/host-info 2>&1
 echo "Command : systemctl status hpe-storage-node" >> $destinationDir/hpe-storage-node
