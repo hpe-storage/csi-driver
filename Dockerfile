@@ -22,7 +22,7 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:9.1.0-1829
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD cmd/csi-driver/AlmaLinux-Base.repo /etc/yum.repos.d/
 
-RUN microdnf install -y cryptsetup
+RUN microdnf install -y cryptsetup tar procps
 
 COPY --from=centos:centos7.9.2009 /usr/bin/systemctl /usr/bin/systemctl
 COPY --from=centos:7.9.2009 /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11.8.2
