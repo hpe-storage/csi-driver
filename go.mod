@@ -13,13 +13,13 @@ require (
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.1.0
 	github.com/spf13/cobra v1.4.0
 	github.com/stretchr/testify v1.8.0
-	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4
-	golang.org/x/net v0.7.0
+	golang.org/x/mod v0.8.0
+	golang.org/x/net v0.8.0
 	google.golang.org/grpc v1.47.0
-	k8s.io/api v0.25.4
-	k8s.io/apimachinery v0.25.4
-	k8s.io/client-go v0.25.4
-	k8s.io/kubernetes v1.25.4
+	k8s.io/api v0.25.11
+	k8s.io/apimachinery v0.25.11
+	k8s.io/client-go v0.25.11
+	k8s.io/kubernetes v1.25.11
 )
 
 require (
@@ -77,9 +77,9 @@ require (
 	go.uber.org/zap v1.19.0 // indirect
 	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd // indirect
 	golang.org/x/oauth2 v0.0.0-20211104180415-d3ed0bb246c8 // indirect
-	golang.org/x/sys v0.5.0 // indirect
-	golang.org/x/term v0.5.0 // indirect
-	golang.org/x/text v0.7.0 // indirect
+	golang.org/x/sys v0.6.0 // indirect
+	golang.org/x/term v0.6.0 // indirect
+	golang.org/x/text v0.8.0 // indirect
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20220502173005-c8bf987b8c21 // indirect
