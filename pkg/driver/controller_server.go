@@ -325,7 +325,11 @@ func (driver *Driver) createVolume(
 			// get nfs namespace for cleanup
 			nfsNamespace := defaultNFSNamespace
 			if namespace, ok := createParameters[nfsNamespaceKey]; ok {
-				nfsNamespace = namespace
+				if createParameters[nfsNamespaceKey] == nfsSourceNamespaceKey {
+					nfsNamespace = createParameters[nfsSourceNamespaceKey]
+				} else {
+					nfsNamespace = namespace
+				}
 			}
 
 			nfsResourceName := fmt.Sprintf("%s-%s", "hpe-nfs", strings.TrimPrefix(name, "pvc-"))
