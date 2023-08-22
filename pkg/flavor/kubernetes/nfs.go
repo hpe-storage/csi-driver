@@ -40,6 +40,7 @@ const (
 	nfsNodeSelectorValue       = "true"
 	nfsParentVolumeIDKey       = "nfs-parent-volume-id"
 	nfsNamespaceKey            = "nfsNamespace"
+	nfsSourceNamespaceKey      = "csi.storage.k8s.io/pvc/namespace"
 	nfsProvisionerImageKey     = "nfsProvisionerImage"
 	pvcKind                    = "PersistentVolumeClaim"
 	nfsConfigFile              = "ganesha.conf"
@@ -69,7 +70,11 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	nfsResourceNamespace := defaultNFSNamespace
 
 	if namespace, ok := parameters[nfsNamespaceKey]; ok {
-		nfsResourceNamespace = namespace
+		if parameters[nfsNamespaceKey] == nfsSourceNamespaceKey {
+			nfsResourceNamespace = parameters[nfsSourceNamespaceKey]
+		} else {
+			nfsResourceNamespace = namespace
+		}
 	}
 	// create namespace if not already present
 	_, err = flavor.getNFSNamespace(nfsResourceNamespace)
