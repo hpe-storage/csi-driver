@@ -50,6 +50,7 @@ const (
 	defaultPodLabelValue       = "hpe-csi"
 	nfsAffinityLabelKey        = "spread-by"
 	nfsAffinityLabelValue      = "hpe-nfs"
+	nfsDedicatedTolerationKey  = "csi.hpe.com/hpe-nfs"
 )
 
 // NFSSpec for creating NFS resources
@@ -806,6 +807,12 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		TolerationSeconds: &seconds,
 	}
 
+	tolerationsDedicated := core_v1.Toleration{
+		Key:               nfsDedicatedTolerationKey,
+		Operator:          "Exists",
+		Effect:            "NoSchedule",
+	}
+
 	podLabelSelector := meta_v1.LabelSelector{
 		MatchLabels: map[string]string{
 			nfsAffinityLabelKey: nfsAffinityLabelValue,
@@ -832,7 +839,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 			Volumes:                   volumes,
 			HostIPC:                   false,
 			HostNetwork:               false,
-			Tolerations:               []core_v1.Toleration{tolerationsNotReady, tolerationsUnReachable},
+			Tolerations:               []core_v1.Toleration{tolerationsNotReady, tolerationsUnReachable, tolerationsDedicated},
 			TopologySpreadConstraints: []core_v1.TopologySpreadConstraint{podTopologySpreadConstraints},
 		},
 	}
