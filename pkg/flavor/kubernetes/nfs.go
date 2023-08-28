@@ -41,6 +41,7 @@ const (
 	nfsParentVolumeIDKey       = "nfs-parent-volume-id"
 	nfsNamespaceKey            = "nfsNamespace"
 	nfsSourceNamespaceKey      = "csi.storage.k8s.io/pvc/namespace"
+	nfsSourcePVCNameKey        = "csi.storage.k8s.io/pvc/name"
 	nfsProvisionerImageKey     = "nfsProvisionerImage"
 	pvcKind                    = "PersistentVolumeClaim"
 	nfsConfigFile              = "ganesha.conf"
@@ -51,6 +52,8 @@ const (
 	nfsAffinityLabelKey        = "spread-by"
 	nfsAffinityLabelValue      = "hpe-nfs"
 	nfsDedicatedTolerationKey  = "csi.hpe.com/hpe-nfs"
+	nfsProvisionedByKey        = "provisioned-by"
+	nfsProvisionedFromKey      = "provisioned-from"
 )
 
 // NFSSpec for creating NFS resources
@@ -61,6 +64,8 @@ type NFSSpec struct {
 	image                string
 	labelKey             string
 	labelValue           string
+	sourceNamespace      string
+	sourceVolumeClaim    string
 }
 
 // CreateNFSVolume creates nfs volume abstracting underlying nfs pvc, deployment and service
@@ -500,6 +505,17 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 			nfsSpec.labelValue = strings.TrimSpace(items[1])
 		}
 	}
+
+	nfsSpec.sourceNamespace = defaultNFSNamespace
+	if namespace, ok := scParams[nfsSourceNamespaceKey]; ok {
+		nfsSpec.sourceNamespace = namespace
+	}
+
+	nfsSpec.sourceVolumeClaim = nfsSpec.volumeClaim
+	if pvc, ok := scParams[nfsSourcePVCNameKey]; ok {
+		nfsSpec.sourceVolumeClaim = pvc
+	}
+
 	return &nfsSpec, nil
 }
 
@@ -789,6 +805,8 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		"app":                 name,
 		nfsSpec.labelKey:      nfsSpec.labelValue,
 	        nfsAffinityLabelKey:   nfsAffinityLabelValue,
+		nfsProvisionedByKey:   nfsSpec.sourceVolumeClaim,
+		nfsProvisionedFromKey: nfsSpec.sourceNamespace,
 	}
 
 	var seconds int64 = 30
