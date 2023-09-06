@@ -12,7 +12,7 @@ done
 
 # Set up node configurations based on environment variables
 disableNodeConformance=${DISABLE_NODE_CONFORMANCE}
-disableNodeConfiguraton=${DISABLE_NODE_CONFIGURATION}
+disableNodeConfiguration=${DISABLE_NODE_CONFIGURATION}
 
 if [ "$nodeService" = true ]; then
     # Disable the conformance checks
@@ -22,7 +22,7 @@ if [ "$nodeService" = true ]; then
     fi
 
     # Completely disable the node configuration by the driver.
-    if [ "$disableNodeConfiguraton" = "true" ]; then
+    if [ "$disableNodeConfiguration" = "true" ]; then
         echo "Node configuration is disabled"
         disableConformanceCheck=true
     fi
@@ -49,7 +49,7 @@ if [ "$nodeService" = true ]; then
 
     # Copy /etc/multipath.conf template if missing on host
     if [ ! -f /host/etc/multipath.conf ] &&
-        [ "$disableNodeConfiguraton" != true ]; then
+        [ "$disableNodeConfiguration" != true ]; then
         cp /opt/hpe-storage/nimbletune/multipath.conf.upstream /host/etc/multipath.conf
     fi
 
