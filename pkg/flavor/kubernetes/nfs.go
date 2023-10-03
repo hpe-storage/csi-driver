@@ -54,6 +54,8 @@ const (
 	nfsDedicatedTolerationKey  = "csi.hpe.com/hpe-nfs"
 	nfsProvisionedByKey        = "provisioned-by"
 	nfsProvisionedFromKey      = "provisioned-from"
+	nfsForeignStorageClassKey  = "nfsForeignStorageClass"
+	nfsResourcesKey            = "nfsResources"
 )
 
 // NFSSpec for creating NFS resources
@@ -104,7 +106,7 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	}
 
 	// clone pvc and modify to RWO mode
-	claimClone, err := flavor.cloneClaim(claim, nfsResourceNamespace)
+	claimClone, err := flavor.cloneClaim(claim, nfsResourceNamespace, parameters)
 	if err != nil {
 		return nil, false, err
 	}
@@ -165,6 +167,16 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 			// ignore any annotations added to underlying NFS claim
 			if k != "nfsPVC" {
 				volumeContext[k] = v
+			}
+		}
+		// inject additional attributes if using a foreign StorageClass
+		if parameters[nfsForeignStorageClassKey] != "" {
+			volumeContext[nfsForeignStorageClassKey] = parameters[nfsForeignStorageClassKey]
+			volumeContext[nfsResourcesKey] = parameters[nfsResourcesKey]
+			if parameters[nfsNamespaceKey] != "" {
+				volumeContext[nfsNamespaceKey] = parameters[nfsNamespaceKey]
+			} else {
+				volumeContext[nfsNamespaceKey] = parameters[defaultNFSNamespace]
 			}
 		}
 	}
@@ -554,7 +566,7 @@ func (flavor *Flavor) getPvFromName(pvName string) (*core_v1.PersistentVolume, e
 	return pv, nil
 }
 
-func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim, nfsNamespace string) (*core_v1.PersistentVolumeClaim, error) {
+func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim, nfsNamespace string, parameters map[string]string) (*core_v1.PersistentVolumeClaim, error) {
 	log.Tracef(">>>>> cloneClaim with claim %s", claim.ObjectMeta.Name)
 	defer log.Tracef("<<<<< cloneClaim")
 
@@ -568,6 +580,16 @@ func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim, nfsNamesp
 	claimClone.Spec.AccessModes = []core_v1.PersistentVolumeAccessMode{core_v1.ReadWriteOnce}
 	// add annotation indicating this is an underlying nfs volume
 	claimClone.ObjectMeta.Annotations["csi.hpe.com/nfsPVC"] = "true"
+
+	// switch StorageClass if foreignStorageClass is requested.
+	if parameters[nfsForeignStorageClassKey] != "" {
+		// make sure StorageClass exist
+		foreignStorageClass, err := flavor.kubeClient.StorageV1().StorageClasses().Get(context.Background(), parameters[nfsForeignStorageClassKey], meta_v1.GetOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("the foreign StorageClass (%s) can't be found, err %s", parameters[nfsForeignStorageClassKey], err.Error())
+		}
+		claimClone.Spec.StorageClassName = &foreignStorageClass.ObjectMeta.Name
+	}
 
 	// if clone is requested from existing pvc, ensure child-claim(i.e RWO type) is used instead
 	if claim.Spec.DataSource != nil && claim.Spec.DataSource.Kind == pvcKind {
