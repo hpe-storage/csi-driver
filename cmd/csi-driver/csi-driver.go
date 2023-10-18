@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -50,6 +51,16 @@ var (
 				log.InitLogging(csiNodeLogFile, nil, true)
 			} else {
 				log.InitLogging(csiControllerLogFile, nil, true)
+			}
+			podName := os.Getenv("POD_NAME")
+			if strings.Contains(podName, "hpe-csi-node-") && !strings.Contains(podName, "hpe-csi-controller-") {
+        	                log.Info("********Cleaning the stale entries before starting the HPE CSI driver********")
+				log.Info("Running rescan-scsi-bus.sh script to flush the stale multipath devices...")
+				output, _, err := util.ExecCommandOutputWithTimeout("rescan-scsi-bus.sh", []string{"-f", "-m", "-r"}, 120)
+				if err != nil {
+					log.Error("unable to flush the stale multipath devices using rescan-scsi-bus.sh script")
+				}
+				fmt.Printf("%s\n", output)
 			}
 			log.Info("**********************************************")
 			log.Info("*************** HPE CSI DRIVER ***************")
