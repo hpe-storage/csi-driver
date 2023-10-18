@@ -52,6 +52,9 @@ var (
 			} else {
 				log.InitLogging(csiControllerLogFile, nil, true)
 			}
+			// Scanning for stale entries on each node where CSI resides, 
+			// this check makes sure that it runs only on hpe-csi-nodes pods 
+			// and there is no need to run on hpe-controller pods
 			podName := os.Getenv("POD_NAME")
 			if strings.Contains(podName, "hpe-csi-node-") && !strings.Contains(podName, "hpe-csi-controller-") {
         	                log.Info("********Cleaning the stale entries before starting the HPE CSI driver********")
