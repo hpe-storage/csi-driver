@@ -894,14 +894,44 @@ func (driver *Driver) nodePublishVolume(
 	}
 
 	// Read device info from the staging area
-	stagingDev, err := readStagedDeviceInfo(stagingTargetPath)
-	if err != nil {
-		return status.Error(codes.FailedPrecondition,
-			fmt.Sprintf("Staging target path %s not set, err: %s", stagingTargetPath, err.Error()))
+	stagingDev, readErr := readStagedDeviceInfo(stagingTargetPath)
+	for readErr != nil {
+		log.Info("Attempting to stage the volume again as error occured reading the device info")
+		err := driver.nodeStageVolume(
+				volumeID,
+				stagingTargetPath,
+				driver.getDefaultMountPoint(volumeID), // Default mount point for staging
+				volumeCapability,
+				secrets,
+				publishContext,
+				volumeContext,
+		)
+		if err != nil {
+			log.Error("Failed to reattempt the node stage of the volume with ID: ", volumeID)
+			return err
+		}
+		stagingDev, readErr = readStagedDeviceInfo(stagingTargetPath)
+		/*return status.Error(codes.FailedPrecondition,
+			fmt.Sprintf("Staging target path %s not set, err: %s", stagingTargetPath, err.Error()))*/
 	}
-	if stagingDev == nil {
-		return status.Error(codes.FailedPrecondition,
-			fmt.Sprintf("Staging device is not configured at the staging path %s", stagingTargetPath))
+	for stagingDev == nil {
+		log.Info("Attempting to stage the volume again as the staging device information not found")
+		err := driver.nodeStageVolume(
+				volumeID,
+				stagingTargetPath,
+				driver.getDefaultMountPoint(volumeID), // Default mount point for staging
+				volumeCapability,
+				secrets,
+				publishContext,
+				volumeContext,
+		)
+		if err != nil {
+				log.Error("Failed to reattempt the node stage of the volume with ID: ", volumeID)
+				return err
+		}
+		stagingDev, readErr = readStagedDeviceInfo(stagingTargetPath)
+		/*return status.Error(codes.FailedPrecondition,
+			fmt.Sprintf("Staging device is not configured at the staging path %s", stagingTargetPath))*/
 	}
 
 	// Check if the volume has already published on the targetPath.
