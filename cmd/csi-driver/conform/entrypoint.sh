@@ -13,6 +13,7 @@ done
 # Set up node configurations based on environment variables
 disableNodeConformance=${DISABLE_NODE_CONFORMANCE}
 disableNodeConfiguration=${DISABLE_NODE_CONFIGURATION}
+disableNodePanic=${DISABLE_NODE_PANIC}
 
 if [ "$nodeService" = true ]; then
     # Disable the conformance checks
@@ -25,6 +26,13 @@ if [ "$nodeService" = true ]; then
     if [ "$disableNodeConfiguration" = "true" ]; then
         echo "Node configuration is disabled"
         disableConformanceCheck=true
+    fi
+
+    if [ "$disableNodePanic" = "true" ]; then
+	echo "Node panic is disabled"
+	sysctl -qw kernel.hung_task_timeout_secs=300
+	sysctl -qw kernel.hung_task_panic=1
+	sysctl -qw kernel.panic=5
     fi
 
     if [ "$disableConformanceCheck" != true ]; then
