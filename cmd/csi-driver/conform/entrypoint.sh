@@ -17,18 +17,18 @@ disableNodePanic=${DISABLE_NODE_PANIC}
 
 if [ "$nodeService" = true ]; then
     # Disable the conformance checks
-    if [ "$disableNodeConformance" = "true" ]; then
+    if [ "$disableNodeConformance" = true ]; then
         echo "Node conformance checks are disabled"
         disableConformanceCheck=true
     fi
 
     # Completely disable the node configuration by the driver.
-    if [ "$disableNodeConfiguration" = "true" ]; then
+    if [ "$disableNodeConfiguration" = true ]; then
         echo "Node configuration is disabled"
         disableConformanceCheck=true
     fi
 
-    if [ "$disableNodePanic" = "true" ]; then
+    if [ "$disableNodePanic" = true ]; then
 	echo "Node panic is disabled"
 	sysctl -qw kernel.hung_task_timeout_secs=300
 	sysctl -qw kernel.hung_task_panic=1
