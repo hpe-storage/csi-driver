@@ -52,7 +52,8 @@ var (
                                 log.Info("Running rescan-scsi-bus.sh script to flush the stale multipath devices...")
                                 output, _, err := util.ExecCommandOutputWithTimeout("rescan-scsi-bus.sh", []string{"-f", "-m", "-r"}, 120)
                                 if err != nil {
-                                        log.Error("unable to flush the stale multipath devices using rescan-scsi-bus.sh script")
+                                        log.Error("Unable to start CSI driver as the flushing of stale multipath devices using rescan-scsi-bus.sh script failed")
+					os.Exit(1)
                                 }
                                 fmt.Printf("%s\n", output)
 			} else {
