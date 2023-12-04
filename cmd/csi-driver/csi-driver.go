@@ -50,7 +50,7 @@ var (
 				log.InitLogging(csiNodeLogFile, nil, true)
 				log.Info("********Cleaning the stale entries before starting the HPE CSI driver********")
                                 log.Info("Running rescan-scsi-bus.sh script to flush the stale multipath devices...")
-                                output, _, err := util.ExecCommandOutputWithTimeout("rescan-scsi-bus.sh", []string{"-f", "-m", "-r"}, 120)
+                                output, _, err := util.ExecCommandOutputWithTimeout("rescan-scsi-bus.sh", []string{"-f", "-m", "-r"}, 90)
                                 if err != nil {
                                         log.Error("Unable to start CSI driver as the flushing of stale multipath devices using rescan-scsi-bus.sh script failed")
 					os.Exit(1)
