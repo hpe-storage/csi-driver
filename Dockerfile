@@ -1,5 +1,5 @@
 # throw away builder image
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.2-722 AS build
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.3-1361.1699548029 AS build
 
 # install prereqs
 RUN dnf install -y make wget golang
@@ -17,7 +17,7 @@ ARG TARGETPLATFORM
 RUN make ARCH=$TARGETARCH compile # $TARGETPLATFORM
 
 # image build
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.2-717
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.3-1361.1699548032
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD cmd/csi-driver/AlmaLinux-Base.repo /etc/yum.repos.d/
@@ -46,6 +46,7 @@ RUN mkdir /chroot
 ADD cmd/csi-driver/chroot-host-wrapper.sh /chroot
 RUN chmod 777 /chroot/chroot-host-wrapper.sh
 RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/rescan-scsi-bus.sh \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/blockdev \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/iscsiadm \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/lsblk \
@@ -78,10 +79,6 @@ ADD [ "cmd/csi-driver/diag/*",  "/opt/hpe-storage/bin/" ]
 
 # add config files to tune multipath settings
 ADD [ "vendor/github.com/hpe-storage/common-host-libs/tunelinux/config/*", "/opt/hpe-storage/nimbletune/"]
-
-# add rescan script for resize operation
-ADD ["cmd/csi-driver/rescan-scsi-bus.sh", "/usr/bin/rescan-scsi-bus.sh"]
-RUN ["chmod", "+x", "/usr/bin/rescan-scsi-bus.sh"]
 
 # add plugin binary
 COPY --from=build /usr/src/hpe-csi-driver/build/csi-driver /bin/
