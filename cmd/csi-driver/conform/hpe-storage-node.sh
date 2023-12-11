@@ -66,6 +66,13 @@ if [ "$CONFORM_TO" = "ubuntu" ]; then
         exit_on_error $?
     fi
 
+    # Install SG3 utils
+    if [ ! -f /usr/bin/sg_inq ]; then
+        apt-get -qq update
+        apt-get -qq install -y sg3-utils
+        exit_on_error $?
+    fi
+
 elif [ "$CONFORM_TO" = "redhat" ]; then
     # Install device-mapper-multipath
     if [ ! -f /sbin/multipathd ]; then
@@ -87,6 +94,13 @@ elif [ "$CONFORM_TO" = "redhat" ]; then
         systemctl start nfs-utils.service
         exit_on_error $?
     fi
+
+    # Install SG3 utils package
+    if [ ! -f /usr/bin/sg_inq ]; then
+        yum -y install sg3_utils
+        exit_on_error $?
+    fi
+
 elif [ "$CONFORM_TO" = "sles" ]; then
     # Install device-mapper-multipath
     if [ ! -f /sbin/multipathd ]; then
@@ -107,6 +121,13 @@ elif [ "$CONFORM_TO" = "sles" ]; then
         systemctl start nfs-utils.service
         exit_on_error $?
     fi
+
+    # Install SG3 utils package
+    if [ ! -f /usr/bin/sg_inq ]; then
+        zypper -n install sg3_utils
+        exit_on_error $?
+    fi
+
 elif [ "$CONFORM_TO" = "coreos" ]; then
     echo "skipping package checks/installation on CoreOS"
     if ! [[ -e /etc/iscsi/initiatorname.iscsi ]]; then
