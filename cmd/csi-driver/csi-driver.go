@@ -50,18 +50,17 @@ var (
 				log.InitLogging(csiNodeLogFile, nil, true)
 				log.Info("********Cleaning the stale entries before starting the HPE CSI driver********")
 				timeout := 300 //default value
-				rescanTimeout := os.Getenv("RESCAN_TIMEOUT")
-				if len(rescanTimeout) != 0 {
-					i, err := strconv.Atoi(rescanTimeout)
+				rescanTimeoutEnv, exist := os.LookupEnv("RESCAN_TIMEOUT")
+				if exist {
+					i, err := strconv.Atoi(rescanTimeoutEnv)
 					if err!= nil {
 						log.Warn("Invalid argument set for RESAN_TIMEOUT environment variable. Setting default 300 as rescan timeout.")
-						timeout = 300
 					}else {
+						log.Debug("Setting "+rescanTimeoutEnv+" seconds as rescan timeout")
 						timeout = i
 					}
 				}else {
 					log.Info("Environment variable RESCAN_TIMEOUT not set. Setting default 300 as rescan timeout.")
-					timeout = 300
 				}
                                 log.Info("Running rescan-scsi-bus.sh script to flush the stale multipath devices...")
                                 output, _, err := util.ExecCommandOutputWithTimeout("/usr/bin/rescan-scsi-bus.sh", []string{"-f", "-m", "-r"}, timeout)
