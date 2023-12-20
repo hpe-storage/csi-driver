@@ -28,6 +28,10 @@ if [ -f /etc/os-release ]; then
     if [ $? -eq 0 ]; then
         CONFORM_TO=sles
     fi
+    echo $os_name | egrep -i "SLE Micro" >> /dev/null 2>&1
+    if [ $? -eq 0 ]; then
+        CONFORM_TO=slem
+    fi
 fi
 
 if [ ! -f /etc/multipath.conf ]; then
@@ -46,8 +50,6 @@ if [ "$CONFORM_TO" = "ubuntu" ]; then
     if [ ! -f /sbin/iscsid ]; then
         apt-get -qq update
         apt-get -qq install -y open-iscsi
-        # exit with error to trigger restart of pod to mount newly installed iscisadm
-        exit 1
     fi
 
     # Install nfs client packages
@@ -83,8 +85,6 @@ elif [ "$CONFORM_TO" = "redhat" ]; then
     # Install iscsi packages
     if [ ! -f /sbin/iscsid ]; then
         yum -y install iscsi-initiator-utils
-        # exit with error to trigger restart of pod to mount newly installed iscisadm
-        exit 1
     fi
 
     # Install nfs client packages
@@ -127,6 +127,19 @@ elif [ "$CONFORM_TO" = "sles" ]; then
         zypper -n install sg3_utils
         exit_on_error $?
     fi
+
+elif [ "$CONFORM_TO" = "slem" ]; then
+    # SLE Micro
+    echo -n "Ensuring critical binaries are in the SLEM image: "
+    for bin in /usr/bin/sg_inq /sbin/mount.nfs4 /sbin/iscsid /sbin/multipathd; do
+        echo -n "$bin "
+        if [ ! -f $bin ]; then
+            echo "$bin is missing. Run 'transactional-update -n pkg install multipath-tools open-iscsi nfs-client sg3_utils' on the worker nodes and reboot."
+            exit_on_error 1
+        fi
+    done
+
+    systemctl start nfs-utils.service
 
 elif [ "$CONFORM_TO" = "coreos" ]; then
     echo "skipping package checks/installation on CoreOS"

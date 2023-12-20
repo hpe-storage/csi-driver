@@ -8,13 +8,16 @@ for arg in "$@"; do
     if [ "$arg" = "--node-service" ]; then
         nodeService=true
     fi
+    if [ "$arg" = "--node-init" ]; then
+        nodeInit=true
+    fi
 done
 
 # Set up node configurations based on environment variables
 disableNodeConformance=${DISABLE_NODE_CONFORMANCE}
 disableNodeConfiguration=${DISABLE_NODE_CONFIGURATION}
 
-if [ "$nodeService" = true ]; then
+if [ "$nodeInit" = true ]; then
     # Disable the conformance checks
     if [ "$disableNodeConformance" = "true" ]; then
         echo "Node conformance checks are disabled"
@@ -41,6 +44,12 @@ if [ "$nodeService" = true ]; then
         systemctl restart hpe-storage-node
     fi
 
+    # One shot NodeMonitor to ensure node is ready
+    # exec /bin/csi-driver $@
+    exit $?
+fi
+
+if [ "$nodeService" = true ]; then
     # Copy HPE Log Collector diag script
     echo "copying hpe log collector diag script"
     cp -f "/opt/hpe-storage/bin/hpe-logcollector.sh" \

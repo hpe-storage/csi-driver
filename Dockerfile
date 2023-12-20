@@ -1,5 +1,5 @@
 # throw away builder image
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.3-1361.1699548029 AS build
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.3-1476 AS build
 
 # install prereqs
 RUN dnf install -y make wget golang
@@ -17,7 +17,7 @@ ARG TARGETPLATFORM
 RUN make ARCH=$TARGETARCH compile # $TARGETPLATFORM
 
 # image build
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.3-1361.1699548032
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.3-1475
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD cmd/csi-driver/AlmaLinux-Base.repo /etc/yum.repos.d/
