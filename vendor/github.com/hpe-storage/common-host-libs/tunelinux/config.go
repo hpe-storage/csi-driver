@@ -11,6 +11,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/linux"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/util"
+	_ "github.com/hpe-storage/common-host-libs/tunelinux/config"
 )
 
 // Category recommendation category type

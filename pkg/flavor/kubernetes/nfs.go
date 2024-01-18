@@ -25,7 +25,7 @@ const (
 	nfsPrefix           = "hpe-nfs-"
 	pvcPrefix           = "pvc-" // this is hardcoded at csi-provisioner runtime
 	defaultNFSNamespace = "hpe-nfs"
-	defaultNFSImage     = "quay.io/hpestorage/nfs-provisioner:v3.0.2"
+	defaultNFSImage     = "quay.io/hpestorage/nfs-provisioner:v3.0.3"
 	defaultRLimitCPU    = "1000m"
 	defaultRLimitMemory = "2Gi"
 
