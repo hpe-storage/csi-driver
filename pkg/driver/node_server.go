@@ -466,7 +466,32 @@ func (driver *Driver) stageVolume(
 	mount, err := driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
 		mountInfo.MountOptions, mountInfo.FilesystemOptions)
 	if err != nil {
-		return nil, fmt.Errorf("failed to mount device %s, %v", device.AltFullPathName, err.Error())
+		log.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
+		//Check if the return code is 32, so that file system corruption can be checked
+		if strings.Contains(err.Error(), "command mount failed with rc=32") {
+			//Check whether file system is corrupted or not
+			if driver.chapiDriver.IsFileSystemCorrupted(volumeID, device, mountInfo.FilesystemOptions) {
+				if volumeContext[fsRepairKey] != "" && volumeContext[fsRepairKey] == trueKey {
+					log.Debug("Attempting to repair the file system.....")
+					err = driver.chapiDriver.RepairFileSystem(volumeID, device, mountInfo.FilesystemOptions)
+					if err != nil {
+						return nil, fmt.Errorf("Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
+					}
+					log.Infof("Re-trying to mount after reparing the file system of the volume %s", volumeID)
+					mount, err = driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
+						mountInfo.MountOptions, mountInfo.FilesystemOptions)
+					if err != nil {
+						return nil, fmt.Errorf("Failed to mount device %s again, %v", device.AltFullPathName, err.Error())
+					}
+				} else {
+					return nil, fmt.Errorf("File system can not be repaired for the volume %s as the fsRepair parameters is not set in the StorageClass.", volumeID)
+				}
+			} else {
+				return nil, fmt.Errorf("File corruption is not detected. Failed to mount device %s, %v", device.AltFullPathName, err.Error())
+			}
+		} else {
+			return nil, fmt.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
+		}
 	}
 	log.Tracef("Device %s mounted successfully, Mount: %+v", device.AltFullPathName, mount)
 

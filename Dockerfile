@@ -56,6 +56,8 @@ RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.xfs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.btrfs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/xfs_growfs \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/xfs_repair \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/tune2fs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/resize2fs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/btrfs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/fsck \
