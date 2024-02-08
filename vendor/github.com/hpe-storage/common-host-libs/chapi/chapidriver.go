@@ -17,7 +17,7 @@ type Driver interface {
 	GetDevice(volume *model.Volume) (*model.Device, error)
 	DeleteDevice(device *model.Device) error
 	OfflineDevice(device *model.Device) error
-	MountDevice(device *model.Device, mountPoint string, mountOptions []string, fsOpts *model.FilesystemOpts) (*model.Mount, error) // Idempotent
+	MountDevice(device *model.Device, mountPoint string, mountOptions []string, fsOpts *model.FilesystemOpts, fsRepairKey string) (*model.Mount, error) // Idempotent
 	MountNFSVolume(source string, target string, mountOptions []string, nfsType string) error                                       // Idempotent
 	BindMount(mountPoint string, newMountPoint string, rbind bool) error                                                            // Idempotent
 	BindUnmount(mountPoint string) error                                                                                            // Idempotent

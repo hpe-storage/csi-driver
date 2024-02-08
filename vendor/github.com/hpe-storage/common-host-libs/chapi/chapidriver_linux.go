@@ -250,8 +250,8 @@ func (driver *LinuxDriver) MountNFSVolume(source string, targetPath string, moun
 }
 
 // MountDevice mounts the given device to the given mount point. This must be idempotent.
-func (driver *LinuxDriver) MountDevice(device *model.Device, mountPoint string, mountOptions []string, fsOpts *model.FilesystemOpts) (*model.Mount, error) {
-	log.Tracef(">>>>> MountDevice, device: %+v, mountPoint: %s, mountOptions: %v, fsOpts: %+v", device, mountPoint, mountOptions, fsOpts)
+func (driver *LinuxDriver) MountDevice(device *model.Device, mountPoint string, mountOptions []string, fsOpts *model.FilesystemOpts, fsRepairKey string) (*model.Mount, error) {
+	log.Tracef(">>>>> MountDevice, device: %+v, mountPoint: %s, mountOptions: %v, fsOpts: %+v, fsRepairKey: %s", device, mountPoint, mountOptions, fsOpts, fsRepairKey)
 	defer log.Trace("<<<<< MountDevice")
 
 	// Setup FS if requested
@@ -271,7 +271,7 @@ func (driver *LinuxDriver) MountDevice(device *model.Device, mountPoint string, 
 	}
 
 	// Setup mountpoint (Create mountpoint and apply mount options)
-	mount, err := linux.SetupMount(device, mountPoint, mountOptions)
+	mount, err := linux.SetupMount(device, mountPoint, mountOptions, fsOpts.Type, fsRepairKey)
 	if err != nil {
 		log.Errorf("Failed to setup mountpoint %s for device %s, err: %v", mountPoint, device.AltFullPathName, err.Error())
 		return nil, err
@@ -313,7 +313,7 @@ func (driver *LinuxDriver) IsFileSystemCorrupted(volumeID string, device *model.
 				args = append(args, device.AltFullPathName)
 				err = checkFileSystemCorruption(volumeID, cmd, args)
 				if err != nil {
-					log.Infof("File system corruption detected for the volume %s and device %s", volumeID, &device.AltFullPathName)
+					log.Infof("File system corruption detected for the volume %s and device %s", volumeID, device.AltFullPathName)
 					return true
 				}
 			}
@@ -323,7 +323,7 @@ func (driver *LinuxDriver) IsFileSystemCorrupted(volumeID string, device *model.
 			args = append(args, device.AltFullPathName)
 			err := checkFileSystemCorruption(volumeID, cmd, args)
 			if err != nil {
-				log.Infof("File system corruption detected for the volume %s and device %s", volumeID, &device.AltFullPathName)
+				log.Infof("File system corruption detected for the volume %s and device %s", volumeID, device.AltFullPathName)
 				return true
 			}
 		} else if fileSystemType == "btrfs" {

@@ -3,14 +3,17 @@
 package linux
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"hash/fnv"
 	"os"
+	"os/exec"
 	"os/user"
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	log "github.com/hpe-storage/common-host-libs/logger"
@@ -61,7 +64,7 @@ func (fs FsType) String() string {
 	return ""
 }
 
-//Mount struct
+// Mount struct
 type Mount struct {
 	ID         uint64        `json:"id,omitempty"`
 	Mountpoint string        `json:"mount_point,omitempty"`
@@ -363,8 +366,8 @@ func createFileSystem(fsType string, options []string) (err error) {
 	return nil
 }
 
-//UnmountFileSystem : unmount the filesystem
-//nolint: gocyclo
+// UnmountFileSystem : unmount the filesystem
+// nolint: gocyclo
 func UnmountFileSystem(mountPoint string) (*model.Mount, error) {
 	log.Tracef("UnmountFileSystem called with %s", mountPoint)
 	if mountPoint == "" {
@@ -432,7 +435,7 @@ func UnmountFileSystem(mountPoint string) (*model.Mount, error) {
 	return mnt, nil
 }
 
-//UnmountDevice : unmount device from host
+// UnmountDevice : unmount device from host
 func UnmountDevice(device *model.Device, mountPoint string) (*model.Mount, error) {
 	log.Trace("UnmountDevice called")
 	if device == nil || mountPoint == "" {
@@ -443,7 +446,7 @@ func UnmountDevice(device *model.Device, mountPoint string) (*model.Mount, error
 }
 
 // RemountWithOptions : Remount mountpoint with options
-//nolint : dupl
+// nolint : dupl
 func RemountWithOptions(mountPoint string, options []string) error {
 	log.Tracef(">>>>> ReMountWithOptions, mountPoint: %s, options: %v", mountPoint, options)
 	defer log.Trace("<<<<< ReMountWithOptions")
@@ -486,7 +489,7 @@ func RemountWithOptions(mountPoint string, options []string) error {
 }
 
 // MountDevice : mount device on host
-func MountDevice(device *model.Device, mountPoint string, options []string) (*model.Mount, error) {
+func MountDevice(device *model.Device, mountPoint string, options []string, fsType string, fsRepairKey string) (*model.Mount, error) {
 	log.Tracef(">>>>> MountDevice, Device: %+v", device)
 	defer log.Trace("<<<<< MountDevice")
 
@@ -505,7 +508,7 @@ func MountDevice(device *model.Device, mountPoint string, options []string) (*mo
 	if device.AltFullLuksPathName != "" {
 		devPath = device.AltFullLuksPathName
 	}
-	mount, err := MountDeviceWithFileSystem(devPath, mountPoint, options)
+	mount, err := MountDeviceWithFileSystem(devPath, mountPoint, options, fsType, fsRepairKey)
 	if mount == nil || err != nil {
 		return nil, fmt.Errorf("unable to mount the device at mountPoint : %s. Error: %s", mountPoint, err.Error())
 	}
@@ -521,8 +524,8 @@ func MountDevice(device *model.Device, mountPoint string, options []string) (*mo
 
 // MountDeviceWithFileSystem : Mount device with filesystem at the mountPoint, if partitions are present, then
 // largest partition will be mounted
-func MountDeviceWithFileSystem(devPath string, mountPoint string, options []string) (*model.Mount, error) {
-	log.Tracef(">>>>> MountDeviceWithFileSystem, devPath: %s, mountPoint: %s, options: %v", devPath, mountPoint, options)
+func MountDeviceWithFileSystem(devPath string, mountPoint string, options []string, fsType string, fsRepairKey string) (*model.Mount, error) {
+	log.Tracef(">>>>> MountDeviceWithFileSystem, devPath: %s, mountPoint: %s, options: %v, fsType: %s, fsRepairKey: %s", devPath, mountPoint, options, fsType, fsRepairKey)
 	defer log.Trace("<<<<< MountDeviceWithFileSystem")
 
 	if devPath == "" || mountPoint == "" {
@@ -565,7 +568,7 @@ func MountDeviceWithFileSystem(devPath string, mountPoint string, options []stri
 		return nil, fmt.Errorf("Failed to verify if partitions exist on device %s, %s", devPath, err.Error())
 	}
 	if len(deviceParitionInfos) != 0 {
-		mount, err := mountForPartition(devPath, mountPoint, options)
+		mount, err := mountForPartition(devPath, mountPoint, options, fsType, fsRepairKey)
 		if mount != nil {
 			return mount, nil
 		}
@@ -573,7 +576,7 @@ func MountDeviceWithFileSystem(devPath string, mountPoint string, options []stri
 	}
 
 	// whole block device. perform mount if not already mounted
-	mount, err := performMount(devPath, mountPoint, options)
+	mount, err := performMount(devPath, mountPoint, options, fsType, fsRepairKey)
 	if err != nil {
 		return nil, err
 	}
@@ -618,7 +621,7 @@ func MountNFSShare(source string, targetPath string, options []string, nfsType s
 	return nil
 }
 
-func performMount(devPath string, mountPoint string, options []string) (*model.Mount, error) {
+func performMount(devPath string, mountPoint string, options []string, fsType string, fsRepairKey string) (*model.Mount, error) {
 	args := []string{devPath, mountPoint}
 	optionArgs := []string{}
 	if len(options) != 0 {
@@ -636,7 +639,28 @@ func performMount(devPath string, mountPoint string, options []string) (*model.M
 				log.Infof("mount failed for dev %s with rc=%d(duplicate uuid), trying again with no uuid option", devPath, mountUUIDErr)
 				_, _, err = util.ExecCommandOutput(mountCommand, []string{"-o", "nouuid", devPath, mountPoint})
 				if err != nil {
-					return nil, err
+					log.Infof("Checking whether the file system is corrupted")
+					if isFileSystemCorrupted(devPath, fsType) {
+						if fsRepairKey == "true" {
+							log.Debug("Attempting to repair the file system.....")
+							err = repairFileSystem(devPath, fsType)
+							if err != nil {
+								return nil, fmt.Errorf("Repairing the file system for the device path %s failed due to the error: %v", devPath, err.Error())
+							}
+							log.Infof("Re-trying to mount after reparing the file system of the device path %s", devPath)
+							_, _, err = util.ExecCommandOutput(mountCommand, args)
+							if err != nil {
+								return nil, err
+							}
+						} else {
+							log.Tracef("File system can not be repaired for the device path %s as the fsRepair parameters is not set in the StorageClass.", devPath)
+							return nil, err
+						}
+					} else {
+						log.Tracef("No file system corruption found for the device path %s and the mount failed due to this error: %s", devPath, err.Error())
+						return nil, err
+					}
+					//return nil, err
 				}
 			} else if try < 5 {
 				// retry on other generic errors
@@ -658,6 +682,246 @@ func performMount(devPath string, mountPoint string, options []string) (*model.M
 		return nil, err
 	}
 	return &model.Mount{Mountpoint: mountPoint, Device: &model.Device{AltFullPathName: devPath}}, nil
+}
+
+func isFileSystemCorrupted(devPath string, fsType string) bool {
+	log.Tracef(">>>>> IsFileSystemCorrupted, devicePath: %s, fsType: %s", devPath, fsType)
+	defer log.Trace("<<<<< IsFileSystemCorrupted")
+
+	var cmd string
+	var args []string
+	if fsType == "ext2" || fsType == "ext3" || fsType == "ext4" {
+		cmd = "tune2fs"
+		args = append(args, "-l")
+		args = append(args, devPath)
+		output, _, err := util.ExecCommandOutput(cmd, args)
+		if err != nil || (output != "" && getInfoFromTune2fsOutput(output, "Filesystem state") != "clean") {
+			log.Debugf("File system state is not clean, checking the file system corruption using fsck command for the device path %s", devPath)
+			cmd = "fsck"
+			args = append(args, "-n")
+			args = append(args, devPath)
+			err = checkFileSystemCorruption(devPath, cmd, args)
+			if err != nil {
+				log.Infof("File system corruption detected for the device path %s", devPath)
+				return true
+			}
+		}
+	} else if fsType == "xfs" {
+		cmd = "xfs_repair"
+		args = append(args, "-n")
+		args = append(args, devPath)
+		err := checkFileSystemCorruption(devPath, cmd, args)
+		if err != nil {
+			log.Infof("File system corruption detected for the device path %s", devPath)
+			return true
+		}
+	} else if fsType == "btrfs" {
+		/*cmd = "btrfs"
+		args = append(args, "check")
+		args = append(args, device.AltFullPathName)
+		err := checkFileSystemCorruption(volumeID, cmd, args)*/
+		log.Errorf("Currently, checking the file corruption of brtfs is not handled by the HPE CSI driver")
+		return false
+	} else {
+		log.Errorf("File system type is either not specified or invalid for the device path %s", devPath)
+		return false
+	}
+	return false
+}
+
+func getInfoFromTune2fsOutput(output string, pattern string) string {
+	log.Tracef(">>>>> getInfoFromTune2fsOutput, Pattern:", pattern)
+	defer log.Trace("<<<<< getInfoFromTune2fsOutput")
+	lines := strings.Split(output, "\n")
+	var relevantInfo string
+	for _, line := range lines {
+		if strings.Contains(line, pattern) {
+			relevantInfo = line
+			break
+		}
+	}
+	if len(relevantInfo) > 0 {
+		lines = strings.Fields(relevantInfo)
+		if len(lines) == 3 {
+			relevantInfo = lines[2]
+		}
+	}
+	return relevantInfo
+}
+
+func checkFileSystemCorruption(devPath string, cmd string, args []string) error {
+	log.Tracef(">>>>> checkFileSystemCorruption, device path:", devPath, ", cmd: ", cmd, ", args:", args)
+	defer log.Trace("<<<<< checkFileSystemCorruption")
+	var err error
+	c := exec.Command(cmd, args...)
+	var b bytes.Buffer
+	c.Stdout = &b
+	c.Stderr = &b
+
+	if err = c.Start(); err != nil {
+		return err
+	}
+
+	// Wait for the process to finish or kill it after a timeout:
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Wait()
+	}()
+
+	err = <-done
+	if err != nil {
+		log.Errorf("process with pid : %v finished with error = %v\n", c.Process.Pid, err)
+	} else {
+		log.Tracef("process with pid: %v finished successfully\n", c.Process.Pid)
+	}
+
+	out := string(b.Bytes())
+	//fmt.Println(out)
+	if err != nil {
+		//check the rc of the exec
+		if badnews, ok := err.(*exec.ExitError); ok {
+			if status, ok := badnews.Sys().(syscall.WaitStatus); ok {
+				// send the error code and stderr content to the caller
+				return fmt.Errorf("command %s failed with rc=%d err=%s\n", cmd, status.ExitStatus(), out)
+			}
+		} else {
+			return fmt.Errorf("error %s\n", err.Error())
+		}
+	}
+	return nil
+}
+func repairFileSystem(devPath string, fsType string) error {
+	log.Tracef(">>>>> RepairFileSystem, device path: %s, fsType: %s", devPath, fsType)
+	defer log.Trace("<<<<< RepairFileSystem")
+
+	if fsType == "ext2" || fsType == "ext3" || fsType == "ext4" {
+		err := repairFsckFileSystem(devPath)
+		if err != nil {
+			log.Errorf("Failed to repair the file system of the device path %s due to the error %v", devPath, err)
+			return err
+		}
+		log.Info("Succesfully repaired the file system of the device path %s", devPath)
+	} else if fsType == "xfs" {
+		err := executeFileSystemRepairCommand(devPath, "xfs", "xfs_repair", []string{devPath})
+		if err != nil {
+			return fmt.Errorf("Failed to repair the xfs file system of the device path %s due to the error %v", devPath, err)
+		}
+		log.Infof("XFS Filesystem of the device %s is repaied successfully", devPath)
+	} else if fsType == "btrfs" {
+		/*err := executeFileSystemRepairCommand(devPath, "btrfts", "btrfts", []string{"check", "--repair", device.AltFullPathName})
+		if err != nil {
+			return fmt.Errorf("Failed to repair the btrfs file system of the device %s for the volume %s due to the error %v", device.AltFullPathName, volumeID, err)
+		}
+
+		log.Infof("Btrfs Filesystem of the device %s is repaied successfully for the volume %s", device.AltFullPathName, volumeID)*/
+		return fmt.Errorf("Currently, repairing of btrfs file corruption is not handled by the HPE CSI driver.")
+	} else {
+		return fmt.Errorf("File system type is either not specified or invalid for the device path %s", devPath)
+	}
+
+	return nil
+}
+
+func repairFsckFileSystem(devPath string) error {
+	log.Tracef(">>>>> RepairFsckFileSystem, device path: %s", devPath)
+	var err error
+	c := exec.Command("fsck", "-y", devPath)
+	var b bytes.Buffer
+	c.Stdout = &b
+	c.Stderr = &b
+	if err = c.Start(); err != nil {
+		return err
+	}
+	// Wait for the process to finish or kill it after a timeout:
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Wait()
+	}()
+	err = <-done
+	if err != nil {
+		log.Errorf("process with pid : %v finished with error = %v", c.Process.Pid, err)
+	} else {
+		log.Tracef("process with pid: %v finished successfully", c.Process.Pid)
+	}
+
+	out := string(b.Bytes())
+	log.Trace(out)
+	if err != nil {
+		//check the rc of the exec
+		if exitStatus, ok := err.(*exec.ExitError); ok {
+			if status, ok := exitStatus.Sys().(syscall.WaitStatus); ok {
+				switch status.ExitStatus() {
+				case 0:
+					log.Infof("No errors found in the filesystem of the device %s.", devPath)
+					return nil
+				case 1:
+					log.Infof("Filesystem errors were corrected for the device %s.", devPath)
+					return nil
+				case 2:
+					return fmt.Errorf("Filesystem errors were corrected for the device %s, but the system should be rebooted.", devPath)
+				case 4:
+					return fmt.Errorf("Filesystem errors left uncorrected for the device %s.", devPath)
+				case 8:
+					return fmt.Errorf("Operational error for the device %s.", devPath)
+				case 16:
+					return fmt.Errorf("Usage or syntax error for the device %s.", devPath)
+				case 32:
+					return fmt.Errorf("Filesystem check cancelled by user request for the device %s.", devPath)
+				case 128:
+					return fmt.Errorf("Shared library error for the device %s.", devPath)
+				default:
+					return fmt.Errorf("Unknown exit code: %d\n", status.ExitStatus)
+				}
+			} else {
+				// send the error code and stderr content to the caller
+				return fmt.Errorf("command fsck failed with exit status=%s err=%s", exitStatus, out)
+			}
+		} else {
+			return fmt.Errorf("error %s", err.Error())
+		}
+	}
+	return nil
+}
+
+func executeFileSystemRepairCommand(devPath string, fsType string, cmd string, args []string) error {
+	log.Tracef(">>>>> executeFileSystemRepairCommand for file system %s, device path: %s", fsType, fsType, devPath)
+	var err error
+	c := exec.Command(cmd, args...)
+	var b bytes.Buffer
+	c.Stdout = &b
+	c.Stderr = &b
+
+	if err = c.Start(); err != nil {
+		return err
+	}
+
+	// Wait for the process to finish or kill it after a timeout:
+	done := make(chan error, 1)
+	go func() {
+		done <- c.Wait()
+	}()
+
+	err = <-done
+	if err != nil {
+		fmt.Printf("process with pid : %v finished with error = %v", c.Process.Pid, err)
+	} else {
+		fmt.Printf("process with pid: %v finished successfully", c.Process.Pid)
+	}
+
+	out := string(b.Bytes())
+	fmt.Println(out)
+	if err != nil {
+		//check the rc of the exec
+		if badnews, ok := err.(*exec.ExitError); ok {
+			if status, ok := badnews.Sys().(syscall.WaitStatus); ok {
+				// send the error code and stderr content to the caller
+				return fmt.Errorf("command %s failed with rc=%d err=%s", cmd, status.ExitStatus(), out)
+			}
+		} else {
+			return fmt.Errorf("error %s", err.Error())
+		}
+	}
+	return nil
 }
 
 // GetFilesystemType returns the filesystem type if present else empty string
@@ -710,8 +974,8 @@ func GetFilesystemType(devPath string) (string, error) {
 	return "", nil
 }
 
-func mountForPartition(devPath, mountPoint string, options []string) (mount *model.Mount, err error) {
-	log.Tracef("mountForPartition called for %s and %s", devPath, mountPoint)
+func mountForPartition(devPath, mountPoint string, options []string, fsType string, fsRepairKey string) (mount *model.Mount, err error) {
+	log.Tracef("mountForPartition called for %s, %s and %s file system with the fsRepairKey set to %s", devPath, mountPoint, fsType, fsRepairKey)
 	// check if there are partitions
 	mount = nil
 	deviceParitionInfos, _ := GetPartitionInfo(&model.Device{AltFullPathName: devPath})
@@ -720,7 +984,7 @@ func mountForPartition(devPath, mountPoint string, options []string) (mount *mod
 		if largestPartition != nil {
 			log.Tracef("%s could not be mounted, but partition(s) were found %v", devPath, largestPartition)
 			// lsblk talks in terms of dev mapper
-			mount, err = performMount(devMapperPath+largestPartition.Name, mountPoint, options)
+			mount, err = performMount(devMapperPath+largestPartition.Name, mountPoint, options, fsType, fsRepairKey)
 			if err != nil {
 				return nil, err
 			}
@@ -976,8 +1240,8 @@ func SetupFilesystemWithOptions(device *model.Device, filesystemType string, opt
 }
 
 // SetupMount creates the mountpoint with mount options
-func SetupMount(device *model.Device, mountPoint string, mountOptions []string) (*model.Mount, error) {
-	log.Tracef(">>>>> SetupMount, device: %+v, mountPoint: %s, mountOptions: %v", device, mountPoint, mountOptions)
+func SetupMount(device *model.Device, mountPoint string, mountOptions []string, fsType string, fsRepairKey string) (*model.Mount, error) {
+	log.Tracef(">>>>> SetupMount, device: %+v, mountPoint: %s, mountOptions: %v, fsType: %s, fsRepairKey: %s", device, mountPoint, mountOptions, fsType, fsRepairKey)
 	defer log.Trace("<<<<< SetupMount")
 
 	devPath := device.AltFullPathName
@@ -986,7 +1250,7 @@ func SetupMount(device *model.Device, mountPoint string, mountOptions []string) 
 	}
 
 	// Mount device
-	mount, err := MountDevice(device, mountPoint, mountOptions)
+	mount, err := MountDevice(device, mountPoint, mountOptions, fsType, fsRepairKey)
 	if err != nil {
 		return nil, fmt.Errorf("Error mounting device %s on mountpoint %s with options %v, %v", device.AltFullPathName, mountPoint, mountOptions, err.Error())
 	}

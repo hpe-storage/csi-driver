@@ -462,11 +462,12 @@ func (driver *Driver) stageVolume(
 	// Get mount info from the request
 	mountInfo := getMountInfo(volumeID, volCap, publishContext, stagingMountPoint)
 
+	fsRepairValue := volumeContext[fsRepairKey]
 	// Create Filesystem, Mount Device, Apply FS options and Apply Mount options
 	mount, err := driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
-		mountInfo.MountOptions, mountInfo.FilesystemOptions)
+		mountInfo.MountOptions, mountInfo.FilesystemOptions, fsRepairValue)
 	if err != nil {
-		log.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
+		/*log.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
 		//Check if the return code is 32, so that file system corruption can be checked
 		if strings.Contains(err.Error(), "command mount failed with rc=32") {
 			//Check whether file system is corrupted or not
@@ -479,7 +480,7 @@ func (driver *Driver) stageVolume(
 					}
 					log.Infof("Re-trying to mount after reparing the file system of the volume %s", volumeID)
 					mount, err = driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
-						mountInfo.MountOptions, mountInfo.FilesystemOptions)
+						mountInfo.MountOptions, mountInfo.FilesystemOptions, fsRepairValue)
 					if err != nil {
 						return nil, fmt.Errorf("Failed to mount device %s again, %v", device.AltFullPathName, err.Error())
 					}
@@ -491,7 +492,8 @@ func (driver *Driver) stageVolume(
 			}
 		} else {
 			return nil, fmt.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
-		}
+		}*/
+		return nil, fmt.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
 	}
 	log.Tracef("Device %s mounted successfully, Mount: %+v", device.AltFullPathName, mount)
 
