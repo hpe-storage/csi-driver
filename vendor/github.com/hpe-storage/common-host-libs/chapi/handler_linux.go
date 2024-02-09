@@ -483,7 +483,7 @@ func mountDevice(w http.ResponseWriter, r *http.Request) {
 	device = mount.Device
 	mountPoint := mount.Mountpoint
 
-	mnt, err := driver.MountDevice(device, mountPoint, nil, nil)
+	mnt, err := driver.MountDevice(device, mountPoint, nil, nil, "")
 	if err != nil {
 		handleError(w, chapiResp, err, http.StatusInternalServerError)
 		return
