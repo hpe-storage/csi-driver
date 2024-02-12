@@ -462,34 +462,31 @@ func (driver *Driver) stageVolume(
 	// Get mount info from the request
 	mountInfo := getMountInfo(volumeID, volCap, publishContext, stagingMountPoint)
 
-	fsRepairValue := volumeContext[fsRepairKey]
 	// Create Filesystem, Mount Device, Apply FS options and Apply Mount options
 	mount, err := driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
-		mountInfo.MountOptions, mountInfo.FilesystemOptions, fsRepairValue)
+		mountInfo.MountOptions, mountInfo.FilesystemOptions)
 	if err != nil {
-		log.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
-
+		log.Errorf("Failed to mount device %s, %v. Attempting to inspect the filesystem", device.AltFullPathName, err.Error())
 		//Check whether file system is corrupted or not
 		if driver.chapiDriver.IsFileSystemCorrupted(volumeID, device, mountInfo.FilesystemOptions) {
 			if volumeContext[fsRepairKey] != "" && volumeContext[fsRepairKey] == trueKey {
-				log.Debug("Attempting to repair the file system.....")
+				log.Debug("Attempting to repair the file system of the device %s", device.AltFullPathName)
 				err = driver.chapiDriver.RepairFileSystem(volumeID, device, mountInfo.FilesystemOptions)
 				if err != nil {
 					return nil, fmt.Errorf("Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
 				}
-				log.Infof("Re-trying to mount after reparing the file system of the volume %s", volumeID)
+				log.Infof("Retrying to mount after successfully reparing the file system of the volume %s", volumeID)
 				mount, err = driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
 					mountInfo.MountOptions, mountInfo.FilesystemOptions, fsRepairValue)
 				if err != nil {
-					return nil, fmt.Errorf("Failed to mount device %s again, %v", device.AltFullPathName, err.Error())
+					return nil, fmt.Errorf("Failed to mount device %s again after successful repair: %v", device.AltFullPathName, err.Error())
 				}
 			} else {
-				return nil, fmt.Errorf("File system can not be repaired for the volume %s as the fsRepair parameters is not set in the StorageClass.", volumeID)
+				return nil, fmt.Errorf("Filesystem issues has been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
 			}
 		} else {
-			return nil, fmt.Errorf("File corruption is not detected. Failed to mount device %s, %v", device.AltFullPathName, err.Error())
+			return nil, fmt.Errorf("Filesystem intact, still failed to mount device %s: %v", device.AltFullPathName, err.Error())
 		}
-
 		return nil, fmt.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
 	}
 	log.Tracef("Device %s mounted successfully, Mount: %+v", device.AltFullPathName, mount)

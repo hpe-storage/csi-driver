@@ -73,7 +73,7 @@ type Mount struct {
 
 const (
 	fsxfscommand   = "mkfs.xfs"
-	mountUUIDErr   = 32
+	mountErr       = 32
 	fsext2command  = "mkfs.ext2"
 	fsext3command  = "mkfs.ext3"
 	fsext4command  = "mkfs.ext4"
@@ -475,9 +475,9 @@ func RemountWithOptions(mountPoint string, options []string) error {
 		break
 	}
 	if err != nil {
-		if rc == mountUUIDErr {
+		if rc == mountErr {
 			// TODO: this works for docker workflow. Need to see if it needs to be changed for oracle and other linux use cases
-			log.Trace("rc=" + strconv.Itoa(mountUUIDErr) + " trying again with no uuid option")
+			log.Trace("rc=" + strconv.Itoa(mountErr) + " trying again with nouuid option")
 			_, _, err = util.ExecCommandOutput(mountCommand, []string{"-o", "nouuid", mountPoint})
 		}
 	}
@@ -489,7 +489,7 @@ func RemountWithOptions(mountPoint string, options []string) error {
 }
 
 // MountDevice : mount device on host
-func MountDevice(device *model.Device, mountPoint string, options []string, fsType string, fsRepairKey string) (*model.Mount, error) {
+func MountDevice(device *model.Device, mountPoint string, options []string) (*model.Mount, error) {
 	log.Tracef(">>>>> MountDevice, Device: %+v", device)
 	defer log.Trace("<<<<< MountDevice")
 
@@ -508,7 +508,7 @@ func MountDevice(device *model.Device, mountPoint string, options []string, fsTy
 	if device.AltFullLuksPathName != "" {
 		devPath = device.AltFullLuksPathName
 	}
-	mount, err := MountDeviceWithFileSystem(devPath, mountPoint, options, fsType, fsRepairKey)
+	mount, err := MountDeviceWithFileSystem(devPath, mountPoint, options)
 	if mount == nil || err != nil {
 		return nil, fmt.Errorf("unable to mount the device at mountPoint : %s. Error: %s", mountPoint, err.Error())
 	}
@@ -524,8 +524,8 @@ func MountDevice(device *model.Device, mountPoint string, options []string, fsTy
 
 // MountDeviceWithFileSystem : Mount device with filesystem at the mountPoint, if partitions are present, then
 // largest partition will be mounted
-func MountDeviceWithFileSystem(devPath string, mountPoint string, options []string, fsType string, fsRepairKey string) (*model.Mount, error) {
-	log.Tracef(">>>>> MountDeviceWithFileSystem, devPath: %s, mountPoint: %s, options: %v, fsType: %s, fsRepairKey: %s", devPath, mountPoint, options, fsType, fsRepairKey)
+func MountDeviceWithFileSystem(devPath string, mountPoint string, options []string) (*model.Mount, error) {
+	log.Tracef(">>>>> MountDeviceWithFileSystem, devPath: %s, mountPoint: %s, options: %v", devPath, mountPoint, options)
 	defer log.Trace("<<<<< MountDeviceWithFileSystem")
 
 	if devPath == "" || mountPoint == "" {
@@ -568,7 +568,7 @@ func MountDeviceWithFileSystem(devPath string, mountPoint string, options []stri
 		return nil, fmt.Errorf("Failed to verify if partitions exist on device %s, %s", devPath, err.Error())
 	}
 	if len(deviceParitionInfos) != 0 {
-		mount, err := mountForPartition(devPath, mountPoint, options, fsType, fsRepairKey)
+		mount, err := mountForPartition(devPath, mountPoint, options)
 		if mount != nil {
 			return mount, nil
 		}
@@ -576,7 +576,7 @@ func MountDeviceWithFileSystem(devPath string, mountPoint string, options []stri
 	}
 
 	// whole block device. perform mount if not already mounted
-	mount, err := performMount(devPath, mountPoint, options, fsType, fsRepairKey)
+	mount, err := performMount(devPath, mountPoint, options)
 	if err != nil {
 		return nil, err
 	}
@@ -621,7 +621,7 @@ func MountNFSShare(source string, targetPath string, options []string, nfsType s
 	return nil
 }
 
-func performMount(devPath string, mountPoint string, options []string, fsType string, fsRepairKey string) (*model.Mount, error) {
+func performMount(devPath string, mountPoint string, options []string) (*model.Mount, error) {
 	args := []string{devPath, mountPoint}
 	optionArgs := []string{}
 	if len(options) != 0 {
@@ -634,33 +634,13 @@ func performMount(devPath string, mountPoint string, options []string, fsType st
 	for {
 		_, rc, err = util.ExecCommandOutput(mountCommand, args)
 		if err != nil || rc != 0 {
-			// if failed due to duplicate FS UUID(snapshot), attempt mount with no-uuid check option
-			if rc == mountUUIDErr {
-				log.Infof("mount failed for dev %s with rc=%d(duplicate uuid), trying again with no uuid option", devPath, mountUUIDErr)
+			// if failed due to duplicate FS UUID (snapshot or clone), attempt mount with nouuid option
+			if rc == mountErr {
+				log.Infof("mount failed for dev %s with rc=%d, trying again with nouuid option", devPath, mountErr)
 				_, _, err = util.ExecCommandOutput(mountCommand, []string{"-o", "nouuid", devPath, mountPoint})
 				if err != nil {
-					log.Infof("Checking whether the file system is corrupted")
-					if isFileSystemCorrupted(devPath, fsType) {
-						if fsRepairKey == "true" {
-							log.Debug("Attempting to repair the file system.....")
-							err = repairFileSystem(devPath, fsType)
-							if err != nil {
-								return nil, fmt.Errorf("Repairing the file system for the device path %s failed due to the error: %v", devPath, err.Error())
-							}
-							log.Infof("Re-trying to mount after reparing the file system of the device path %s", devPath)
-							_, _, err = util.ExecCommandOutput(mountCommand, args)
-							if err != nil {
-								return nil, err
-							}
-						} else {
-							log.Tracef("File system can not be repaired for the device path %s as the fsRepair parameters is not set in the StorageClass.", devPath)
-							return nil, err
-						}
-					} else {
-						log.Tracef("No file system corruption found for the device path %s and the mount failed due to this error: %s", devPath, err.Error())
-						return nil, err
-					}
-					//return nil, err
+					log.Infof("Second mount attempt with nouuid failed for dev %s with rc=%d", devPath, mountErr)
+					return nil, err
 				}
 			} else if try < 5 {
 				// retry on other generic errors
@@ -696,13 +676,13 @@ func isFileSystemCorrupted(devPath string, fsType string) bool {
 		args = append(args, devPath)
 		output, _, err := util.ExecCommandOutput(cmd, args)
 		if err != nil || (output != "" && getInfoFromTune2fsOutput(output, "Filesystem state") != "clean") {
-			log.Debugf("File system state is not clean, checking the file system corruption using fsck command for the device path %s", devPath)
+			log.Debugf("Filesystem state is not clean, checking the filesystem integrity using fsck command for the device path %s", devPath)
 			cmd = "fsck"
 			args = append(args, "-n")
 			args = append(args, devPath)
 			err = checkFileSystemCorruption(devPath, cmd, args)
 			if err != nil {
-				log.Infof("File system corruption detected for the device path %s", devPath)
+				log.Infof("Filesystem issues detected for the device path %s", devPath)
 				return true
 			}
 		}
@@ -712,18 +692,14 @@ func isFileSystemCorrupted(devPath string, fsType string) bool {
 		args = append(args, devPath)
 		err := checkFileSystemCorruption(devPath, cmd, args)
 		if err != nil {
-			log.Infof("File system corruption detected for the device path %s", devPath)
+			log.Infof("Filesystem issues detected for the device path %s", devPath)
 			return true
 		}
 	} else if fsType == "btrfs" {
-		/*cmd = "btrfs"
-		args = append(args, "check")
-		args = append(args, device.AltFullPathName)
-		err := checkFileSystemCorruption(volumeID, cmd, args)*/
-		log.Errorf("Currently, checking the file corruption of brtfs is not handled by the HPE CSI driver")
+		log.Errorf("Currently, checking btrfs filesystems is not handled by the HPE CSI Driver")
 		return false
 	} else {
-		log.Errorf("File system type is either not specified or invalid for the device path %s", devPath)
+		log.Errorf("Filesystem type is either not specified or invalid for the device path %s", devPath)
 		return false
 	}
 	return false
@@ -750,7 +726,7 @@ func getInfoFromTune2fsOutput(output string, pattern string) string {
 }
 
 func checkFileSystemCorruption(devPath string, cmd string, args []string) error {
-	log.Tracef(">>>>> checkFileSystemCorruption, device path:", devPath, ", cmd: ", cmd, ", args:", args)
+	log.Tracef(">>>>> checkFileSystemCorruption, device path:%s, cmd:%s, args:%s", devPath, cmd, args)
 	defer log.Trace("<<<<< checkFileSystemCorruption")
 	var err error
 	c := exec.Command(cmd, args...)
@@ -776,7 +752,7 @@ func checkFileSystemCorruption(devPath string, cmd string, args []string) error 
 	}
 
 	out := string(b.Bytes())
-	//fmt.Println(out)
+
 	if err != nil {
 		//check the rc of the exec
 		if badnews, ok := err.(*exec.ExitError); ok {
@@ -797,26 +773,20 @@ func repairFileSystem(devPath string, fsType string) error {
 	if fsType == "ext2" || fsType == "ext3" || fsType == "ext4" {
 		err := repairFsckFileSystem(devPath)
 		if err != nil {
-			log.Errorf("Failed to repair the file system of the device path %s due to the error %v", devPath, err)
+			log.Errorf("Failed to repair the filesystem of the device path %s due to the error %v", devPath, err)
 			return err
 		}
-		log.Info("Succesfully repaired the file system of the device path %s", devPath)
+		log.Infof("Succesfully repaired the filesystem on the device path %s", devPath)
 	} else if fsType == "xfs" {
 		err := executeFileSystemRepairCommand(devPath, "xfs", "xfs_repair", []string{devPath})
 		if err != nil {
-			return fmt.Errorf("Failed to repair the xfs file system of the device path %s due to the error %v", devPath, err)
+			return fmt.Errorf("Failed to repair the XFS filesystem of the device path %s due to the error %v", devPath, err)
 		}
-		log.Infof("XFS Filesystem of the device %s is repaied successfully", devPath)
+		log.Infof("XFS filesystem on the device path %s was repaired successfully", devPath)
 	} else if fsType == "btrfs" {
-		/*err := executeFileSystemRepairCommand(devPath, "btrfts", "btrfts", []string{"check", "--repair", device.AltFullPathName})
-		if err != nil {
-			return fmt.Errorf("Failed to repair the btrfs file system of the device %s for the volume %s due to the error %v", device.AltFullPathName, volumeID, err)
-		}
-
-		log.Infof("Btrfs Filesystem of the device %s is repaied successfully for the volume %s", device.AltFullPathName, volumeID)*/
-		return fmt.Errorf("Currently, repairing of btrfs file corruption is not handled by the HPE CSI driver.")
+		return fmt.Errorf("Currently, repairing btrfs filesystems is not handled by the HPE CSI Driver.")
 	} else {
-		return fmt.Errorf("File system type is either not specified or invalid for the device path %s", devPath)
+		return fmt.Errorf("Filesystem type is either not specified or invalid for the device path %s", devPath)
 	}
 
 	return nil
@@ -884,7 +854,7 @@ func repairFsckFileSystem(devPath string) error {
 }
 
 func executeFileSystemRepairCommand(devPath string, fsType string, cmd string, args []string) error {
-	log.Tracef(">>>>> executeFileSystemRepairCommand for file system %s, device path: %s", fsType, fsType, devPath)
+	log.Tracef(">>>>> executeFileSystemRepairCommand for file system %s, device path: %s", fsType, devPath)
 	var err error
 	c := exec.Command(cmd, args...)
 	var b bytes.Buffer
@@ -974,8 +944,8 @@ func GetFilesystemType(devPath string) (string, error) {
 	return "", nil
 }
 
-func mountForPartition(devPath, mountPoint string, options []string, fsType string, fsRepairKey string) (mount *model.Mount, err error) {
-	log.Tracef("mountForPartition called for %s, %s and %s file system with the fsRepairKey set to %s", devPath, mountPoint, fsType, fsRepairKey)
+func mountForPartition(devPath, mountPoint string, options []string) (mount *model.Mount, err error) {
+	log.Tracef("mountForPartition called for %s on %s", devPath, mountPoint)
 	// check if there are partitions
 	mount = nil
 	deviceParitionInfos, _ := GetPartitionInfo(&model.Device{AltFullPathName: devPath})
@@ -984,7 +954,7 @@ func mountForPartition(devPath, mountPoint string, options []string, fsType stri
 		if largestPartition != nil {
 			log.Tracef("%s could not be mounted, but partition(s) were found %v", devPath, largestPartition)
 			// lsblk talks in terms of dev mapper
-			mount, err = performMount(devMapperPath+largestPartition.Name, mountPoint, options, fsType, fsRepairKey)
+			mount, err = performMount(devMapperPath+largestPartition.Name, mountPoint, options)
 			if err != nil {
 				return nil, err
 			}
@@ -1240,8 +1210,8 @@ func SetupFilesystemWithOptions(device *model.Device, filesystemType string, opt
 }
 
 // SetupMount creates the mountpoint with mount options
-func SetupMount(device *model.Device, mountPoint string, mountOptions []string, fsType string, fsRepairKey string) (*model.Mount, error) {
-	log.Tracef(">>>>> SetupMount, device: %+v, mountPoint: %s, mountOptions: %v, fsType: %s, fsRepairKey: %s", device, mountPoint, mountOptions, fsType, fsRepairKey)
+func SetupMount(device *model.Device, mountPoint string, mountOptions []string) (*model.Mount, error) {
+	log.Tracef(">>>>> SetupMount, device: %+v, mountPoint: %s, mountOptions: %v", device, mountPoint, mountOptions)
 	defer log.Trace("<<<<< SetupMount")
 
 	devPath := device.AltFullPathName
@@ -1250,7 +1220,7 @@ func SetupMount(device *model.Device, mountPoint string, mountOptions []string, 
 	}
 
 	// Mount device
-	mount, err := MountDevice(device, mountPoint, mountOptions, fsType, fsRepairKey)
+	mount, err := MountDevice(device, mountPoint, mountOptions)
 	if err != nil {
 		return nil, fmt.Errorf("Error mounting device %s on mountpoint %s with options %v, %v", device.AltFullPathName, mountPoint, mountOptions, err.Error())
 	}
