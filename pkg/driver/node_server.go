@@ -467,32 +467,29 @@ func (driver *Driver) stageVolume(
 	mount, err := driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
 		mountInfo.MountOptions, mountInfo.FilesystemOptions, fsRepairValue)
 	if err != nil {
-		/*log.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
-		//Check if the return code is 32, so that file system corruption can be checked
-		if strings.Contains(err.Error(), "command mount failed with rc=32") {
-			//Check whether file system is corrupted or not
-			if driver.chapiDriver.IsFileSystemCorrupted(volumeID, device, mountInfo.FilesystemOptions) {
-				if volumeContext[fsRepairKey] != "" && volumeContext[fsRepairKey] == trueKey {
-					log.Debug("Attempting to repair the file system.....")
-					err = driver.chapiDriver.RepairFileSystem(volumeID, device, mountInfo.FilesystemOptions)
-					if err != nil {
-						return nil, fmt.Errorf("Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
-					}
-					log.Infof("Re-trying to mount after reparing the file system of the volume %s", volumeID)
-					mount, err = driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
-						mountInfo.MountOptions, mountInfo.FilesystemOptions, fsRepairValue)
-					if err != nil {
-						return nil, fmt.Errorf("Failed to mount device %s again, %v", device.AltFullPathName, err.Error())
-					}
-				} else {
-					return nil, fmt.Errorf("File system can not be repaired for the volume %s as the fsRepair parameters is not set in the StorageClass.", volumeID)
+		log.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
+
+		//Check whether file system is corrupted or not
+		if driver.chapiDriver.IsFileSystemCorrupted(volumeID, device, mountInfo.FilesystemOptions) {
+			if volumeContext[fsRepairKey] != "" && volumeContext[fsRepairKey] == trueKey {
+				log.Debug("Attempting to repair the file system.....")
+				err = driver.chapiDriver.RepairFileSystem(volumeID, device, mountInfo.FilesystemOptions)
+				if err != nil {
+					return nil, fmt.Errorf("Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
+				}
+				log.Infof("Re-trying to mount after reparing the file system of the volume %s", volumeID)
+				mount, err = driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
+					mountInfo.MountOptions, mountInfo.FilesystemOptions, fsRepairValue)
+				if err != nil {
+					return nil, fmt.Errorf("Failed to mount device %s again, %v", device.AltFullPathName, err.Error())
 				}
 			} else {
-				return nil, fmt.Errorf("File corruption is not detected. Failed to mount device %s, %v", device.AltFullPathName, err.Error())
+				return nil, fmt.Errorf("File system can not be repaired for the volume %s as the fsRepair parameters is not set in the StorageClass.", volumeID)
 			}
 		} else {
-			return nil, fmt.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
-		}*/
+			return nil, fmt.Errorf("File corruption is not detected. Failed to mount device %s, %v", device.AltFullPathName, err.Error())
+		}
+
 		return nil, fmt.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
 	}
 	log.Tracef("Device %s mounted successfully, Mount: %+v", device.AltFullPathName, mount)
@@ -762,7 +759,8 @@ func getEphemeralVolName(podName string, volumeHandle string) string {
 // if the volume has MULTI_NODE capability (i.e., access_mode is either MULTI_NODE_READER_ONLY, MULTI_NODE_SINGLE_WRITER or MULTI_NODE_MULTI_WRITER).
 // The following table shows what the Plugin SHOULD return when receiving a second NodePublishVolume on the same volume on the same node:
 //
-// 					T1=T2, P1=P2		T1=T2, P1!=P2		T1!=T2, P1=P2			T1!=T2, P1!=P2
+//	T1=T2, P1=P2		T1=T2, P1!=P2		T1!=T2, P1=P2			T1!=T2, P1!=P2
+//
 // MULTI_NODE		OK (idempotent)		ALREADY_EXISTS		OK						OK
 // Non MULTI_NODE	OK (idempotent)		ALREADY_EXISTS		FAILED_PRECONDITION		FAILED_PRECONDITION
 func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
@@ -1892,8 +1890,9 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 // NodeExpandVolume ONLY supports expansion of already node-published or node-staged volumes on the given volume_path.
 //
 // If plugin has STAGE_UNSTAGE_VOLUME node capability then:
-//  - NodeExpandVolume MUST be called after successful NodeStageVolume.
-//  - NodeExpandVolume MAY be called before or after NodePublishVolume.
+//   - NodeExpandVolume MUST be called after successful NodeStageVolume.
+//   - NodeExpandVolume MAY be called before or after NodePublishVolume.
+//
 // Otherwise NodeExpandVolume MUST be called after successful NodePublishVolume.
 // Handles both filesystem type device and raw block device
 // TODO assuming expand to underlying device size irrespective of provided capacity range. Need to add support of FS resize to fixed capacity eventhough underlying device is much bigger.
