@@ -113,7 +113,7 @@ github.com/google/uuid
 # github.com/gorilla/mux v1.8.0
 ## explicit; go 1.12
 github.com/gorilla/mux
-# github.com/hpe-storage/common-host-libs v0.0.0-20240118164757-65eb0171b2ca => ../ay-common-host-libs
+# github.com/hpe-storage/common-host-libs v0.0.0-20240118164757-65eb0171b2ca
 ## explicit; go 1.19
 github.com/hpe-storage/common-host-libs/chapi
 github.com/hpe-storage/common-host-libs/concurrent
@@ -940,4 +940,3 @@ sigs.k8s.io/yaml
 # k8s.io/sample-cli-plugin => k8s.io/sample-cli-plugin v0.25.16
 # k8s.io/sample-controller => k8s.io/sample-controller v0.25.16
 # k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20230525220651-2546d827e515
-# github.com/hpe-storage/common-host-libs => ../ay-common-host-libs
