@@ -477,7 +477,7 @@ func (driver *Driver) stageVolume(
 				}
 				log.Infof("Retrying to mount after successfully reparing the file system of the volume %s", volumeID)
 				mount, err = driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
-					mountInfo.MountOptions, mountInfo.FilesystemOptions, fsRepairValue)
+					mountInfo.MountOptions, mountInfo.FilesystemOptions)
 				if err != nil {
 					return nil, fmt.Errorf("Failed to mount device %s again after successful repair: %v", device.AltFullPathName, err.Error())
 				}

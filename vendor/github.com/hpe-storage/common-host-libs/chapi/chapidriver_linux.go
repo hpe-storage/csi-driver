@@ -300,14 +300,14 @@ func (driver *LinuxDriver) IsFileSystemCorrupted(volumeID string, device *model.
 		fileSystemType := fsOpts.Type
 		var cmd string
 		var args []string
-		log.Debugf("Filesystem of the volume %s is %s", volumeID, fileSystemType)
+		log.Debugf("File system of the volume %s is %s", volumeID, fileSystemType)
 		if fileSystemType == "ext2" || fileSystemType == "ext3" || fileSystemType == "ext4" {
 			cmd = "tune2fs"
 			args = append(args, "-l")
 			args = append(args, device.AltFullPathName)
 			output, _, err := util.ExecCommandOutput(cmd, args)
 			if err != nil || (output != "" && getInfoFromTune2fsOutput(output, "Filesystem state") != "clean") {
-				log.Debugf("Filesystem state is not clean, checking the filesystem corruption using fsck command for the volume %s", volumeID)
+				log.Debugf("File system state is not clean, checking the file system corruption using fsck command for the volume %s", volumeID)
 				cmd = "fsck"
 				args = append(args, "-n")
 				args = append(args, device.AltFullPathName)
@@ -330,11 +330,11 @@ func (driver *LinuxDriver) IsFileSystemCorrupted(volumeID string, device *model.
 			log.Errorf("Currently, checking btrfs filesystems is not handled by the HPE CSI Driver")
 			return false
 		} else {
-			log.Errorf("Filesystem type is either not specified or invalid for the volume %s", volumeID)
+			log.Errorf("File system type is either not specified or invalid for the volume %s", volumeID)
 			return false
 		}
 	} else {
-		log.Errorf("No filesystem options specified for the volume %s", volumeID)
+		log.Errorf("No file system options specified for the volume %s", volumeID)
 		return false
 	}
 	return false
@@ -411,23 +411,23 @@ func (driver *LinuxDriver) RepairFileSystem(volumeID string, device *model.Devic
 		if fileSystemType == "ext2" || fileSystemType == "ext3" || fileSystemType == "ext4" {
 			err := repairFsckFileSystem(volumeID, device)
 			if err != nil {
-				log.Errorf("Failed to repair the %s filesystem for the volume %s due to the error %v", fileSystemType, volumeID, err)
+				log.Errorf("Failed to repair the %s file system for the volume %s due to the error %v", fileSystemType, volumeID, err)
 				return err
 			}
 			log.Infof("Succesfully repaired the filesystem for the volume %s", volumeID)
 		} else if fileSystemType == "xfs" {
 			err := executeFileSystemRepairCommand(volumeID, device, "xfs", "xfs_repair", []string{device.AltFullPathName})
 			if err != nil {
-				return fmt.Errorf("Failed to repair the XFS filesystem of the device %s for the volume %s due to the error %v", device.AltFullPathName, volumeID, err)
+				return fmt.Errorf("Failed to repair the xfs file system of the device %s for the volume %s due to the error %v", device.AltFullPathName, volumeID, err)
 			}
 			log.Infof("XFS filesystem of the device %s was repaired successfully for the volume %s", device.AltFullPathName, volumeID)
 		} else if fileSystemType == "btrfs" {
 			return fmt.Errorf("Currently, repairing of btrfs filesystems is not handled by the HPE CSI Driver.")
 		} else {
-			return fmt.Errorf("Filesystem type is either not specified or invalid for the volume %s", volumeID)
+			return fmt.Errorf("File system type is either not specified or invalid for the volume %s", volumeID)
 		}
 	} else {
-		return fmt.Errorf("No filesystem options specified for the volume %s", volumeID)
+		return fmt.Errorf("No file system options specified for the volume %s", volumeID)
 	}
 	return nil
 }
@@ -494,7 +494,7 @@ func repairFsckFileSystem(volumeID string, device *model.Device) error {
 }
 
 func executeFileSystemRepairCommand(volumeID string, device *model.Device, fsType string, cmd string, args []string) error {
-	log.Tracef(">>>>> executeFileSystemRepairCommand for filesystem %s, volumeID: %s, device: %+v", fsType, volumeID, device)
+	log.Tracef(">>>>> executeFileSystemRepairCommand for file system %s, volumeID: %s, device: %+v", fsType, volumeID, device)
 	var err error
 	c := exec.Command(cmd, args...)
 	var b bytes.Buffer
