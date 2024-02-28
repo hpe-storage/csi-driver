@@ -525,6 +525,7 @@ func (driver *Driver) setupDevice(
 			}
 			log.Infof("Using chap credentials from node %s", nodeID)
 		}
+
 	}
 
 	// Cleanup any stale device existing before stage
@@ -2049,20 +2050,20 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 
 	var iqns []*string
 	var wwpns []*string
-	var chapUsername string
-	var chapPassword string
+	// var chapUsername string
+	// var chapPassword string
 	for _, initiator := range initiators {
 		if initiator.Type == iscsi {
 			for i := 0; i < len(initiator.Init); i++ {
 				iqns = append(iqns, &initiator.Init[i])
 				// we support only single host initiator
 				// check if CHAP credentials is set through configMap, ignore iscsid.conf reference
-				envChapUser := driver.flavor.GetChapUserFromEnvironment()
-				envChapPassword := driver.flavor.GetChapPasswordFromEnvironment()
-				if envChapUser != "" && envChapPassword != "" {
-					chapUsername = envChapUser
-					chapPassword = envChapPassword
-				}
+				// envChapUser := driver.flavor.GetChapUserFromEnvironment()
+				// envChapPassword := driver.flavor.GetChapPasswordFromEnvironment()
+				// if envChapUser != "" && envChapPassword != "" {
+				// 	chapUsername = envChapUser
+				// 	chapPassword = envChapPassword
+				// }
 			}
 		} else {
 			for i := 0; i < len(initiator.Init); i++ {
@@ -2081,13 +2082,13 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 	}
 
 	node := &model.Node{
-		Name:         hostNameAndDomain[0],
-		UUID:         host.UUID,
-		Iqns:         iqns,
-		Networks:     cidrNetworks,
-		Wwpns:        wwpns,
-		ChapUser:     chapUsername,
-		ChapPassword: chapPassword,
+		Name:     hostNameAndDomain[0],
+		UUID:     host.UUID,
+		Iqns:     iqns,
+		Networks: cidrNetworks,
+		Wwpns:    wwpns,
+		// ChapUser:     chapUsername,
+		// ChapPassword: chapPassword,
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)
