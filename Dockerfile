@@ -32,7 +32,7 @@ RUN ln -s /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \
       vendor="HPE" \
-      version="2.4.1-beta2" \
+      version="2.4.1" \
       summary="HPE CSI Driver for Kubernetes" \
       description="The HPE CSI Driver for Kubernetes enables container orchestrators, such as Kubernetes and OpenShift, to manage the life-cycle of persistent storage." \
       io.k8s.display-name="HPE CSI Driver for Kubernetes" \
