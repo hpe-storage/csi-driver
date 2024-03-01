@@ -152,7 +152,7 @@ func (flavor *Flavor) GetChapUserFromEnvironment() string {
 }
 
 func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
-	log.Tracef("Found Chap passwrod from env %s", os.Getenv(chapPasswordEnvKey))
+	fmt.Sprintf("Found Chap passwrod from env %s", os.Getenv(chapPasswordEnvKey))
 	return os.Getenv(chapPasswordEnvKey)
 }
 
