@@ -152,6 +152,7 @@ func (flavor *Flavor) GetChapUserFromEnvironment() string {
 }
 
 func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
+	log.Tracef("Found Chap passwrod from env %s", os.Getenv(chapPasswordEnvKey))
 	return os.Getenv(chapPasswordEnvKey)
 }
 
@@ -250,7 +251,7 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			// no update needed to existing CRD
 			return node.UUID, nil
 		}
-		log.Infof("updating Node %s with iqns %v wwpns %v networks %v chapuser %s",
+		log.Infof("updating Node %s with iqns %v wwpns %v networks %v",
 			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.WWPNs, nodeInfo.Spec.Networks)
 		_, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
 		if err != nil {

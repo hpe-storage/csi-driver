@@ -517,6 +517,8 @@ func (driver *Driver) setupDevice(
 		if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
 			// Decode chap password
 			decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
+
+			log.Tracef("Chap username %s, chap password %s", nodeInfo.ChapUser, nodeInfo.ChapPassword)
 			nodeInfo.ChapPassword = string(decodedChapPassword)
 
 			volume.Chap = &model.ChapInfo{

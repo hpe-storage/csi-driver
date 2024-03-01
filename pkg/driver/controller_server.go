@@ -824,6 +824,7 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	if node.ChapUser != "" && node.ChapPassword != "" {
+		log.Tracef("Found Chap creds, ChapUser=%s chapPassword=%s", node.ChapUser, node.ChapPassword)
 		decodedChapPassword, _ := b64.StdEncoding.DecodeString(node.ChapPassword)
 		node.ChapPassword = string(decodedChapPassword)
 	}
