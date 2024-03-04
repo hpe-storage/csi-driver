@@ -28,10 +28,10 @@ type HPENodeInfoList struct {
 
 // HPENodeInfoSpec defines the properties listed on an HPENodeInfo
 type HPENodeInfoSpec struct {
-	UUID     string   `json:"uuid"`
-	IQNs     []string `json:"iqns,omitempty"`
-	Networks []string `json:"networks,omitempty"`
-	WWPNs    []string `json:"wwpns,omitempty"`
+	UUID         string   `json:"uuid"`
+	IQNs         []string `json:"iqns,omitempty"`
+	Networks     []string `json:"networks,omitempty"`
+	WWPNs        []string `json:"wwpns,omitempty"`
 	ChapUser     string   `json:"chapUser,omitempty"`
 	ChapPassword string   `json:"chapPassword,omitempty"`
 }
