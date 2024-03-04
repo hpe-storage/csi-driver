@@ -3,7 +3,7 @@ ifndef REPO_NAME
 	REPO_NAME ?= hpestorage/csi-driver
 endif
 
-TAG = edge
+TAG = edge-1
 
 ARCH ?= amd64
 

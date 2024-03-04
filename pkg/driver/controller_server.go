@@ -4,7 +4,6 @@
 package driver
 
 import (
-	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -825,8 +824,8 @@ func (driver *Driver) controllerPublishVolume(
 
 	if node.ChapUser != "" && node.ChapPassword != "" {
 		fmt.Sprintf("Found Chap creds, ChapUser=%s chapPassword=%s", node.ChapUser, node.ChapPassword)
-		decodedChapPassword, _ := b64.StdEncoding.DecodeString(node.ChapPassword)
-		node.ChapPassword = string(decodedChapPassword)
+		//decodedChapPassword, _ := node.ChapPassword
+		node.ChapPassword = node.ChapPassword
 	}
 
 	// Get storageProvider using secrets
