@@ -823,8 +823,7 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	if node.ChapUser != "" && node.ChapPassword != "" {
-		fmt.Sprintf("Found Chap creds, ChapUser=%s chapPassword=%s", node.ChapUser, node.ChapPassword)
-		//decodedChapPassword, _ := node.ChapPassword
+		fmt.Sprintf("Found Chap creds, ChapUser=%s", node.ChapUser)
 		node.ChapPassword = node.ChapPassword
 	}
 
