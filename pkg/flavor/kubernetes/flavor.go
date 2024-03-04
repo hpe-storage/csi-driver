@@ -152,7 +152,6 @@ func (flavor *Flavor) GetChapUserFromEnvironment() string {
 }
 
 func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
-	fmt.Sprintf("Found Chap passwrod from env %s", os.Getenv(chapPasswordEnvKey))
 	return os.Getenv(chapPasswordEnvKey)
 }
 
@@ -235,18 +234,6 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			updateNodeRequired = true
 		}
 
-		// chapUser := flavor.GetChapUserFromEnvironment()
-		// if !reflect.DeepEqual(nodeInfo.Spec.ChapUser, chapUser) {
-		// 	nodeInfo.Spec.ChapUser = chapUser
-		// 	updateNodeRequired = true
-		// }
-
-		// chapPassword := flavor.GetChapPasswordFromEnvironment()
-		// if !reflect.DeepEqual(nodeInfo.Spec.ChapPassword, b64.StdEncoding.EncodeToString([]byte(chapPassword))) {
-		// 	nodeInfo.Spec.ChapPassword = b64.StdEncoding.EncodeToString([]byte(chapPassword))
-		// 	updateNodeRequired = true
-		// }
-
 		if !updateNodeRequired {
 			// no update needed to existing CRD
 			return node.UUID, nil
@@ -269,8 +256,6 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 				IQNs:     getIqnsFromNode(node),
 				Networks: getNetworksFromNode(node),
 				WWPNs:    getWwpnsFromNode(node),
-				// ChapUser:     node.ChapUser,
-				// ChapPassword: b64.StdEncoding.EncodeToString([]byte(node.ChapPassword)),
 			},
 		}
 
