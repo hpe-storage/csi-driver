@@ -504,13 +504,15 @@ func (provider *ContainerStorageProvider) DeleteVolume(id string, force bool) er
 }
 
 // PublishVolume will make a volume visible (add an ACL) to the given host
-func (provider *ContainerStorageProvider) PublishVolume(id, hostUUID, accessProtocol string) (*model.PublishInfo, error) {
+func (provider *ContainerStorageProvider) PublishVolume(id, hostUUID, accessProtocol string, chapUser string, chapPassword string) (*model.PublishInfo, error) {
 	response := &model.PublishInfo{}
 	var errorResponse *ErrorsPayload
 
 	publishOptions := &model.PublishOptions{
 		HostUUID:       hostUUID,
 		AccessProtocol: accessProtocol,
+		ChapUser:       chapUser,
+		ChapPassword:   chapPassword,
 	}
 
 	status, err := provider.invoke(
