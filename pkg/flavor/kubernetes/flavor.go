@@ -322,6 +322,18 @@ func (flavor *Flavor) UnloadNodeInfo() {
 	}
 }
 
+func (flavor *Flavor) GetNodeLabelsByName(name string) (map[string]string, error) {
+	log.Tracef(">>>>>> GetNodeLabelsByName with name %s", name)
+	defer log.Trace("<<<<<< GetNodeLabelsByName")
+
+	node, err := flavor.GetNodeByName(name)
+	if err != nil {
+		return nil, fmt.Errorf("error getting node labels by node name: %v", err.Error())
+	}
+
+	return node.Labels, nil
+}
+
 // GetNodeInfo retrieves the Node identified by nodeID from the list of CRDs
 func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 	log.Tracef(">>>>>> GetNodeInfo from node ID %s", nodeID)
