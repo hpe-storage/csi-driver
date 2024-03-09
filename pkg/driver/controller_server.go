@@ -4,6 +4,7 @@
 package driver
 
 import (
+	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -822,9 +823,12 @@ func (driver *Driver) controllerPublishVolume(
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
+	encodedChapPassword := ""
 	if node.ChapUser != "" && node.ChapPassword != "" {
 		fmt.Sprintf("Found Chap creds, ChapUser=%s", node.ChapUser)
-		node.ChapPassword = node.ChapPassword
+		encodedChapPassword = b64.StdEncoding.EncodeToString([]byte(node.ChapPassword))
+		node.ChapPassword = string(encodedChapPassword)
+		//		node.ChapPassword = node.ChapPassword
 	}
 
 	// Get storageProvider using secrets
@@ -865,8 +869,9 @@ func (driver *Driver) controllerPublishVolume(
 		log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
 	}
 
-	// Add ACL to the volume based on the requested Node ID
-	publishInfo, err := storageProvider.PublishVolume(volume.ID, node.UUID, requestedAccessProtocol, node.ChapUser, node.ChapPassword)
+	// Add ACL to the volume based on the requested Node
+
+	publishInfo, err := storageProvider.PublishVolume(volume.ID, node.UUID, requestedAccessProtocol, node.ChapUser, encodedChapPassword)
 	if err != nil {
 		log.Errorf("Failed to publish volume %s, err: %s", volume.ID, err.Error())
 		return nil, status.Error(codes.Internal,

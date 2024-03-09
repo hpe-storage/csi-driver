@@ -515,11 +515,12 @@ func (driver *Driver) setupDevice(
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
-			// Decode chap password
-			decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
+			// Encode chap password
+			//encodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
+			encodedChapPassword := b64.StdEncoding.EncodeToString([]byte(nodeInfo.ChapPassword))
 
 			log.Tracef("Found chap settings(username %s) for volume %s", nodeInfo.ChapUser, volume.Name)
-			nodeInfo.ChapPassword = string(decodedChapPassword)
+			nodeInfo.ChapPassword = string(encodedChapPassword)
 
 			volume.Chap = &model.ChapInfo{
 				Name:     nodeInfo.ChapUser,
