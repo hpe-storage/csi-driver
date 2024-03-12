@@ -825,10 +825,11 @@ func (driver *Driver) controllerPublishVolume(
 
 	encodedChapPassword := ""
 	if node.ChapUser != "" && node.ChapPassword != "" {
-		fmt.Sprintf("Found Chap creds, ChapUser=%s", node.ChapUser)
+		fmt.Sprintf("Found Chap creds, ChapUser=%s, chapPassword=%s", node.ChapUser, node.ChapPassword)
 		encodedChapPassword = b64.StdEncoding.EncodeToString([]byte(node.ChapPassword))
 		node.ChapPassword = string(encodedChapPassword)
 		//		node.ChapPassword = node.ChapPassword
+		fmt.Sprintf("Found Chap creds, ChapUser=%s, chapPassword=%s", node.ChapUser, node.ChapPassword)
 	}
 
 	// Get storageProvider using secrets
@@ -871,7 +872,7 @@ func (driver *Driver) controllerPublishVolume(
 
 	// Add ACL to the volume based on the requested Node
 
-	publishInfo, err := storageProvider.PublishVolume(volume.ID, node.UUID, requestedAccessProtocol, node.ChapUser, encodedChapPassword)
+	publishInfo, err := storageProvider.PublishVolume(volume.ID, node.UUID, requestedAccessProtocol, node.ChapUser, node.ChapPassword)
 	if err != nil {
 		log.Errorf("Failed to publish volume %s, err: %s", volume.ID, err.Error())
 		return nil, status.Error(codes.Internal,
