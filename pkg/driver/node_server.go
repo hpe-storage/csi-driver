@@ -4,7 +4,6 @@
 package driver
 
 import (
-	b64 "encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -517,10 +516,10 @@ func (driver *Driver) setupDevice(
 		if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
 			// Encode chap password
 			//encodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
-			encodedChapPassword := b64.StdEncoding.EncodeToString([]byte(nodeInfo.ChapPassword))
+			//encodedChapPassword := b64.StdEncoding.EncodeToString([]byte(nodeInfo.ChapPassword))
 
-			log.Tracef("Found chap settings(username %s) for volume %s", nodeInfo.ChapUser, volume.Name)
-			nodeInfo.ChapPassword = string(encodedChapPassword)
+			log.Tracef("Found chap settings(username %s password %s) for volume %s", nodeInfo.ChapUser, nodeInfo.ChapPassword, volume.Name)
+			//			nodeInfo.ChapPassword = string(encodedChapPassword)
 
 			volume.Chap = &model.ChapInfo{
 				Name:     nodeInfo.ChapUser,
