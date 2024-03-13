@@ -344,9 +344,6 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 				ChapUser:     flavor.GetChapUserFromEnvironment(),
 				ChapPassword: flavor.GetChapPasswordFromEnvironment(),
 			}
-			log.Tracef(">>>>> GetNodeInfo return with node %v", node)
-			defer log.Trace("<<<<< GetNodeInfo")
-
 			return node, nil
 		}
 	}

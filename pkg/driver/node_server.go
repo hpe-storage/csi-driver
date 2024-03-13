@@ -514,18 +514,11 @@ func (driver *Driver) setupDevice(
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
-			// Encode chap password
-			//encodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
-			//encodedChapPassword := b64.StdEncoding.EncodeToString([]byte(nodeInfo.ChapPassword))
-
-			log.Tracef("Found chap settings(username %s password %s) for volume %s", nodeInfo.ChapUser, nodeInfo.ChapPassword, volume.Name)
-			//			nodeInfo.ChapPassword = string(encodedChapPassword)
-
+			log.Tracef("Found chap settings(username %s) for volume %s", nodeInfo.ChapUser, volume.Name)
 			volume.Chap = &model.ChapInfo{
 				Name:     nodeInfo.ChapUser,
 				Password: nodeInfo.ChapPassword,
 			}
-			log.Infof("Using chap credentials from node %s", nodeID)
 		}
 
 	}
@@ -2074,11 +2067,13 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 	}
 
 	node := &model.Node{
-		Name:     hostNameAndDomain[0],
-		UUID:     host.UUID,
-		Iqns:     iqns,
-		Networks: cidrNetworks,
-		Wwpns:    wwpns,
+		Name:         hostNameAndDomain[0],
+		UUID:         host.UUID,
+		Iqns:         iqns,
+		Networks:     cidrNetworks,
+		Wwpns:        wwpns,
+		ChapUser:     driver.flavor.GetChapUserFromEnvironment(),
+		ChapPassword: driver.flavor.GetChapPasswordFromEnvironment(),
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)
