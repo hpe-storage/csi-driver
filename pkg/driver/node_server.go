@@ -4,7 +4,6 @@
 package driver
 
 import (
-	b64 "encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -515,16 +514,13 @@ func (driver *Driver) setupDevice(
 			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
-			// Decode chap password
-			decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
-			nodeInfo.ChapPassword = string(decodedChapPassword)
-
+			log.Tracef("Found chap settings(username %s) for volume %s", nodeInfo.ChapUser, volume.Name)
 			volume.Chap = &model.ChapInfo{
 				Name:     nodeInfo.ChapUser,
 				Password: nodeInfo.ChapPassword,
 			}
-			log.Infof("Using chap credentials from node %s", nodeID)
 		}
+
 	}
 
 	// Cleanup any stale device existing before stage
@@ -2049,20 +2045,10 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 
 	var iqns []*string
 	var wwpns []*string
-	var chapUsername string
-	var chapPassword string
 	for _, initiator := range initiators {
 		if initiator.Type == iscsi {
 			for i := 0; i < len(initiator.Init); i++ {
 				iqns = append(iqns, &initiator.Init[i])
-				// we support only single host initiator
-				// check if CHAP credentials is set through configMap, ignore iscsid.conf reference
-				envChapUser := driver.flavor.GetChapUserFromEnvironment()
-				envChapPassword := driver.flavor.GetChapPasswordFromEnvironment()
-				if envChapUser != "" && envChapPassword != "" {
-					chapUsername = envChapUser
-					chapPassword = envChapPassword
-				}
 			}
 		} else {
 			for i := 0; i < len(initiator.Init); i++ {
@@ -2086,8 +2072,8 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 		Iqns:         iqns,
 		Networks:     cidrNetworks,
 		Wwpns:        wwpns,
-		ChapUser:     chapUsername,
-		ChapPassword: chapPassword,
+		ChapUser:     driver.flavor.GetChapUserFromEnvironment(),
+		ChapPassword: driver.flavor.GetChapPasswordFromEnvironment(),
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)
