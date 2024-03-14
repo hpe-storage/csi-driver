@@ -824,8 +824,9 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	if node.ChapUser != "" && node.ChapPassword != "" {
-		decodedChapPassword, _ := b64.StdEncoding.DecodeString(node.ChapPassword)
-		node.ChapPassword = string(decodedChapPassword)
+		fmt.Sprintf("Found Chap creds, ChapUser=%s", node.ChapUser)
+		encodedChapPassword := b64.StdEncoding.EncodeToString([]byte(node.ChapPassword))
+		node.ChapPassword = string(encodedChapPassword)
 	}
 
 	// Get storageProvider using secrets
@@ -866,8 +867,8 @@ func (driver *Driver) controllerPublishVolume(
 		log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
 	}
 
-	// Add ACL to the volume based on the requested Node ID
-	publishInfo, err := storageProvider.PublishVolume(volume.ID, node.UUID, requestedAccessProtocol)
+	// Add ACL to the volume based on the requested Node
+	publishInfo, err := storageProvider.PublishVolume(volume.ID, node.UUID, requestedAccessProtocol, node.ChapUser, node.ChapPassword)
 	if err != nil {
 		log.Errorf("Failed to publish volume %s, err: %s", volume.ID, err.Error())
 		return nil, status.Error(codes.Internal,
