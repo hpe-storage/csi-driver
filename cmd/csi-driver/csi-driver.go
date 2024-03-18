@@ -73,6 +73,7 @@ func init() {
 	RootCmd.PersistentFlags().StringVarP(&dbServer, "dbserver", "s", "", "Database server for the CSI driver")
 	RootCmd.PersistentFlags().StringVarP(&dbPort, "dbport", "p", etcd.DefaultPort, "Database server port for the CSI driver")
 	RootCmd.PersistentFlags().BoolP("node-service", "", false, "CSI node-plugin")
+	RootCmd.PersistentFlags().BoolP("node-monitor", "", false, "Enable monitoring of stale entries on nodes")
 	RootCmd.PersistentFlags().BoolP("help", "h", false, "Show help information")
 	RootCmd.PersistentFlags().StringVarP(&flavorName, "flavor", "f", "", "CSI driver flavor")
 	RootCmd.PersistentFlags().BoolP("pod-monitor", "", false, "Enable monitoring of pod statuses on unreachable nodes")
@@ -93,6 +94,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 	flavorName, _ := cmd.Flags().GetString("flavor")
 	podMonitor, _ := cmd.Flags().GetBool("pod-monitor")
 	podMonitorInterval, _ := cmd.Flags().GetString("pod-monitor-interval")
+	nodeMonitor, _ := cmd.Flags().GetBool("node-monitor")
 
 	// Parse the endpoint
 	_, addr, err := driver.ParseEndpoint(endpoint)
@@ -154,7 +156,8 @@ func csiCliHandler(cmd *cobra.Command) error {
 		dbServer,
 		dbPort,
 		podMonitor,
-		monitorInterval)
+		monitorInterval,
+		nodeMonitor)
 	if err != nil {
 		return fmt.Errorf("Error instantiating plugin %v, Err: %v", driverName, err.Error())
 	}
