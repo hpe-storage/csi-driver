@@ -105,14 +105,21 @@ func (m *NodeMonitor) monitorNode() error {
 					log.Errorf("Error while getting the multipath devices")
 					return
 				}
-				unhealthyDevices, err := tunelinux.GetUnhealthyMultipathDevices(multipathDevices)
-				if err != nil {
-					log.Errorf("Error while retreiving unhealthy devices: %s", err.Error())
-				}
-				if len(unhealthyDevices) > 0 {
-					log.Tracef("Unhealthy devices found on the node %s are: %+v", m.nodeName, unhealthyDevices)
+				if multipathDevices != nil && len(multipathDevices) > 0 {
+					unhealthyDevices, err := tunelinux.GetUnhealthyMultipathDevices(multipathDevices)
+					if err != nil {
+						log.Errorf("Error while retreiving unhealthy multipath devices: %s", err.Error())
+					}
+					log.Tracef("Unhealthy multipath devices found are: %+v", unhealthyDevices)
+					if len(unhealthyDevices) > 0 {
+						log.Tracef("Unhealthy multipath devices found on the node %s", m.nodeName)
+						//Do cleanup
+					} else {
+						log.Tracef("No unhealthy multipath devices found on the node %s", m.nodeName)
+						//check whether they belong to this node or not
+					}
 				} else {
-					log.Tracef("No unhealthy devices found on the node %s", m.nodeName)
+					log.Tracef("No multipath devices found on the node %s", m.nodeName)
 				}
 				log.Infof("NODE MONITOR :Monitoring node......2")
 			case <-m.stopChannel:
