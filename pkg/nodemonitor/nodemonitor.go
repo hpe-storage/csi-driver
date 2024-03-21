@@ -19,11 +19,11 @@ const (
 )
 
 func NewNodeMonitor(flavor flavor.Flavor, monitorInterval int64) *NodeMonitor {
-	m := &NodeMonitor{flavor: flavor, intervalSec: monitorInterval}
+	nm := &NodeMonitor{flavor: flavor, intervalSec: monitorInterval}
 	if key := os.Getenv("NODE_NAME"); key != "" {
-		m.nodeName = key
+		nm.nodeName = key
 	}
-	log.Infof("NODE MONITOR: %+v", m)
+	log.Infof("NODE MONITOR: %+v", nm)
 	// initialize node monitor
 	return m
 }
@@ -40,60 +40,60 @@ type NodeMonitor struct {
 }
 
 // StartMonitor starts the monitor
-func (m *NodeMonitor) StartNodeMonitor() error {
+func (nm *NodeMonitor) StartNodeMonitor() error {
 	log.Trace(">>>>> StartNodeMonitor")
 	defer log.Trace("<<<<< StartNodeMonitor")
 
-	m.lock.Lock()
-	defer m.lock.Unlock()
+	nm.lock.Lock()
+	defer nm.lock.Unlock()
 
-	if m.started {
+	if nm.started {
 		return fmt.Errorf("Node monitor has already been started")
 	}
 
-	if m.intervalSec == 0 {
-		m.intervalSec = defaultIntervalSec
-	} else if m.intervalSec < minimumIntervalSec {
+	if nm.intervalSec == 0 {
+		nm.intervalSec = defaultIntervalSec
+	} else if nm.intervalSec < minimumIntervalSec {
 		log.Warnf("minimum interval for health monitor is %v seconds", minimumIntervalSec)
-		m.intervalSec = minimumIntervalSec
+		nm.intervalSec = minimumIntervalSec
 	}
 
-	m.stopChannel = make(chan int)
-	m.done = make(chan int)
+	nm.stopChannel = make(chan int)
+	nm.done = make(chan int)
 
-	if err := m.monitorNode(); err != nil {
+	if err := nm.monitorNode(); err != nil {
 		return err
 	}
 
-	m.started = true
+	nm.started = true
 	return nil
 }
 
 // StopMonitor stops the monitor
-func (m *NodeMonitor) StopNodeMonitor() error {
+func (nm *NodeMonitor) StopNodeMonitor() error {
 	log.Trace(">>>>> StopNodeMonitor")
 	defer log.Trace("<<<<< StopNodeMonitor")
 
-	m.lock.Lock()
-	defer m.lock.Unlock()
+	nm.lock.Lock()
+	defer nm.lock.Unlock()
 
-	if !m.started {
+	if !nm.started {
 		return fmt.Errorf("Node monitor has not been started")
 	}
 
-	close(m.stopChannel)
-	<-m.done
+	close(nm.stopChannel)
+	<-nm.done
 
-	m.started = false
+	nm.started = false
 	return nil
 }
 
-func (m *NodeMonitor) monitorNode() error {
+func (nm *NodeMonitor) monitorNode() error {
 	log.Trace(">>>>> monitorNode")
 	defer log.Trace("<<<<< monitorNode")
-	defer close(m.done)
+	defer close(nm.done)
 
-	tick := time.NewTicker(time.Duration(m.intervalSec) * time.Second)
+	tick := time.NewTicker(time.Duration(nm.intervalSec) * time.Second)
 
 	go func() {
 		for {
@@ -112,17 +112,17 @@ func (m *NodeMonitor) monitorNode() error {
 					}
 					log.Tracef("Unhealthy multipath devices found are: %+v", unhealthyDevices)
 					if len(unhealthyDevices) > 0 {
-						log.Tracef("Unhealthy multipath devices found on the node %s", m.nodeName)
+						log.Tracef("Unhealthy multipath devices found on the node %s", nm.nodeName)
 						//Do cleanup
 					} else {
-						log.Tracef("No unhealthy multipath devices found on the node %s", m.nodeName)
+						log.Tracef("No unhealthy multipath devices found on the node %s", nm.nodeName)
 						//check whether they belong to this node or not
 					}
 				} else {
-					log.Tracef("No multipath devices found on the node %s", m.nodeName)
+					log.Tracef("No multipath devices found on the node %s", nm.nodeName)
 				}
 				log.Infof("NODE MONITOR :Monitoring node......2")
-			case <-m.stopChannel:
+			case <-nm.stopChannel:
 				return
 			}
 		}
