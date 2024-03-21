@@ -108,7 +108,7 @@ func (nm *NodeMonitor) monitorNode() error {
 				if multipathDevices != nil && len(multipathDevices) > 0 {
 					for _, device := range multipathDevices {
 						//TODO: Assess whether the device belongs to this node or not and whether to do clean up or not
-						log.Tracef("Name:%s Vendor:%s Paths:%f Path Faults:%f UUID:%s IsUnhealthy:%t", device.Name, device.Vendor, device.Paths, device.PathFaults, device.UUID.device.IsUnhealthy)
+						log.Tracef("Name:%s Vendor:%s Paths:%f Path Faults:%f UUID:%s IsUnhealthy:%t", device.Name, device.Vendor, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
 						//Remove Later
 						if device.IsUnhealthy {
 							log.Infof("Multipath device %s is unhealthy and is present on %s node", device.Name, nm.nodeName)
