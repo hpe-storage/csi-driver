@@ -31,6 +31,7 @@ import (
 	"github.com/hpe-storage/csi-driver/pkg/flavor/kubernetes"
 	"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
 	"github.com/hpe-storage/csi-driver/pkg/monitor"
+	"github.com/hpe-storage/csi-driver/pkg/nodemonitor"
 )
 
 const (
@@ -51,6 +52,7 @@ type Driver struct {
 	flavor           flavor.Flavor
 	grpc             NonBlockingGRPCServer
 	podMonitor       *monitor.Monitor
+	nodeMonitor      *nodemonitor.NodeMonitor
 
 	controllerServiceCapabilities     []*csi.ControllerServiceCapability
 	nodeServiceCapabilities           []*csi.NodeServiceCapability
@@ -64,7 +66,7 @@ type Driver struct {
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
-func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval int64) (*Driver, error) {
+func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbServer string, dbPort string, podMonitor bool, podMonitorInterval int64, nodeMonitor bool) (*Driver, error) {
 
 	// Get CSI driver
 	driver := getDriver(name, version, endpoint)
@@ -82,6 +84,10 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 
 	if podMonitor {
 		driver.podMonitor = monitor.NewMonitor(driver.flavor, podMonitorInterval)
+	}
+
+	if nodeMonitor {
+		driver.nodeMonitor = nodemonitor.NewNodeMonitor(driver.flavor, 30)
 	}
 
 	driver.KubeletRootDir = DefaultKubeletRoot
@@ -167,6 +173,9 @@ func (driver *Driver) Start(nodeService bool) error {
 			driver.grpc.Start(driver.endpoint, driver, nil, driver)
 		} else {
 			driver.grpc.Start(driver.endpoint, driver, driver, nil)
+			if driver.nodeMonitor != nil {
+				driver.nodeMonitor.StartNodeMonitor()
+			}
 			// start pod monitor along with controller plugin
 			if driver.podMonitor != nil {
 				driver.podMonitor.StartMonitor()
@@ -184,6 +193,9 @@ func (driver *Driver) Stop(nodeService bool) error {
 	}
 	if driver.podMonitor != nil {
 		driver.podMonitor.StopMonitor()
+	}
+	if driver.nodeMonitor != nil {
+		driver.nodeMonitor.StopNodeMonitor()
 	}
 	return nil
 }

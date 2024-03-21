@@ -19,6 +19,7 @@ import (
 
 	"github.com/hpe-storage/csi-driver/pkg/driver"
 	"github.com/hpe-storage/csi-driver/pkg/flavor"
+	"github.com/hpe-storage/csi-driver/pkg/initcontainer"
 )
 
 const (
@@ -73,6 +74,8 @@ func init() {
 	RootCmd.PersistentFlags().StringVarP(&dbServer, "dbserver", "s", "", "Database server for the CSI driver")
 	RootCmd.PersistentFlags().StringVarP(&dbPort, "dbport", "p", etcd.DefaultPort, "Database server port for the CSI driver")
 	RootCmd.PersistentFlags().BoolP("node-service", "", false, "CSI node-plugin")
+	RootCmd.PersistentFlags().BoolP("node-init", "", false, "CSI node-plugin")
+	RootCmd.PersistentFlags().BoolP("node-monitor", "", false, "Enable monitoring of stale entries on nodes")
 	RootCmd.PersistentFlags().BoolP("help", "h", false, "Show help information")
 	RootCmd.PersistentFlags().StringVarP(&flavorName, "flavor", "f", "", "CSI driver flavor")
 	RootCmd.PersistentFlags().BoolP("pod-monitor", "", false, "Enable monitoring of pod statuses on unreachable nodes")
@@ -87,12 +90,14 @@ func csiCliHandler(cmd *cobra.Command) error {
 	// Process cmd-line arguments for the CSI driver
 	driverName, _ := cmd.Flags().GetString("name")
 	nodeService, _ := cmd.Flags().GetBool("node-service")
+	nodeInit, _ := cmd.Flags().GetBool("node-init")
 	endpoint, _ := cmd.Flags().GetString("endpoint")
 	dbServer, _ := cmd.Flags().GetString("dbserver")
 	dbPort, _ := cmd.Flags().GetString("dbport")
 	flavorName, _ := cmd.Flags().GetString("flavor")
 	podMonitor, _ := cmd.Flags().GetBool("pod-monitor")
 	podMonitorInterval, _ := cmd.Flags().GetString("pod-monitor-interval")
+	nodeMonitor, _ := cmd.Flags().GetBool("node-monitor")
 
 	// Parse the endpoint
 	_, addr, err := driver.ParseEndpoint(endpoint)
@@ -114,6 +119,17 @@ func csiCliHandler(cmd *cobra.Command) error {
 	// Set the flavor
 	if flavorName == "" {
 		flavorName = flavor.Vanilla
+	}
+
+	if nodeInit {
+		log.Infof("NodeInit is set!!!!!!!!!!!!!!!")
+		initContainer := initcontainer.NewInitContainer(flavorName, nodeService)
+		err := initContainer.Init()
+		if err != nil {
+			log.Errorf("Error while running the init container logic: %s", err.Error())
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
 	if nodeService {
@@ -154,7 +170,8 @@ func csiCliHandler(cmd *cobra.Command) error {
 		dbServer,
 		dbPort,
 		podMonitor,
-		monitorInterval)
+		monitorInterval,
+		nodeMonitor)
 	if err != nil {
 		return fmt.Errorf("Error instantiating plugin %v, Err: %v", driverName, err.Error())
 	}
