@@ -32,12 +32,13 @@ const (
 
 var (
 	// Flag variables for the command options
-	name               string
-	endpoint           string
-	dbServer           string
-	dbPort             string
-	flavorName         string
-	podMonitorInterval string
+	name                string
+	endpoint            string
+	dbServer            string
+	dbPort              string
+	flavorName          string
+	podMonitorInterval  string
+	nodeMonitorInterval string
 
 	// RootCmd is the main CSI command
 	RootCmd = &cobra.Command{
@@ -75,7 +76,8 @@ func init() {
 	RootCmd.PersistentFlags().StringVarP(&dbPort, "dbport", "p", etcd.DefaultPort, "Database server port for the CSI driver")
 	RootCmd.PersistentFlags().BoolP("node-service", "", false, "CSI node-plugin")
 	RootCmd.PersistentFlags().BoolP("node-init", "", false, "CSI node-plugin")
-	RootCmd.PersistentFlags().BoolP("node-monitor", "", false, "Enable monitoring of stale entries on nodes")
+	RootCmd.PersistentFlags().BoolP("node-monitor", "", false, "Enable monitoring the node")
+	RootCmd.PersistentFlags().StringVarP(&nodeMonitorInterval, "node-monitor-interval", "", "30", "Interval in seconds to monitor the node")
 	RootCmd.PersistentFlags().BoolP("help", "h", false, "Show help information")
 	RootCmd.PersistentFlags().StringVarP(&flavorName, "flavor", "f", "", "CSI driver flavor")
 	RootCmd.PersistentFlags().BoolP("pod-monitor", "", false, "Enable monitoring of pod statuses on unreachable nodes")
@@ -98,6 +100,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 	podMonitor, _ := cmd.Flags().GetBool("pod-monitor")
 	podMonitorInterval, _ := cmd.Flags().GetString("pod-monitor-interval")
 	nodeMonitor, _ := cmd.Flags().GetBool("node-monitor")
+	nodeMonitorInterval, _ := cmd.Flags().GetString("node-monitor-interval")
 
 	// Parse the endpoint
 	_, addr, err := driver.ParseEndpoint(endpoint)
@@ -160,6 +163,11 @@ func csiCliHandler(cmd *cobra.Command) error {
 		return fmt.Errorf("invalid interval %s provided for monitoring pods on unreachable nodes", podMonitorInterval)
 	}
 
+	nmInterval, err := strconv.ParseInt(nodeMonitorInterval, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid interval %s provided for monitoring the node", nmInterval)
+	}
+
 	pid := os.Getpid()
 	d, err := driver.NewDriver(
 		driverName,
@@ -171,7 +179,8 @@ func csiCliHandler(cmd *cobra.Command) error {
 		dbPort,
 		podMonitor,
 		monitorInterval,
-		nodeMonitor)
+		nodeMonitor,
+		nmInterval)
 	if err != nil {
 		return fmt.Errorf("Error instantiating plugin %v, Err: %v", driverName, err.Error())
 	}

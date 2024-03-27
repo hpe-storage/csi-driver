@@ -41,7 +41,7 @@ func (ic *InitContainer) Init() error {
 
 	multipathDevices, err := tunelinux.GetMultipathDevices() //driver.GetMultipathDevices()
 	if err != nil {
-		log.Errorf("Error while getting the multipath devices")
+		log.Errorf("Error while getting the multipath devices on the node %s", ic.nodeName)
 		// This line will be uncommented once the full imeplementation of this stale entry fix is done
 		//return err
 		return nil //Remove later

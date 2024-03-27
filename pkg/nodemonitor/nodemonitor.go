@@ -99,10 +99,10 @@ func (nm *NodeMonitor) monitorNode() error {
 		for {
 			select {
 			case <-tick.C:
-				log.Infof("NODE MONITOR :Monitoring node......1")
+				log.Infof("Node monitor started monitoring the node %s", nm.nodeName)
 				multipathDevices, err := tunelinux.GetMultipathDevices() //driver.GetMultipathDevices()
 				if err != nil {
-					log.Errorf("Error while getting the multipath devices")
+					log.Errorf("Error while getting the multipath devices on the node %s", nm.nodeName)
 					return
 				}
 				if multipathDevices != nil && len(multipathDevices) > 0 {
@@ -119,7 +119,6 @@ func (nm *NodeMonitor) monitorNode() error {
 				} else {
 					log.Tracef("No multipath devices found on the node %s", nm.nodeName)
 				}
-				log.Infof("NODE MONITOR :Monitoring node......2")
 			case <-nm.stopChannel:
 				return
 			}
