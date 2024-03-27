@@ -117,7 +117,7 @@ func (nm *NodeMonitor) monitorNode() error {
 						}
 					}
 				} else {
-					log.Tracef("No multipath devices found on the node %s", nm.nodeName)
+					log.Infof("No multipath devices found on the node %s", nm.nodeName)
 				}
 			case <-nm.stopChannel:
 				return

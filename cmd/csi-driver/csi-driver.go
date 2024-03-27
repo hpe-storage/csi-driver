@@ -125,7 +125,6 @@ func csiCliHandler(cmd *cobra.Command) error {
 	}
 
 	if nodeInit {
-		log.Infof("NodeInit is set!!!!!!!!!!!!!!!")
 		initContainer := initcontainer.NewInitContainer(flavorName, nodeService)
 		err := initContainer.Init()
 		if err != nil {
