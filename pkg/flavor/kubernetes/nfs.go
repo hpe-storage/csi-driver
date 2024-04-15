@@ -460,74 +460,46 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 
 	var nfsSpec NFSSpec
 
-	// Limits
+	// limits
 	resourceLimits := make(core_v1.ResourceList)
 
-	// set factory default cpu limits
-	cpuLimitQuantity, err := resource.ParseQuantity(defaultRLimitCPU)
+	// cpu limits eg: 500m
+	cpuLimitsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceLimitsCPUKey, defaultRLimitCPU)
+
 	if err != nil {
-		return nil, fmt.Errorf("Invalid CPU resource limit %s provided in defaults, err %s", defaultRLimitCPU, err.Error())
+		return nil, err
+	} else {
+		resourceLimits[core_v1.ResourceCPU] = cpuLimitsQuantity
 	}
-	resourceLimits[core_v1.ResourceCPU] = cpuLimitQuantity
 
-	// set factory default memory limits
-	memoryLimitQuantity, err := resource.ParseQuantity(defaultRLimitMemory)
+	// memory limits eg: 1Gi
+	memoryLimitsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceLimitsMemoryKey, defaultRLimitMemory)
+
 	if err != nil {
-		return nil, fmt.Errorf("Invalid NFS memory resource limit '%s' provided in defaults, err %s", defaultRLimitMemory, err.Error())
-	}
-	resourceLimits[core_v1.ResourceMemory] = memoryLimitQuantity
-
-	// User provided cpu limits eg: cpu=500m
-	if val, ok := scParams[nfsResourceLimitsCPUKey]; ok {
-		quantity, err := resource.ParseQuantity(val)
-		if err != nil {
-			return nil, fmt.Errorf("Invalid '%s: %s' provided in StorageClass, err %s", nfsResourceLimitsCPUKey, val, err.Error())
-		}
-		resourceLimits[core_v1.ResourceCPU] = quantity
+		return nil, err
+	} else {
+		resourceLimits[core_v1.ResourceMemory] = memoryLimitsQuantity
 	}
 
-	// User provided memory limits eg: memory=64Mi
-	if val, ok := scParams[nfsResourceLimitsMemoryKey]; ok {
-		quantity, err := resource.ParseQuantity(val)
-		if err != nil {
-			return nil, fmt.Errorf("Invalid '%s: %s' provided in StorageClass, err %s", nfsResourceLimitsMemoryKey, val, err.Error())
-		}
-		resourceLimits[core_v1.ResourceMemory] = quantity
-	}
-
-	// Requests
+	// requests
 	resourceRequests := make(core_v1.ResourceList)
 
-	// set factory default cpu requests
-	cpuRequestQuantity, err := resource.ParseQuantity(defaultRRequestCPU)
+	// cpu request eg: 500m
+	cpuRequestsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceRequestsCPUKey, defaultRRequestCPU)
+
 	if err != nil {
-		return nil, fmt.Errorf("Invalid NFS CPU resource request %s provided in defaults, err %s", defaultRRequestCPU, err.Error())
+		return nil, err
+	} else {
+		resourceRequests[core_v1.ResourceCPU] = cpuRequestsQuantity
 	}
-	resourceRequests[core_v1.ResourceCPU] = cpuRequestQuantity
 
-	// set factory default memory requests
-	memoryRequestQuantity, err := resource.ParseQuantity(defaultRRequestMemory)
+	// memory limits eg: 1Gi
+	memoryRequestsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceRequestsMemoryKey, defaultRRequestMemory)
+
 	if err != nil {
-		return nil, fmt.Errorf("Invalid NFS memory resource request '%s' provided in defaults, err %s", defaultRRequestMemory, err.Error())
-	}
-	resourceRequests[core_v1.ResourceMemory] = memoryRequestQuantity
-
-	// User provided NFS cpu requests eg: cpu=500m
-	if val, ok := scParams[nfsResourceRequestsCPUKey]; ok {
-		quantity, err := resource.ParseQuantity(val)
-		if err != nil {
-			return nil, fmt.Errorf("Invalid '%s: %s' provided in StorageClass, err %s", nfsResourceRequestsCPUKey, val, err.Error())
-		}
-		resourceRequests[core_v1.ResourceCPU] = quantity
-	}
-
-	// User provided NFS memory requests eg: memory=64Mi
-	if val, ok := scParams[nfsResourceRequestsMemoryKey]; ok {
-		quantity, err := resource.ParseQuantity(val)
-		if err != nil {
-			return nil, fmt.Errorf("Invalid '%s: %s' provided in StorageClass, err %s", nfsResourceRequestsMemoryKey, val, err.Error())
-		}
-		resourceRequests[core_v1.ResourceMemory] = quantity
+		return nil, err
+	} else {
+		resourceRequests[core_v1.ResourceMemory] = memoryRequestsQuantity
 	}
 
 	// apply resources
@@ -1160,4 +1132,19 @@ func (flavor *Flavor) waitForDeployment(deploymentName string, nfsNamespace stri
 
 func int32toPtr(i int32) *int32 {
 	return &i
+}
+
+func (flavor *Flavor) getResourceQuantity(scParams map[string]string, paramKey string, defaultVal string) (resource.Quantity, error) {
+
+	if val, ok := scParams[paramKey]; ok {
+		defaultVal = val
+	}
+
+	quantity, err := resource.ParseQuantity(defaultVal)
+
+	if err != nil {
+		return quantity, fmt.Errorf("Invalid '%s' value of '%s' provided in Deployment, %s", paramKey, defaultVal, err.Error())
+	}
+
+	return quantity, nil
 }
