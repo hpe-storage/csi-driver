@@ -19,7 +19,7 @@ import (
 
 	"github.com/hpe-storage/csi-driver/pkg/driver"
 	"github.com/hpe-storage/csi-driver/pkg/flavor"
-	"github.com/hpe-storage/csi-driver/pkg/initcontainer"
+	"github.com/hpe-storage/csi-driver/pkg/nodeinit"
 )
 
 const (
@@ -125,8 +125,8 @@ func csiCliHandler(cmd *cobra.Command) error {
 	}
 
 	if nodeInit {
-		initContainer := initcontainer.NewInitContainer(flavorName, nodeService)
-		err := initContainer.Init()
+		nodeInitContainer := nodeinit.NewNodeInitContainer(flavorName, nodeService)
+		err := nodeInitContainer.NodeInit()
 		if err != nil {
 			log.Errorf("Error while running the init container logic: %s", err.Error())
 			os.Exit(1)

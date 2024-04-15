@@ -9,8 +9,8 @@ import (
 	"time"
 
 	log "github.com/hpe-storage/common-host-libs/logger"
-	"github.com/hpe-storage/common-host-libs/tunelinux"
 	"github.com/hpe-storage/csi-driver/pkg/flavor"
+	"github.com/hpe-storage/csi-driver/pkg/nodeinit"
 )
 
 const (
@@ -100,7 +100,7 @@ func (nm *NodeMonitor) monitorNode() error {
 			select {
 			case <-tick.C:
 				log.Infof("Node monitor started monitoring the node %s", nm.nodeName)
-				multipathDevices, err := tunelinux.GetMultipathDevices() //driver.GetMultipathDevices()
+				/*multipathDevices, err := tunelinux.GetMultipathDevices() //driver.GetMultipathDevices()
 				if err != nil {
 					log.Errorf("Error while getting the multipath devices on the node %s", nm.nodeName)
 					return
@@ -118,6 +118,11 @@ func (nm *NodeMonitor) monitorNode() error {
 					}
 				} else {
 					log.Infof("No multipath devices found on the node %s", nm.nodeName)
+				}*/
+				err := nodeinit.GetMultipathDevices(nm.nodeName)
+				if err != nil {
+					log.Errorf("Error while getting the information of multipath devices on the node %s: %s", nm.nodeName, err.Error())
+					return
 				}
 			case <-nm.stopChannel:
 				return
