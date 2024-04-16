@@ -1136,14 +1136,18 @@ func int32toPtr(i int32) *int32 {
 
 func (flavor *Flavor) getResourceQuantity(scParams map[string]string, paramKey string, defaultVal string) (resource.Quantity, error) {
 
+	var quantityVal string
+
 	if val, ok := scParams[paramKey]; ok {
-		defaultVal = val
+		quantityVal = val
+	} else {
+		quantityVal = defaultVal
 	}
 
-	quantity, err := resource.ParseQuantity(defaultVal)
+	quantity, err := resource.ParseQuantity(quantityVal)
 
 	if err != nil {
-		return quantity, fmt.Errorf("Invalid '%s' value of '%s' provided in Deployment, %s", paramKey, defaultVal, err.Error())
+		return quantity, fmt.Errorf("Invalid '%s' value of '%s' provided in Deployment, %s", paramKey, quantityVal, err.Error())
 	}
 
 	return quantity, nil
