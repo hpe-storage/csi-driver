@@ -3,7 +3,7 @@ ifndef REPO_NAME
 	REPO_NAME ?= hpestorage/csi-driver
 endif
 
-TAG = edge
+TAG = v2.4.1_force_delete
 
 ARCH ?= amd64
 

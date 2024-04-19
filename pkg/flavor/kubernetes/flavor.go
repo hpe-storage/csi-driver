@@ -41,8 +41,8 @@ const (
 	nodeLostCondition             = "NodeLost"
 	provisionerSecretNameKey      = "csi.storage.k8s.io/provisioner-secret-name"
 	provisionerSecretNamespaceKey = "csi.storage.k8s.io/provisioner-secret-namespace"
-	chapUserEnvKey                = "CHAP_USER"
-	chapPasswordEnvKey            = "CHAP_PASSWORD"
+	chapSecretNameKey             = "chapSecretName"
+	chapSecretNamespaceKey        = "chapSecretNamespace"
 )
 
 var (
@@ -145,14 +145,6 @@ func NewKubernetesFlavor(nodeService bool, chapiDriver chapi.Driver) (*Flavor, e
 	flavor.chapiDriver = chapiDriver
 
 	return flavor, nil
-}
-
-func (flavor *Flavor) GetChapUserFromEnvironment() string {
-	return os.Getenv(chapUserEnvKey)
-}
-
-func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
-	return os.Getenv(chapPasswordEnvKey)
 }
 
 // ConfigureAnnotations takes the PVC annotations and overrides any parameters in the CSI create volume request
@@ -336,13 +328,11 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 				wwpns[i] = &nodeInfo.Spec.WWPNs[i]
 			}
 			node := &model.Node{
-				Name:         nodeInfo.ObjectMeta.Name,
-				UUID:         nodeInfo.Spec.UUID,
-				Iqns:         iqns,
-				Networks:     networks,
-				Wwpns:        wwpns,
-				ChapUser:     flavor.GetChapUserFromEnvironment(),
-				ChapPassword: flavor.GetChapPasswordFromEnvironment(),
+				Name:     nodeInfo.ObjectMeta.Name,
+				UUID:     nodeInfo.Spec.UUID,
+				Iqns:     iqns,
+				Networks: networks,
+				Wwpns:    wwpns,
 			}
 			log.Tracef(">>>>> GetNodeInfo return with node %v", node)
 			defer log.Trace("<<<<< GetNodeInfo")
@@ -919,4 +909,26 @@ func (flavor *Flavor) isVolumeAttachedToPod(pod *v1.Pod, va *storage_v1.VolumeAt
 		}
 	}
 	return false, nil
+}
+
+func (flavor *Flavor) GetChapCredentialsFromSecret(volumeContext map[string]string) (map[string]string, error) {
+	log.Trace(">>>>> GetChapCredentialsFromSecret")
+	defer log.Trace("<<<<< GetChapCredentialsFromSecret")
+
+	var chapSecret map[string]string
+	if volumeContext[chapSecretNameKey] != "" && volumeContext[chapSecretNamespaceKey] != "" {
+		chapSecretName := volumeContext[chapSecretNameKey]
+		chapSecretNamespace := volumeContext[chapSecretNamespaceKey]
+		log.Infof("Found CHAP secret %s secret namespace %s", chapSecretName, chapSecretNamespace)
+
+		var err error
+		chapSecret, err = flavor.GetCredentialsFromSecret(chapSecretName, chapSecretNamespace)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CHAP credentials from secret name %s secret namespace %s: %v", chapSecretName, chapSecretNamespace, err)
+		}
+	} else {
+		log.Infof("CHAP credentials are not provided")
+	}
+
+	return chapSecret, nil
 }

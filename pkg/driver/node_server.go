@@ -423,7 +423,7 @@ func (driver *Driver) stageVolume(
 	defer stageLock.Unlock()
 
 	// Create device for volume on the node
-	device, err := driver.setupDevice(volumeID, secrets, publishContext)
+	device, err := driver.setupDevice(volumeID, secrets, publishContext, volumeContext)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Error creating device for volume %s, err: %v", volumeID, err.Error()))
@@ -478,7 +478,8 @@ func (driver *Driver) stageVolume(
 func (driver *Driver) setupDevice(
 	volumeID string,
 	secrets map[string]string,
-	publishContext map[string]string) (*model.Device, error) {
+	publishContext map[string]string,
+	volumeContext map[string]string) (*model.Device, error) {
 
 	log.Tracef(">>>>> setupDevice, volumeID: %s, publishContext: %v", volumeID, log.MapScrubber(publishContext))
 	defer log.Trace("<<<<< setupDevice")
@@ -502,30 +503,37 @@ func (driver *Driver) setupDevice(
 
 	// Set iSCSI CHAP credentials if configured
 	if publishContext[accessProtocolKey] == iscsi {
-		// Get CHAP credentials from Cluster
-		nodeID, err := driver.nodeGetInfo()
-		if err != nil {
-			log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
-		}
-		// Decode and check if the node is configured
-		nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
-		if err != nil {
-			log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
-			// Encode chap password
-			//encodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
-			//encodedChapPassword := b64.StdEncoding.EncodeToString([]byte(nodeInfo.ChapPassword))
+		// // Get CHAP credentials from Cluster
+		// nodeID, err := driver.nodeGetInfo()
+		// if err != nil {
+		// 	log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+		// }
+		// // Decode and check if the node is configured
+		// nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
+		// if err != nil {
+		// 	log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
+		// 	return nil, status.Error(codes.NotFound, err.Error())
+		// }
+		// if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
+		// 	log.Tracef("Found chap settings(username %s) for volume %s", nodeInfo.ChapUser, volume.Name)
+		// 	volume.Chap = &model.ChapInfo{
+		// 		Name:     nodeInfo.ChapUser,
+		// 		Password: nodeInfo.ChapPassword,
+		// 	}
+		// }
 
-			log.Tracef("Found chap settings(username %s password %s) for volume %s", nodeInfo.ChapUser, nodeInfo.ChapPassword, volume.Name)
-			//			nodeInfo.ChapPassword = string(encodedChapPassword)
+		chapSecretMap, err := driver.flavor.GetChapCredentialsFromSecret(volumeContext)
+		if err != nil {
+			log.Errorf("Failed to check CHAP credentials availability in the volume context: %v", err)
+		} else {
+			chapUser := chapSecretMap[chapUserKey]
+			chapPassword := chapSecretMap[chapPasswordKey]
+			log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
 
 			volume.Chap = &model.ChapInfo{
-				Name:     nodeInfo.ChapUser,
-				Password: nodeInfo.ChapPassword,
+				Name:     chapUser,
+				Password: chapPassword,
 			}
-			log.Infof("Using chap credentials from node %s", nodeID)
 		}
 
 	}
@@ -2074,11 +2082,27 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 	}
 
 	node := &model.Node{
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> f213ae091ecf00f074b1c4ff9a85aa0abeef77f3
 		Name:     hostNameAndDomain[0],
 		UUID:     host.UUID,
 		Iqns:     iqns,
 		Networks: cidrNetworks,
 		Wwpns:    wwpns,
+<<<<<<< HEAD
+=======
+=======
+		Name:         hostNameAndDomain[0],
+		UUID:         host.UUID,
+		Iqns:         iqns,
+		Networks:     cidrNetworks,
+		Wwpns:        wwpns,
+		ChapUser:     driver.flavor.GetChapUserFromEnvironment(),
+		ChapPassword: driver.flavor.GetChapPasswordFromEnvironment(),
+>>>>>>> 1617e3320444adf4ddbab318a0f64cbc2502b190
+>>>>>>> f213ae091ecf00f074b1c4ff9a85aa0abeef77f3
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)

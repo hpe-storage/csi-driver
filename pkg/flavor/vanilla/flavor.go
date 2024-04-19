@@ -104,10 +104,6 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 	return nil
 }
 
-func (flavor *Flavor) GetChapUserFromEnvironment() string {
-	return ""
-}
-
-func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
-	return ""
+func (flavor *Flavor) GetChapCredentialsFromSecret(volumeContext map[string]string) (map[string]string, error) {
+	return nil, nil
 }
