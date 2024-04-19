@@ -879,7 +879,7 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	// Add ACL to the volume based on the requested Node
-	publishInfo, err := storageProvider.PublishVolume(volume.ID, node.UUID, requestedAccessProtocol, node.ChapUser, node.ChapPassword)
+	publishInfo, err := storageProvider.PublishVolume(volume.ID, node.UUID, requestedAccessProtocol)
 	if err != nil {
 		log.Errorf("Failed to publish volume %s, err: %s", volume.ID, err.Error())
 		return nil, status.Error(codes.Internal,
