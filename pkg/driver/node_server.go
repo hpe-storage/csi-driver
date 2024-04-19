@@ -2082,27 +2082,11 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 	}
 
 	node := &model.Node{
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> f213ae091ecf00f074b1c4ff9a85aa0abeef77f3
 		Name:     hostNameAndDomain[0],
 		UUID:     host.UUID,
 		Iqns:     iqns,
 		Networks: cidrNetworks,
 		Wwpns:    wwpns,
-<<<<<<< HEAD
-=======
-=======
-		Name:         hostNameAndDomain[0],
-		UUID:         host.UUID,
-		Iqns:         iqns,
-		Networks:     cidrNetworks,
-		Wwpns:        wwpns,
-		ChapUser:     driver.flavor.GetChapUserFromEnvironment(),
-		ChapPassword: driver.flavor.GetChapPasswordFromEnvironment(),
->>>>>>> 1617e3320444adf4ddbab318a0f64cbc2502b190
->>>>>>> f213ae091ecf00f074b1c4ff9a85aa0abeef77f3
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)

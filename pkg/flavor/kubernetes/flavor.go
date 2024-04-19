@@ -334,8 +334,6 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 				Networks: networks,
 				Wwpns:    wwpns,
 			}
-			log.Tracef(">>>>> GetNodeInfo return with node %v", node)
-			defer log.Trace("<<<<< GetNodeInfo")
 
 			return node, nil
 		}
@@ -757,7 +755,7 @@ func (flavor *Flavor) DeletePod(podName string, namespace string, force bool) er
 		deleteOptions.GracePeriodSeconds = &gracePeriodSec
 	}
 
-	err := flavor.kubeClient.CoreV1().Pods(namespace).Delete(context.Background(),podName, deleteOptions)
+	err := flavor.kubeClient.CoreV1().Pods(namespace).Delete(context.Background(), podName, deleteOptions)
 
 	if err != nil {
 		return err
@@ -785,11 +783,9 @@ func (flavor *Flavor) DeleteVolumeAttachment(va string, force bool) error {
 		gracePeriodSec := int64(0)
 		deleteOptions.GracePeriodSeconds = &gracePeriodSec
 	}
-<<<<<<< HEAD
+
 	err := flavor.kubeClient.StorageV1().VolumeAttachments().Delete(context.Background(), va, meta_v1.DeleteOptions{})
-=======
-	err := flavor.kubeClient.StorageV1().VolumeAttachments().Delete(context.Background(),va, deleteOptions)
->>>>>>> master
+
 	if err != nil {
 		return err
 	}
