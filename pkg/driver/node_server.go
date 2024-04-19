@@ -423,7 +423,7 @@ func (driver *Driver) stageVolume(
 	defer stageLock.Unlock()
 
 	// Create device for volume on the node
-	device, err := driver.setupDevice(volumeID, secrets, publishContext)
+	device, err := driver.setupDevice(volumeID, secrets, publishContext, volumeContext)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Error creating device for volume %s, err: %v", volumeID, err.Error()))
@@ -478,7 +478,8 @@ func (driver *Driver) stageVolume(
 func (driver *Driver) setupDevice(
 	volumeID string,
 	secrets map[string]string,
-	publishContext map[string]string) (*model.Device, error) {
+	publishContext map[string]string,
+	volumeContext map[string]string) (*model.Device, error) {
 
 	log.Tracef(">>>>> setupDevice, volumeID: %s, publishContext: %v", volumeID, log.MapScrubber(publishContext))
 	defer log.Trace("<<<<< setupDevice")
@@ -502,22 +503,36 @@ func (driver *Driver) setupDevice(
 
 	// Set iSCSI CHAP credentials if configured
 	if publishContext[accessProtocolKey] == iscsi {
-		// Get CHAP credentials from Cluster
-		nodeID, err := driver.nodeGetInfo()
+		// // Get CHAP credentials from Cluster
+		// nodeID, err := driver.nodeGetInfo()
+		// if err != nil {
+		// 	log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+		// }
+		// // Decode and check if the node is configured
+		// nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
+		// if err != nil {
+		// 	log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
+		// 	return nil, status.Error(codes.NotFound, err.Error())
+		// }
+		// if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
+		// 	log.Tracef("Found chap settings(username %s) for volume %s", nodeInfo.ChapUser, volume.Name)
+		// 	volume.Chap = &model.ChapInfo{
+		// 		Name:     nodeInfo.ChapUser,
+		// 		Password: nodeInfo.ChapPassword,
+		// 	}
+		// }
+
+		chapSecretMap, err := driver.flavor.GetChapCredentialsFromSecret(volumeContext)
 		if err != nil {
-			log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
-		}
-		// Decode and check if the node is configured
-		nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
-		if err != nil {
-			log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
-			log.Tracef("Found chap settings(username %s) for volume %s", nodeInfo.ChapUser, volume.Name)
+			log.Errorf("Failed to check CHAP credentials availability in the volume context: %v", err)
+		} else {
+			chapUser := chapSecretMap[chapUserKey]
+			chapPassword := chapSecretMap[chapPasswordKey]
+			log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
+
 			volume.Chap = &model.ChapInfo{
-				Name:     nodeInfo.ChapUser,
-				Password: nodeInfo.ChapPassword,
+				Name:     chapUser,
+				Password: chapPassword,
 			}
 		}
 
@@ -2067,13 +2082,11 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 	}
 
 	node := &model.Node{
-		Name:         hostNameAndDomain[0],
-		UUID:         host.UUID,
-		Iqns:         iqns,
-		Networks:     cidrNetworks,
-		Wwpns:        wwpns,
-		ChapUser:     driver.flavor.GetChapUserFromEnvironment(),
-		ChapPassword: driver.flavor.GetChapPasswordFromEnvironment(),
+		Name:     hostNameAndDomain[0],
+		UUID:     host.UUID,
+		Iqns:     iqns,
+		Networks: cidrNetworks,
+		Wwpns:    wwpns,
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)

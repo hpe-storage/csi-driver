@@ -4,7 +4,6 @@
 package driver
 
 import (
-	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -823,11 +822,23 @@ func (driver *Driver) controllerPublishVolume(
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	if node.ChapUser != "" && node.ChapPassword != "" {
-		fmt.Sprintf("Found Chap creds, ChapUser=%s", node.ChapUser)
-		encodedChapPassword := b64.StdEncoding.EncodeToString([]byte(node.ChapPassword))
-		node.ChapPassword = string(encodedChapPassword)
+	chapSecretMap, err := driver.flavor.GetChapCredentialsFromSecret(volumeContext)
+	if err != nil {
+		log.Errorf("Failed to check CHAP credentials availability in the volume context: %v", err)
+	} else {
+		chapUser := chapSecretMap[chapUserKey]
+		chapPassword := chapSecretMap[chapPasswordKey]
+		log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
+
+		node.ChapUser = chapUser
+		node.ChapPassword = chapPassword
 	}
+
+	// if node.ChapUser != "" && node.ChapPassword != "" {
+	// 	fmt.Sprintf("Found Chap creds, ChapUser=%s", node.ChapUser)
+	// 	encodedChapPassword := b64.StdEncoding.EncodeToString([]byte(node.ChapPassword))
+	// 	node.ChapPassword = string(encodedChapPassword)
+	// }
 
 	// Get storageProvider using secrets
 	storageProvider, err := driver.GetStorageProvider(secrets)
