@@ -42,6 +42,10 @@ const (
 	targetScopeKey    = "targetScope"
 	lunIDKey          = "lunId"
 
+	// Chap credentials secret keys
+	chapUserKey     = "chapUser"
+	chapPasswordKey = "chapPassword"
+
 	secondaryArrayDetailsKey = "secondaryArrayDetailsKey"
 
 	discoveryIPsKey       = "discoveryIps"
