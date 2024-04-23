@@ -859,7 +859,7 @@ func (driver *Driver) controllerPublishVolume(
 		if err = storageProvider.SetNodeContext(node); err != nil {
 			log.Error("err: ", err.Error())
 			return nil, status.Error(codes.Unavailable,
-				fmt.Sprintf("Failed to provide node context %v to CSP err: %s", node, err.Error()))
+				fmt.Sprintf("Failed to provide node %s to CSP err: %s", node.ID, err.Error()))
 		}
 	}
 
@@ -879,7 +879,7 @@ func (driver *Driver) controllerPublishVolume(
 	if err != nil {
 		log.Errorf("Failed to publish volume %s, err: %s", volume.ID, err.Error())
 		return nil, status.Error(codes.Internal,
-			fmt.Sprintf("Failed to add ACL to volume %s for node %v via CSP, err: %s", volume.ID, node, err.Error()))
+			fmt.Sprintf("Failed to add ACL to volume %s for node %s via CSP, err: %s", volume.ID, node.ID, err.Error()))
 	}
 	log.Tracef("PublishInfo response from CSP: %+v", publishInfo)
 
