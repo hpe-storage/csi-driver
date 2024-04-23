@@ -100,25 +100,6 @@ func (nm *NodeMonitor) monitorNode() error {
 			select {
 			case <-tick.C:
 				log.Infof("Node monitor started monitoring the node %s", nm.nodeName)
-				/*multipathDevices, err := tunelinux.GetMultipathDevices() //driver.GetMultipathDevices()
-				if err != nil {
-					log.Errorf("Error while getting the multipath devices on the node %s", nm.nodeName)
-					return
-				}
-				if multipathDevices != nil && len(multipathDevices) > 0 {
-					for _, device := range multipathDevices {
-						//TODO: Assess whether the device belongs to this node or not and whether to do clean up or not
-						log.Tracef("Name:%s Vendor:%s Paths:%f Path Faults:%f UUID:%s IsUnhealthy:%t", device.Name, device.Vendor, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
-						//Remove Later
-						if device.IsUnhealthy {
-							log.Infof("Multipath device %s is unhealthy and is present on %s node", device.Name, nm.nodeName)
-						} else {
-							log.Infof("Multipath device %s is healthy and is present on %s node", device.Name, nm.nodeName)
-						}
-					}
-				} else {
-					log.Infof("No multipath devices found on the node %s", nm.nodeName)
-				}*/
 				err := nodeinit.GetMultipathDevices(nm.nodeName)
 				if err != nil {
 					log.Errorf("Error while getting the information of multipath devices on the node %s: %s", nm.nodeName, err.Error())
