@@ -1980,9 +1980,10 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	}
 
 	accessableTopologySegments := make(map[string]string)
+	
 	for key, value := range nodeLabels {
-		log.Infof("node %s label: %s => %s", nodeInfo.Name, key, value)
-		if key == "csi.hpe.com/zone" {
+		log.Tracef("node %s label: %s => %s", nodeInfo.Name, key, value)
+		if key == defaultCSITopologyKey {
 			log.Infof("FOUND node %s label: %s => %s", nodeInfo.Name, key, value)
 			accessableTopologySegments[key] = value
 		}
