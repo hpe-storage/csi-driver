@@ -45,7 +45,7 @@ if [ "$nodeInit" = true ]; then
     fi
 
     # One shot NodeMonitor to ensure node is ready
-    # exec /bin/csi-driver $@
+    exec /bin/csi-driver $@
     exit $?
 fi
 

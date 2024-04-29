@@ -59,7 +59,7 @@ func createTarget(path string) (string, error) {
 
 // nolint: deadcode
 func realDriver(t *testing.T, endpoint string) *Driver {
-	driver, err := NewDriver("test-driver", "0.1", endpoint, flavor.Kubernetes, true, "", "", false, 0)
+	driver, err := NewDriver("test-driver", "0.1", endpoint, flavor.Kubernetes, true, "", "", false, 0, false, 0)
 
 	if err != nil {
 		t.Fatal("Failed to initialize driver")
