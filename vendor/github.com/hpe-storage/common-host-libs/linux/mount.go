@@ -61,7 +61,7 @@ func (fs FsType) String() string {
 	return ""
 }
 
-// Mount struct
+//Mount struct
 type Mount struct {
 	ID         uint64        `json:"id,omitempty"`
 	Mountpoint string        `json:"mount_point,omitempty"`
@@ -70,7 +70,7 @@ type Mount struct {
 
 const (
 	fsxfscommand   = "mkfs.xfs"
-	mountErr       = 32
+	mountUUIDErr   = 32
 	fsext2command  = "mkfs.ext2"
 	fsext3command  = "mkfs.ext3"
 	fsext4command  = "mkfs.ext4"
@@ -363,8 +363,8 @@ func createFileSystem(fsType string, options []string) (err error) {
 	return nil
 }
 
-// UnmountFileSystem : unmount the filesystem
-// nolint: gocyclo
+//UnmountFileSystem : unmount the filesystem
+//nolint: gocyclo
 func UnmountFileSystem(mountPoint string) (*model.Mount, error) {
 	log.Tracef("UnmountFileSystem called with %s", mountPoint)
 	if mountPoint == "" {
@@ -432,7 +432,7 @@ func UnmountFileSystem(mountPoint string) (*model.Mount, error) {
 	return mnt, nil
 }
 
-// UnmountDevice : unmount device from host
+//UnmountDevice : unmount device from host
 func UnmountDevice(device *model.Device, mountPoint string) (*model.Mount, error) {
 	log.Trace("UnmountDevice called")
 	if device == nil || mountPoint == "" {
@@ -443,7 +443,7 @@ func UnmountDevice(device *model.Device, mountPoint string) (*model.Mount, error
 }
 
 // RemountWithOptions : Remount mountpoint with options
-// nolint : dupl
+//nolint : dupl
 func RemountWithOptions(mountPoint string, options []string) error {
 	log.Tracef(">>>>> ReMountWithOptions, mountPoint: %s, options: %v", mountPoint, options)
 	defer log.Trace("<<<<< ReMountWithOptions")
@@ -472,9 +472,9 @@ func RemountWithOptions(mountPoint string, options []string) error {
 		break
 	}
 	if err != nil {
-		if rc == mountErr {
+		if rc == mountUUIDErr {
 			// TODO: this works for docker workflow. Need to see if it needs to be changed for oracle and other linux use cases
-			log.Trace("rc=" + strconv.Itoa(mountErr) + " trying again with nouuid option")
+			log.Trace("rc=" + strconv.Itoa(mountUUIDErr) + " trying again with no uuid option")
 			_, _, err = util.ExecCommandOutput(mountCommand, []string{"-o", "nouuid", mountPoint})
 		}
 	}
@@ -631,12 +631,11 @@ func performMount(devPath string, mountPoint string, options []string) (*model.M
 	for {
 		_, rc, err = util.ExecCommandOutput(mountCommand, args)
 		if err != nil || rc != 0 {
-			// if failed due to duplicate FS UUID (snapshot or clone), attempt mount with nouuid option
-			if rc == mountErr {
-				log.Infof("mount failed for dev %s with rc=%d, trying again with nouuid option", devPath, mountErr)
+			// if failed due to duplicate FS UUID(snapshot), attempt mount with no-uuid check option
+			if rc == mountUUIDErr {
+				log.Infof("mount failed for dev %s with rc=%d(duplicate uuid), trying again with no uuid option", devPath, mountUUIDErr)
 				_, _, err = util.ExecCommandOutput(mountCommand, []string{"-o", "nouuid", devPath, mountPoint})
 				if err != nil {
-					log.Infof("Second mount attempt with nouuid failed for dev %s with rc=%d", devPath, mountErr)
 					return nil, err
 				}
 			} else if try < 5 {
@@ -712,7 +711,7 @@ func GetFilesystemType(devPath string) (string, error) {
 }
 
 func mountForPartition(devPath, mountPoint string, options []string) (mount *model.Mount, err error) {
-	log.Tracef("mountForPartition called for %s on %s", devPath, mountPoint)
+	log.Tracef("mountForPartition called for %s and %s", devPath, mountPoint)
 	// check if there are partitions
 	mount = nil
 	deviceParitionInfos, _ := GetPartitionInfo(&model.Device{AltFullPathName: devPath})

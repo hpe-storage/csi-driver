@@ -28,6 +28,4 @@ type Driver interface {
 	ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error
 	IsBlockDevice(devicePath string) (bool, error)
 	GetBlockSizeBytes(devicePath string) (int64, error)
-	IsFileSystemCorrupted(volumeID string, device *model.Device, fsOpts *model.FilesystemOpts) bool
-	RepairFileSystem(volumeID string, device *model.Device, fsOpts *model.FilesystemOpts) error
 }
