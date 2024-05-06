@@ -506,17 +506,17 @@ func (driver *Driver) setupDevice(
 		// Get CHAP credentials from volume context
 		chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
 		if err != nil {
-			log.Errorf("Failed to check CHAP credentials availability in the volume context: %v", err)
-		} else {
-			if len(chapSecretMap) > 0 {
-				chapUser := chapSecretMap[chapUserKey]
-				chapPassword := chapSecretMap[chapPasswordKey]
-				log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
+			return nil, fmt.Errorf("Failed to get CHAP credentials, err: %s", err.Error())
+		}
 
-				volume.Chap = &model.ChapInfo{
-					Name:     chapUser,
-					Password: chapPassword,
-				}
+		if len(chapSecretMap) > 0 {
+			chapUser := chapSecretMap[chapUserKey]
+			chapPassword := chapSecretMap[chapPasswordKey]
+			log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
+
+			volume.Chap = &model.ChapInfo{
+				Name:     chapUser,
+				Password: chapPassword,
 			}
 		}
 

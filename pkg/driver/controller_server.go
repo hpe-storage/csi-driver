@@ -22,6 +22,7 @@ import (
 
 // Retrieves volume access type: 'block' or 'filesystem'
 func (driver *Driver) getVolumeAccessType(volCap *csi.VolumeCapability) (model.VolumeAccessType, error) {
+
 	log.Tracef(">>>>> getVolumeAccessType, volCap: %+v", volCap)
 	defer log.Trace("<<<<< getVolumeAccessType")
 
@@ -824,16 +825,16 @@ func (driver *Driver) controllerPublishVolume(
 
 	chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
 	if err != nil {
-		log.Errorf("Failed to check CHAP credentials availability in the volume context: %v", err)
-	} else {
-		if len(chapSecretMap) > 0 {
-			chapUser := chapSecretMap[chapUserKey]
-			chapPassword := chapSecretMap[chapPasswordKey]
-			log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
+		return nil, status.Error(codes.Unavailable,
+			fmt.Sprintf("Failed to get CHAP credentials, err: %s", err.Error()))
+	}
+	if len(chapSecretMap) > 0 {
+		chapUser := chapSecretMap[chapUserKey]
+		chapPassword := chapSecretMap[chapPasswordKey]
+		log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
 
-			node.ChapUser = chapUser
-			node.ChapPassword = chapPassword
-		}
+		node.ChapUser = chapUser
+		node.ChapPassword = chapPassword
 	}
 
 	// Get storageProvider using secrets
