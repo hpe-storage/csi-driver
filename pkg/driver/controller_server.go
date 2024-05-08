@@ -826,7 +826,7 @@ func (driver *Driver) controllerPublishVolume(
 	chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
 	if err != nil {
 		return nil, status.Error(codes.Unavailable,
-			fmt.Sprintf("Failed to get CHAP credentials, err: %s", err.Error()))
+			fmt.Sprintf("Error: %s", err.Error()))
 	}
 	if len(chapSecretMap) > 0 {
 		chapUser := chapSecretMap[chapUserKey]
