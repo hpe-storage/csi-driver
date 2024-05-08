@@ -127,6 +127,7 @@ const (
 	defaultMaxVolPerNode = 100
 	maxVolumesPerNodeKey = "MAX_VOLUMES_PER_NODE"
 
+	defaultCSITopologyKey = "csi.hpe.com/zone"
 	// FileSystem Corruption parameters
 	fsRepairKey = "fsRepair"
 )

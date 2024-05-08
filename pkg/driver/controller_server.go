@@ -234,6 +234,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 		request.VolumeCapabilities,
 		request.Secrets,
 		request.VolumeContentSource,
+		request.AccessibilityRequirements,
 		createParameters,
 	)
 	if err != nil {
@@ -258,6 +259,7 @@ func (driver *Driver) createVolume(
 	volumeCapabilities []*csi.VolumeCapability,
 	secrets map[string]string,
 	volumeContentSource *csi.VolumeContentSource,
+	accessibilityRequirements *csi.TopologyRequirement,
 	createParameters map[string]string) (*csi.Volume, error) {
 
 	log.Tracef(">>>>> createVolume, name: %s, size: %d, volumeCapabilities: %v, createParameters: %v",
@@ -448,9 +450,10 @@ func (driver *Driver) createVolume(
 		// Return existing volume with volume context info
 		log.Tracef("Returning the existing volume '%s' with size %d", existingVolume.Name, existingVolume.Size)
 		return &csi.Volume{
-			VolumeId:      existingVolume.ID,
-			CapacityBytes: existingVolume.Size,
-			VolumeContext: respVolContext,
+			VolumeId:           existingVolume.ID,
+			CapacityBytes:      existingVolume.Size,
+			VolumeContext:      respVolContext,
+			AccessibleTopology: accessibilityRequirements.GetRequisite(),
 		}, nil
 	}
 
@@ -525,10 +528,11 @@ func (driver *Driver) createVolume(
 			updateVolumeContext(respVolContext, volume)
 			// Return newly cloned volume (clone from snapshot)
 			return &csi.Volume{
-				VolumeId:      volume.ID,
-				CapacityBytes: volume.Size,
-				VolumeContext: respVolContext,
-				ContentSource: volumeContentSource,
+				VolumeId:           volume.ID,
+				CapacityBytes:      volume.Size,
+				VolumeContext:      respVolContext,
+				ContentSource:      volumeContentSource,
+				AccessibleTopology: accessibilityRequirements.GetRequisite(),
 			}, nil
 		}
 
@@ -565,10 +569,11 @@ func (driver *Driver) createVolume(
 			updateVolumeContext(respVolContext, volume)
 			// Return newly cloned volume (clone from volume)
 			return &csi.Volume{
-				VolumeId:      volume.ID,
-				CapacityBytes: volume.Size,
-				VolumeContext: respVolContext,
-				ContentSource: volumeContentSource,
+				VolumeId:           volume.ID,
+				CapacityBytes:      volume.Size,
+				VolumeContext:      respVolContext,
+				ContentSource:      volumeContentSource,
+				AccessibleTopology: accessibilityRequirements.GetRequisite(),
 			}, nil
 		}
 		return nil, status.Error(codes.InvalidArgument, "One of snapshot or parent volume source must be specified")
@@ -585,9 +590,10 @@ func (driver *Driver) createVolume(
 	updateVolumeContext(respVolContext, volume)
 	// Return newly created volume with volume context info
 	return &csi.Volume{
-		VolumeId:      volume.ID,
-		CapacityBytes: volume.Size,
-		VolumeContext: respVolContext,
+		VolumeId:           volume.ID,
+		CapacityBytes:      volume.Size,
+		VolumeContext:      respVolContext,
+		AccessibleTopology: accessibilityRequirements.GetRequisite(),
 	}, nil
 }
 
@@ -1138,7 +1144,7 @@ func (driver *Driver) ListVolumes(ctx context.Context, request *csi.ListVolumesR
 
 // ControllerGetVolume ...
 //
-// ALPHA FEATURE
+// # ALPHA FEATURE
 //
 // This optional RPC MAY be called by the CO to fetch current information about a volume.  A Controller Plugin MUST implement this
 // ControllerGetVolume RPC call if it has GET_VOLUME capability.  A Controller Plugin MUST provide a non-empty volume_condition field in
@@ -1485,13 +1491,19 @@ func (driver *Driver) ListSnapshots(ctx context.Context, request *csi.ListSnapsh
 //
 // If the plugin has only VolumeExpansion.OFFLINE expansion capability and volume is currently published or available on a node then
 // ControllerExpandVolume MUST be called ONLY after either:
-//     The plugin has controller PUBLISH_UNPUBLISH_VOLUME capability and ControllerUnpublishVolume has been invoked successfully.
+//
+//	The plugin has controller PUBLISH_UNPUBLISH_VOLUME capability and ControllerUnpublishVolume has been invoked successfully.
+//
 // OR ELSE
-//     The plugin does NOT have controller PUBLISH_UNPUBLISH_VOLUME capability, the plugin has node STAGE_UNSTAGE_VOLUME capability, and
-//     NodeUnstageVolume has been completed successfully.
+//
+//	The plugin does NOT have controller PUBLISH_UNPUBLISH_VOLUME capability, the plugin has node STAGE_UNSTAGE_VOLUME capability, and
+//	NodeUnstageVolume has been completed successfully.
+//
 // OR ELSE
-//     The plugin does NOT have controller PUBLISH_UNPUBLISH_VOLUME capability, nor node STAGE_UNSTAGE_VOLUME capability, and
-//     NodeUnpublishVolume has completed successfully.
+//
+//	The plugin does NOT have controller PUBLISH_UNPUBLISH_VOLUME capability, nor node STAGE_UNSTAGE_VOLUME capability, and
+//	NodeUnpublishVolume has completed successfully.
+//
 // nolint: dupl
 func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	log.Trace(">>>>> ControllerExpandVolume")

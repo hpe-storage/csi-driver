@@ -1500,6 +1500,7 @@ func (driver *Driver) createEphemeralVolume(
 		volCapabilities,
 		secrets,
 		nil, /* No Volume Source */
+		nil, /* No topology requirements */
 		volumeContext,
 	)
 	if err != nil {
@@ -1982,6 +1983,36 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Decode and check if the node is configured
+	nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
+	if err != nil {
+		log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	nodeLabels, err := driver.flavor.GetNodeLabelsByName(nodeInfo.Name)
+	log.Infof("node %s nodeLabels: %+v", nodeInfo.Name, nodeLabels)
+	if err != nil {
+		log.Error("Cannot load node labels from node. err: ", err.Error())
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	accessableTopologySegments := make(map[string]string)
+	
+	for key, value := range nodeLabels {
+		log.Tracef("node %s label: %s => %s", nodeInfo.Name, key, value)
+		if key == defaultCSITopologyKey {
+			log.Infof("FOUND node %s label: %s => %s", nodeInfo.Name, key, value)
+			accessableTopologySegments[key] = value
+		}
+	}
+
+	topo := &csi.Topology{Segments: accessableTopologySegments}
+	if len(accessableTopologySegments) == 0 {
+		topo = nil
+	}
+
+	log.Infof("node %s topo: %+v", nodeInfo.Name, topo)
 	// Get max volume per node from environment variable
 	nodeMaxVolumesLimit := driver.nodeGetIntEnv(maxVolumesPerNodeKey)
 
@@ -2016,9 +2047,11 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		go watcher.StartWatcher()
 		isWatcherEnabled = true
 	}
+
 	return &csi.NodeGetInfoResponse{
-		NodeId:            nodeID,
-		MaxVolumesPerNode: nodeMaxVolumesLimit,
+		NodeId:             nodeID,
+		AccessibleTopology: topo,
+		MaxVolumesPerNode:  nodeMaxVolumesLimit,
 	}, nil
 }
 
