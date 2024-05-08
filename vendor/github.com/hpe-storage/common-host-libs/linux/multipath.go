@@ -19,7 +19,7 @@ var (
 	showMapsFormat       = []string{"show", "maps", "format", "%w %d %n %s"}
 	orphanPathRegexp     = regexp.MustCompile(getOrphanPathsPattern())
 	multipathMutex       sync.Mutex
-	deviceVendorPatterns = []string{"Nimble", "3PARdata", "TrueNAS", "FreeNAS"}
+	DeviceVendorPatterns = []string{"Nimble", "3PARdata", "TrueNAS", "FreeNAS"}
 )
 
 const (
@@ -32,7 +32,7 @@ const (
 )
 
 func getOrphanPathsPattern() string {
-	vendorPattern := strings.Join(deviceVendorPatterns, "|")
+	vendorPattern := strings.Join(DeviceVendorPatterns, "|")
 	return strings.Replace(orphanPathsPattern, "REPLACE_VENDOR", vendorPattern, -1)
 }
 
@@ -239,7 +239,7 @@ func cleanupDeviceAndSlaves(dev *model.Device) (err error) {
 	}
 
 	//delete all physical paths of the device
-	if (!isFC && dev.IscsiTargets != nil && !isGst) {
+	if !isFC && dev.IscsiTargets != nil && !isGst {
 		log.Debugf("volume scoped target %+v, initiating iscsi logout and delete", dev.IscsiTargets)
 		err = logoutAndDeleteIscsiTarget(dev)
 		if err != nil {

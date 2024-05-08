@@ -6,7 +6,7 @@ require (
 	github.com/Scalingo/go-etcd-lock v3.0.1+incompatible
 	github.com/container-storage-interface/spec v1.7.0
 	github.com/golang/protobuf v1.5.4
-	github.com/hpe-storage/common-host-libs v0.0.0-20240118164757-65eb0171b2ca
+	github.com/hpe-storage/common-host-libs v0.0.0-20240508160035-5807318e319e
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20240118202512-5f62990a7c2d
 	github.com/kubernetes-csi/csi-lib-utils v0.11.0
 	github.com/kubernetes-csi/csi-test v2.1.0+incompatible
@@ -14,7 +14,7 @@ require (
 	github.com/spf13/cobra v1.6.0
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/mod v0.12.0
-	golang.org/x/net v0.17.0
+	golang.org/x/net v0.23.0
 	google.golang.org/grpc v1.56.3
 	k8s.io/api v0.29.0
 	k8s.io/apimachinery v0.29.0
@@ -75,10 +75,10 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
-	golang.org/x/crypto v0.17.0 // indirect
+	golang.org/x/crypto v0.21.0 // indirect
 	golang.org/x/oauth2 v0.12.0 // indirect
-	golang.org/x/sys v0.15.0 // indirect
-	golang.org/x/term v0.15.0 // indirect
+	golang.org/x/sys v0.18.0 // indirect
+	golang.org/x/term v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
