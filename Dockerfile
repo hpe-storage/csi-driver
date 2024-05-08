@@ -1,5 +1,5 @@
 # throw away builder image
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.3-1552 AS build
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.3-1610 AS build
 
 # install prereqs
 RUN dnf install -y make wget golang
@@ -17,7 +17,7 @@ ARG TARGETPLATFORM
 RUN make ARCH=$TARGETARCH compile # $TARGETPLATFORM
 
 # image build
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.3-1552
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.3-1612
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD cmd/csi-driver/AlmaLinux-Base.repo /etc/yum.repos.d/
@@ -32,7 +32,7 @@ RUN ln -s /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11
 LABEL name="HPE CSI Driver for Kubernetes" \
       maintainer="HPE Storage" \
       vendor="HPE" \
-      version="2.4.1" \
+      version="2.4.2" \
       summary="HPE CSI Driver for Kubernetes" \
       description="The HPE CSI Driver for Kubernetes enables container orchestrators, such as Kubernetes and OpenShift, to manage the life-cycle of persistent storage." \
       io.k8s.display-name="HPE CSI Driver for Kubernetes" \
@@ -56,6 +56,8 @@ RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.xfs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.btrfs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/xfs_growfs \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/xfs_repair \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/tune2fs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/resize2fs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/btrfs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/fsck \

@@ -42,6 +42,10 @@ const (
 	targetScopeKey    = "targetScope"
 	lunIDKey          = "lunId"
 
+	// Chap credentials secret keys
+	chapUserKey     = "chapUser"
+	chapPasswordKey = "chapPassword"
+
 	secondaryArrayDetailsKey = "secondaryArrayDetailsKey"
 
 	discoveryIPsKey       = "discoveryIps"
@@ -124,4 +128,6 @@ const (
 	maxVolumesPerNodeKey = "MAX_VOLUMES_PER_NODE"
 
 	defaultCSITopologyKey = "csi.hpe.com/zone"
+	// FileSystem Corruption parameters
+	fsRepairKey = "fsRepair"
 )

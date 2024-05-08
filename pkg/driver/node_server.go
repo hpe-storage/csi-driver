@@ -4,7 +4,6 @@
 package driver
 
 import (
-	b64 "encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -424,7 +423,7 @@ func (driver *Driver) stageVolume(
 	defer stageLock.Unlock()
 
 	// Create device for volume on the node
-	device, err := driver.setupDevice(volumeID, secrets, publishContext)
+	device, err := driver.setupDevice(volumeID, secrets, publishContext, volumeContext)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Error creating device for volume %s, err: %v", volumeID, err.Error()))
@@ -466,7 +465,28 @@ func (driver *Driver) stageVolume(
 	mount, err := driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
 		mountInfo.MountOptions, mountInfo.FilesystemOptions)
 	if err != nil {
-		return nil, fmt.Errorf("failed to mount device %s, %v", device.AltFullPathName, err.Error())
+		log.Errorf("Failed to mount device %s, %v. Attempting to inspect the filesystem", device.AltFullPathName, err.Error())
+		//Check whether file system is corrupted or not
+		if driver.chapiDriver.IsFileSystemCorrupted(volumeID, device, mountInfo.FilesystemOptions) {
+			if volumeContext[fsRepairKey] != "" && volumeContext[fsRepairKey] == trueKey {
+				log.Debug("Attempting to repair the file system of the device %s", device.AltFullPathName)
+				err = driver.chapiDriver.RepairFileSystem(volumeID, device, mountInfo.FilesystemOptions)
+				if err != nil {
+					return nil, fmt.Errorf("Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
+				}
+				log.Infof("Retrying to mount after successfully reparing the file system of the volume %s", volumeID)
+				mount, err = driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
+					mountInfo.MountOptions, mountInfo.FilesystemOptions)
+				if err != nil {
+					return nil, fmt.Errorf("Failed to mount device %s again after successful repair: %v", device.AltFullPathName, err.Error())
+				}
+			} else {
+				return nil, fmt.Errorf("Filesystem issues has been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
+			}
+		} else {
+			return nil, fmt.Errorf("Filesystem intact, still failed to mount device %s: %v", device.AltFullPathName, err.Error())
+		}
+		return nil, fmt.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
 	}
 	log.Tracef("Device %s mounted successfully, Mount: %+v", device.AltFullPathName, mount)
 
@@ -479,7 +499,8 @@ func (driver *Driver) stageVolume(
 func (driver *Driver) setupDevice(
 	volumeID string,
 	secrets map[string]string,
-	publishContext map[string]string) (*model.Device, error) {
+	publishContext map[string]string,
+	volumeContext map[string]string) (*model.Device, error) {
 
 	log.Tracef(">>>>> setupDevice, volumeID: %s, publishContext: %v", volumeID, log.MapScrubber(publishContext))
 	defer log.Trace("<<<<< setupDevice")
@@ -503,28 +524,23 @@ func (driver *Driver) setupDevice(
 
 	// Set iSCSI CHAP credentials if configured
 	if publishContext[accessProtocolKey] == iscsi {
-		// Get CHAP credentials from Cluster
-		nodeID, err := driver.nodeGetInfo()
+		// Get CHAP credentials from volume context
+		chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
 		if err != nil {
-			log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+			return nil, fmt.Errorf("Failed to get CHAP credentials, err: %s", err.Error())
 		}
-		// Decode and check if the node is configured
-		nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
-		if err != nil {
-			log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
-			// Decode chap password
-			decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
-			nodeInfo.ChapPassword = string(decodedChapPassword)
+
+		if len(chapSecretMap) > 0 {
+			chapUser := chapSecretMap[chapUserKey]
+			chapPassword := chapSecretMap[chapPasswordKey]
+			log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
 
 			volume.Chap = &model.ChapInfo{
-				Name:     nodeInfo.ChapUser,
-				Password: nodeInfo.ChapPassword,
+				Name:     chapUser,
+				Password: chapPassword,
 			}
-			log.Infof("Using chap credentials from node %s", nodeID)
 		}
+
 	}
 
 	// Cleanup any stale device existing before stage
@@ -735,7 +751,8 @@ func getEphemeralVolName(podName string, volumeHandle string) string {
 // if the volume has MULTI_NODE capability (i.e., access_mode is either MULTI_NODE_READER_ONLY, MULTI_NODE_SINGLE_WRITER or MULTI_NODE_MULTI_WRITER).
 // The following table shows what the Plugin SHOULD return when receiving a second NodePublishVolume on the same volume on the same node:
 //
-// 					T1=T2, P1=P2		T1=T2, P1!=P2		T1!=T2, P1=P2			T1!=T2, P1!=P2
+//	T1=T2, P1=P2		T1=T2, P1!=P2		T1!=T2, P1=P2			T1!=T2, P1!=P2
+//
 // MULTI_NODE		OK (idempotent)		ALREADY_EXISTS		OK						OK
 // Non MULTI_NODE	OK (idempotent)		ALREADY_EXISTS		FAILED_PRECONDITION		FAILED_PRECONDITION
 func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
@@ -1866,8 +1883,9 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 // NodeExpandVolume ONLY supports expansion of already node-published or node-staged volumes on the given volume_path.
 //
 // If plugin has STAGE_UNSTAGE_VOLUME node capability then:
-//  - NodeExpandVolume MUST be called after successful NodeStageVolume.
-//  - NodeExpandVolume MAY be called before or after NodePublishVolume.
+//   - NodeExpandVolume MUST be called after successful NodeStageVolume.
+//   - NodeExpandVolume MAY be called before or after NodePublishVolume.
+//
 // Otherwise NodeExpandVolume MUST be called after successful NodePublishVolume.
 // Handles both filesystem type device and raw block device
 // TODO assuming expand to underlying device size irrespective of provided capacity range. Need to add support of FS resize to fixed capacity eventhough underlying device is much bigger.
@@ -2082,20 +2100,10 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 
 	var iqns []*string
 	var wwpns []*string
-	var chapUsername string
-	var chapPassword string
 	for _, initiator := range initiators {
 		if initiator.Type == iscsi {
 			for i := 0; i < len(initiator.Init); i++ {
 				iqns = append(iqns, &initiator.Init[i])
-				// we support only single host initiator
-				// check if CHAP credentials is set through configMap, ignore iscsid.conf reference
-				envChapUser := driver.flavor.GetChapUserFromEnvironment()
-				envChapPassword := driver.flavor.GetChapPasswordFromEnvironment()
-				if envChapUser != "" && envChapPassword != "" {
-					chapUsername = envChapUser
-					chapPassword = envChapPassword
-				}
 			}
 		} else {
 			for i := 0; i < len(initiator.Init); i++ {
@@ -2114,13 +2122,11 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 	}
 
 	node := &model.Node{
-		Name:         hostNameAndDomain[0],
-		UUID:         host.UUID,
-		Iqns:         iqns,
-		Networks:     cidrNetworks,
-		Wwpns:        wwpns,
-		ChapUser:     chapUsername,
-		ChapPassword: chapPassword,
+		Name:     hostNameAndDomain[0],
+		UUID:     host.UUID,
+		Iqns:     iqns,
+		Networks: cidrNetworks,
+		Wwpns:    wwpns,
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)

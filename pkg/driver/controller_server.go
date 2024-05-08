@@ -4,7 +4,6 @@
 package driver
 
 import (
-	b64 "encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -23,6 +22,7 @@ import (
 
 // Retrieves volume access type: 'block' or 'filesystem'
 func (driver *Driver) getVolumeAccessType(volCap *csi.VolumeCapability) (model.VolumeAccessType, error) {
+
 	log.Tracef(">>>>> getVolumeAccessType, volCap: %+v", volCap)
 	defer log.Trace("<<<<< getVolumeAccessType")
 
@@ -829,9 +829,18 @@ func (driver *Driver) controllerPublishVolume(
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	if node.ChapUser != "" && node.ChapPassword != "" {
-		decodedChapPassword, _ := b64.StdEncoding.DecodeString(node.ChapPassword)
-		node.ChapPassword = string(decodedChapPassword)
+	chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
+	if err != nil {
+		return nil, status.Error(codes.Unavailable,
+			fmt.Sprintf("Failed to get CHAP credentials, err: %s", err.Error()))
+	}
+	if len(chapSecretMap) > 0 {
+		chapUser := chapSecretMap[chapUserKey]
+		chapPassword := chapSecretMap[chapPasswordKey]
+		log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
+
+		node.ChapUser = chapUser
+		node.ChapPassword = chapPassword
 	}
 
 	// Get storageProvider using secrets
@@ -857,7 +866,7 @@ func (driver *Driver) controllerPublishVolume(
 		if err = storageProvider.SetNodeContext(node); err != nil {
 			log.Error("err: ", err.Error())
 			return nil, status.Error(codes.Unavailable,
-				fmt.Sprintf("Failed to provide node context %v to CSP err: %s", node, err.Error()))
+				fmt.Sprintf("Failed to provide node %s to CSP err: %s", node.ID, err.Error()))
 		}
 	}
 
@@ -872,12 +881,12 @@ func (driver *Driver) controllerPublishVolume(
 		log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
 	}
 
-	// Add ACL to the volume based on the requested Node ID
+	// Add ACL to the volume based on the requested Node
 	publishInfo, err := storageProvider.PublishVolume(volume.ID, node.UUID, requestedAccessProtocol)
 	if err != nil {
 		log.Errorf("Failed to publish volume %s, err: %s", volume.ID, err.Error())
 		return nil, status.Error(codes.Internal,
-			fmt.Sprintf("Failed to add ACL to volume %s for node %v via CSP, err: %s", volume.ID, node, err.Error()))
+			fmt.Sprintf("Failed to add ACL to volume %s for node %s via CSP, err: %s", volume.ID, node.ID, err.Error()))
 	}
 	log.Tracef("PublishInfo response from CSP: %+v", publishInfo)
 

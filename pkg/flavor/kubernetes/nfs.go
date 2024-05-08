@@ -22,40 +22,46 @@ import (
 )
 
 const (
-	nfsPrefix           = "hpe-nfs-"
-	pvcPrefix           = "pvc-" // this is hardcoded at csi-provisioner runtime
-	defaultNFSNamespace = "hpe-nfs"
-	defaultNFSImage     = "quay.io/hpestorage/nfs-provisioner:v3.0.4"
-	defaultRLimitCPU    = "1000m"
-	defaultRLimitMemory = "2Gi"
+	nfsPrefix             = "hpe-nfs-"
+	pvcPrefix             = "pvc-" // this is hardcoded at csi-provisioner runtime
+	defaultNFSNamespace   = "hpe-nfs"
+	defaultNFSImage       = "quay.io/hpestorage/nfs-provisioner:latest"
+	nfsImageEnvVar        = "RUNTIME_NFS_IMAGE"
+	defaultRLimitCPU      = "1000m"
+	defaultRRequestCPU    = "500m"
+	defaultRLimitMemory   = "2Gi"
+	defaultRRequestMemory = "512Mi"
 
-	creationInterval           = 60 // 300s with sleep interval of 5s
-	creationDelay              = 5 * time.Second
-	defaultExportPath          = "/export"
-	nfsResourceLimitsCPUKey    = "nfsResourceLimitsCpuM"
-	nfsResourceLimitsMemoryKey = "nfsResourceLimitsMemoryMi"
-	nfsMountOptionsKey         = "nfsMountOptions"
-	nfsResourceLabelKey        = "nfsResourceLabel"
-	nfsNodeSelectorKey         = "csi.hpe.com/hpe-nfs"
-	nfsNodeSelectorValue       = "true"
-	nfsParentVolumeIDKey       = "nfs-parent-volume-id"
-	nfsNamespaceKey            = "nfsNamespace"
-	nfsSourceNamespaceKey      = "csi.storage.k8s.io/pvc/namespace"
-	nfsSourcePVCNameKey        = "csi.storage.k8s.io/pvc/name"
-	nfsProvisionerImageKey     = "nfsProvisionerImage"
-	pvcKind                    = "PersistentVolumeClaim"
-	nfsConfigFile              = "ganesha.conf"
-	nfsConfigMap               = "hpe-nfs-config"
-	nfsServiceAccount          = "hpe-csi-nfs-sa"
-	defaultPodLabelKey         = "monitored-by"
-	defaultPodLabelValue       = "hpe-csi"
-	nfsAffinityLabelKey        = "spread-by"
-	nfsAffinityLabelValue      = "hpe-nfs"
-	nfsDedicatedTolerationKey  = "csi.hpe.com/hpe-nfs"
-	nfsProvisionedByKey        = "provisioned-by"
-	nfsProvisionedFromKey      = "provisioned-from"
-	nfsForeignStorageClassKey  = "nfsForeignStorageClass"
-	nfsResourcesKey            = "nfsResources"
+	creationInterval             = 60 // 300s with sleep interval of 5s
+	creationDelay                = 5 * time.Second
+	defaultExportPath            = "/export"
+	nfsResourceLimitsCPUKey      = "nfsResourceLimitsCpuM"
+	nfsResourceRequestsCPUKey    = "nfsResourceRequestsCpuM"
+	nfsResourceLimitsMemoryKey   = "nfsResourceLimitsMemoryMi"
+	nfsResourceRequestsMemoryKey = "nfsResourceRequestsMemoryMi"
+	nfsMountOptionsKey           = "nfsMountOptions"
+	nfsResourceLabelKey          = "nfsResourceLabel"
+	nfsNodeSelectorKey           = "csi.hpe.com/hpe-nfs"
+	nfsNodeSelectorDefaultValue  = "true"
+	nfsNodeSelectorParamKey      = "nfsNodeSelector"
+	nfsParentVolumeIDKey         = "nfs-parent-volume-id"
+	nfsNamespaceKey              = "nfsNamespace"
+	nfsSourceNamespaceKey        = "csi.storage.k8s.io/pvc/namespace"
+	nfsSourcePVCNameKey          = "csi.storage.k8s.io/pvc/name"
+	nfsProvisionerImageKey       = "nfsProvisionerImage"
+	pvcKind                      = "PersistentVolumeClaim"
+	nfsConfigFile                = "ganesha.conf"
+	nfsConfigMap                 = "hpe-nfs-config"
+	nfsServiceAccount            = "hpe-csi-nfs-sa"
+	defaultPodLabelKey           = "monitored-by"
+	defaultPodLabelValue         = "hpe-csi"
+	nfsAffinityLabelKey          = "spread-by"
+	nfsAffinityLabelValue        = "hpe-nfs"
+	nfsDedicatedTolerationKey    = "csi.hpe.com/hpe-nfs"
+	nfsProvisionedByKey          = "provisioned-by"
+	nfsProvisionedFromKey        = "provisioned-from"
+	nfsForeignStorageClassKey    = "nfsForeignStorageClass"
+	nfsResourcesKey              = "nfsResources"
 )
 
 // NFSSpec for creating NFS resources
@@ -453,44 +459,64 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	defer log.Tracef("<<<<< getNFSSpec")
 
 	var nfsSpec NFSSpec
+
+	// limits
 	resourceLimits := make(core_v1.ResourceList)
 
-	// set factory default cpu
-	cpuQuantity, err := resource.ParseQuantity(defaultRLimitCPU)
+	// cpu limits eg: 500m
+	cpuLimitsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceLimitsCPUKey, defaultRLimitCPU)
+
 	if err != nil {
-		return nil, fmt.Errorf("invalid nfs cpu resource limit %s provided in defaults, err %s", defaultRLimitCPU, err.Error())
+		return nil, err
+	} else {
+		resourceLimits[core_v1.ResourceCPU] = cpuLimitsQuantity
 	}
-	resourceLimits[core_v1.ResourceCPU] = cpuQuantity
 
-	// set factory default memory
-	memoryQuantity, err := resource.ParseQuantity(defaultRLimitMemory)
+	// memory limits eg: 1Gi
+	memoryLimitsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceLimitsMemoryKey, defaultRLimitMemory)
+
 	if err != nil {
-		return nil, fmt.Errorf("invalid nfs memory resource limit %s provided in defaults, err %s", defaultRLimitMemory, err.Error())
-	}
-	resourceLimits[core_v1.ResourceMemory] = memoryQuantity
-
-	// nfs cpu limits eg: cpu=500m
-	if val, ok := scParams[nfsResourceLimitsCPUKey]; ok {
-		quantity, err := resource.ParseQuantity(val)
-		if err != nil {
-			return nil, fmt.Errorf("invalid nfs cpu resource limit %s provided in storage class, err %s", val, err.Error())
-		}
-		resourceLimits[core_v1.ResourceCPU] = quantity
+		return nil, err
+	} else {
+		resourceLimits[core_v1.ResourceMemory] = memoryLimitsQuantity
 	}
 
-	// nfs memory limits eg: memory=64Mi
-	if val, ok := scParams[nfsResourceLimitsMemoryKey]; ok {
-		quantity, err := resource.ParseQuantity(val)
-		if err != nil {
-			return nil, fmt.Errorf("invalid nfs memory resource limit %s provided in storage class, err %s", val, err.Error())
-		}
-		resourceLimits[core_v1.ResourceMemory] = quantity
+	// requests
+	resourceRequests := make(core_v1.ResourceList)
+
+	// cpu request eg: 500m
+	cpuRequestsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceRequestsCPUKey, defaultRRequestCPU)
+
+	if err != nil {
+		return nil, err
+	} else {
+		resourceRequests[core_v1.ResourceCPU] = cpuRequestsQuantity
 	}
 
-	nfsSpec.resourceRequirements = &core_v1.ResourceRequirements{Limits: resourceLimits}
+	// memory limits eg: 1Gi
+	memoryRequestsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceRequestsMemoryKey, defaultRRequestMemory)
+
+	if err != nil {
+		return nil, err
+	} else {
+		resourceRequests[core_v1.ResourceMemory] = memoryRequestsQuantity
+	}
+
+	// apply resources
+	nfsSpec.resourceRequirements = &core_v1.ResourceRequirements{
+		Limits:   resourceLimits,
+		Requests: resourceRequests,
+	}
+
+	// custom hpe-nfs label values
+	nfsNodeSelectorValue := nfsNodeSelectorDefaultValue
+
+	if nodeSelector, ok := scParams[nfsNodeSelectorParamKey]; ok {
+		nfsNodeSelectorValue = nodeSelector
+	}
 
 	// get nodes with hpe-nfs labels
-	nodes, err := flavor.getNFSNodes()
+	nodes, err := flavor.getNFSNodes(nfsNodeSelectorValue)
 	if err != nil {
 		return nil, err
 	}
@@ -501,7 +527,7 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	}
 
 	// use nfs provisioner image specified in storage class
-	nfsSpec.image = defaultNFSImage
+	nfsSpec.image = getEnv(nfsImageEnvVar, defaultNFSImage)
 	if image, ok := scParams[nfsProvisionerImageKey]; ok {
 		nfsSpec.image = image
 	}
@@ -705,12 +731,12 @@ func (flavor *Flavor) getNFSService(svcName, nfsNamespace string) (*core_v1.Serv
 }
 
 // getNFSNodes returns nodes labeled to run HPE NFS Pods
-func (flavor *Flavor) getNFSNodes() ([]core_v1.Node, error) {
+func (flavor *Flavor) getNFSNodes(nodeSelectorValue string) ([]core_v1.Node, error) {
 	log.Tracef(">>>>> getNFSNodes")
 	defer log.Tracef("<<<<< getNFSNodes")
 
 	// check if nfs service already exists
-	nodeList, err := flavor.kubeClient.CoreV1().Nodes().List(context.Background(),meta_v1.ListOptions{LabelSelector: strings.Join([]string{nfsNodeSelectorKey, nfsNodeSelectorValue}, "=")})
+	nodeList, err := flavor.kubeClient.CoreV1().Nodes().List(context.Background(),meta_v1.ListOptions{LabelSelector: strings.Join([]string{nfsNodeSelectorKey, nodeSelectorValue}, "=")})
 	if err != nil {
 		log.Errorf("unable to get list of nodes with hpe-nfs label, err %s", err.Error())
 		return nil, err
@@ -1106,4 +1132,23 @@ func (flavor *Flavor) waitForDeployment(deploymentName string, nfsNamespace stri
 
 func int32toPtr(i int32) *int32 {
 	return &i
+}
+
+func (flavor *Flavor) getResourceQuantity(scParams map[string]string, paramKey string, defaultVal string) (resource.Quantity, error) {
+
+	var quantityVal string
+
+	if val, ok := scParams[paramKey]; ok {
+		quantityVal = val
+	} else {
+		quantityVal = defaultVal
+	}
+
+	quantity, err := resource.ParseQuantity(quantityVal)
+
+	if err != nil {
+		return quantity, fmt.Errorf("Invalid '%s' value of '%s' provided in Deployment, %s", paramKey, quantityVal, err.Error())
+	}
+
+	return quantity, nil
 }
