@@ -935,12 +935,12 @@ func (flavor *Flavor) GetChapCredentialsFromVolumeContext(volumeContext map[stri
 		chapUser := chapSecret[chapUserKey]
 		chapPassword := chapSecret[chapPasswordKey]
 
-		isUsernameValid := validateStringWithRegex(chapUser, chapUserValidationPattern)
+		isUsernameValid := ValidateStringWithRegex(chapUser, chapUserValidationPattern)
 		if !isUsernameValid {
-			return nil, fmt.Errorf("Failed to validate CHAP username %s. String of up to 64 alphanumeric characters, - and . and : are allowed after first character. Example: 'myobject-5", chapUser)
+			return nil, fmt.Errorf("Failed to validate CHAP username %s. The CHAP username should consist of up to 64 alphanumeric characters. Additionally, the characters '-', '.', and ':' are allowed after the first character. For example, 'myobject-5'", chapUser)
 		}
 
-		isPasswordValid := validateStringWithRegex(chapPassword, chapPasswordValidationPattern)
+		isPasswordValid := ValidateStringWithRegex(chapPassword, chapPasswordValidationPattern)
 		if !isPasswordValid {
 			return nil, fmt.Errorf("Failed to validate CHAP password '****'.The CHAP secret should be between 12-16 characters and cannot contain spaces or most punctuation. String of 12 to 16 printable ASCII characters excluding ampersand and ^[];`. Example: 'password_25-24'")
 		}

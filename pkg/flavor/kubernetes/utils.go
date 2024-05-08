@@ -4,7 +4,8 @@ package kubernetes
 
 import "regexp"
 
-func validateStringWithRegex(input string, pattern string) bool {
+// ValidateStringWithRegex validates a string with a regx
+func ValidateStringWithRegex(input string, pattern string) bool {
 	// Compile the regular expression
 	regex := regexp.MustCompile(pattern)
 
