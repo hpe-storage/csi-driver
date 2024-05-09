@@ -43,6 +43,10 @@ const (
 	provisionerSecretNamespaceKey = "csi.storage.k8s.io/provisioner-secret-namespace"
 	chapSecretNameKey             = "chapSecretName"
 	chapSecretNamespaceKey        = "chapSecretNamespace"
+	chapUserKey                   = "chapUser"
+	chapPasswordKey               = "chapPassword"
+	chapUserValidationPattern     = "^[a-zA-Z0-9][a-zA-Z0-9\\-:.]{0,63}$"
+	chapPasswordValidationPattern = "^$|^[a-zA-Z0-9+_)(*^%$#@!]{12,16}$"
 )
 
 var (
@@ -937,9 +941,22 @@ func (flavor *Flavor) GetChapCredentialsFromVolumeContext(volumeContext map[stri
 
 		var err error
 		chapSecret, err = flavor.GetCredentialsFromSecret(chapSecretName, chapSecretNamespace)
-		if err != nil {
+		if err != nil || len(chapSecret) == 0 {
 			return nil, fmt.Errorf("Failed to read CHAP credentials from secret name %s secret namespace %s: %v", chapSecretName, chapSecretNamespace, err)
 		}
+		chapUser := chapSecret[chapUserKey]
+		chapPassword := chapSecret[chapPasswordKey]
+
+		isUsernameValid := ValidateStringWithRegex(chapUser, chapUserValidationPattern)
+		if !isUsernameValid {
+			return nil, fmt.Errorf("Failed to validate CHAP username %s. The CHAP username should consist of up to 64 alphanumeric characters. Additionally, the characters '-', '.', and ':' are allowed after the first character. For example, 'myobject-5'", chapUser)
+		}
+
+		isPasswordValid := ValidateStringWithRegex(chapPassword, chapPasswordValidationPattern)
+		if !isPasswordValid {
+			return nil, fmt.Errorf("Failed to validate CHAP password '****'.The CHAP secret should be between 12-16 characters and cannot contain spaces or most punctuation. String of 12 to 16 printable ASCII characters excluding ampersand and ^[];`. Example: 'password_25-24'")
+		}
+
 	} else {
 		log.Infof("CHAP credentials are not provided")
 	}

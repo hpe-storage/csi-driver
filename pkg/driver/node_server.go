@@ -527,7 +527,7 @@ func (driver *Driver) setupDevice(
 		// Get CHAP credentials from volume context
 		chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to get CHAP credentials, err: %s", err.Error())
+			return nil, fmt.Errorf("Error: %s", err.Error())
 		}
 
 		if len(chapSecretMap) > 0 {
