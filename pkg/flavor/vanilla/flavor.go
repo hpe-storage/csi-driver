@@ -10,6 +10,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	storage_v1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/version"
 )
 
@@ -110,4 +111,8 @@ func (flavor *Flavor) GetChapUserFromEnvironment() string {
 
 func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
 	return ""
+}
+
+func (flavor *Flavor) ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error) {
+	return nil, nil
 }

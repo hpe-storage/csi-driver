@@ -39,11 +39,10 @@ func (nic *NodeInitContainer) NodeInit() error {
 	log.Trace(">>>>> node init container")
 	defer log.Trace("<<<<< node init container")
 
-	err := GetMultipathDevices(nic.nodeName)
+	err := AnalyzeMultiPathDevices(nic.flavor, nic.nodeName)
 	if err != nil {
-		log.Errorf("Error occured while fetching the multipath devices on the node %s", nic.nodeName)
+		log.Errorf("Error while analyzing the multipath devices %s on the node %s", err.Error(), nic.nodeName)
 		return err
 	}
 	return nil
 }
-
