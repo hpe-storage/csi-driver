@@ -5,7 +5,6 @@ package kubernetes
 import (
 	"context"
 	"crypto/sha256"
-	b64 "encoding/base64"
 	"fmt"
 	"os"
 	"reflect"
@@ -42,8 +41,12 @@ const (
 	nodeLostCondition             = "NodeLost"
 	provisionerSecretNameKey      = "csi.storage.k8s.io/provisioner-secret-name"
 	provisionerSecretNamespaceKey = "csi.storage.k8s.io/provisioner-secret-namespace"
-	chapUserEnvKey                = "CHAP_USER"
-	chapPasswordEnvKey            = "CHAP_PASSWORD"
+	chapSecretNameKey             = "chapSecretName"
+	chapSecretNamespaceKey        = "chapSecretNamespace"
+	chapUserKey                   = "chapUser"
+	chapPasswordKey               = "chapPassword"
+	chapUserValidationPattern     = "^[a-zA-Z0-9][a-zA-Z0-9\\-:.]{0,63}$"
+	chapPasswordValidationPattern = "^$|^[a-zA-Z0-9+_)(*^%$#@!]{12,16}$"
 )
 
 var (
@@ -148,14 +151,6 @@ func NewKubernetesFlavor(nodeService bool, chapiDriver chapi.Driver) (*Flavor, e
 	return flavor, nil
 }
 
-func (flavor *Flavor) GetChapUserFromEnvironment() string {
-	return os.Getenv(chapUserEnvKey)
-}
-
-func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
-	return os.Getenv(chapPasswordEnvKey)
-}
-
 // ConfigureAnnotations takes the PVC annotations and overrides any parameters in the CSI create volume request
 func (flavor *Flavor) ConfigureAnnotations(name string, parameters map[string]string) (map[string]string, error) {
 	log.Tracef(">>>>> ConfigureAnnotations called with PVC Name %s", name)
@@ -235,24 +230,12 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			updateNodeRequired = true
 		}
 
-		chapUser := flavor.GetChapUserFromEnvironment()
-		if !reflect.DeepEqual(nodeInfo.Spec.ChapUser, chapUser) {
-			nodeInfo.Spec.ChapUser = chapUser
-			updateNodeRequired = true
-		}
-
-		chapPassword := flavor.GetChapPasswordFromEnvironment()
-		if !reflect.DeepEqual(nodeInfo.Spec.ChapPassword, b64.StdEncoding.EncodeToString([]byte(chapPassword))) {
-			nodeInfo.Spec.ChapPassword = b64.StdEncoding.EncodeToString([]byte(chapPassword))
-			updateNodeRequired = true
-		}
-
 		if !updateNodeRequired {
 			// no update needed to existing CRD
 			return node.UUID, nil
 		}
-		log.Infof("updating Node %s with iqns %v wwpns %v networks %v chapuser %s",
-			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.WWPNs, nodeInfo.Spec.Networks, nodeInfo.Spec.ChapUser)
+		log.Infof("updating Node %s with iqns %v wwpns %v networks %v",
+			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.WWPNs, nodeInfo.Spec.Networks)
 		_, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
 		if err != nil {
 			log.Errorf("Error updating the node %s - %s\n", nodeInfo.Name, err.Error())
@@ -265,12 +248,10 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 				Name: node.Name,
 			},
 			Spec: crd_v1.HPENodeInfoSpec{
-				UUID:         node.UUID,
-				IQNs:         getIqnsFromNode(node),
-				Networks:     getNetworksFromNode(node),
-				WWPNs:        getWwpnsFromNode(node),
-				ChapUser:     node.ChapUser,
-				ChapPassword: b64.StdEncoding.EncodeToString([]byte(node.ChapPassword)),
+				UUID:     node.UUID,
+				IQNs:     getIqnsFromNode(node),
+				Networks: getNetworksFromNode(node),
+				WWPNs:    getWwpnsFromNode(node),
 			},
 		}
 
@@ -323,6 +304,18 @@ func (flavor *Flavor) UnloadNodeInfo() {
 	}
 }
 
+func (flavor *Flavor) GetNodeLabelsByName(name string) (map[string]string, error) {
+	log.Tracef(">>>>>> GetNodeLabelsByName with name %s", name)
+	defer log.Trace("<<<<<< GetNodeLabelsByName")
+
+	node, err := flavor.GetNodeByName(name)
+	if err != nil {
+		return nil, fmt.Errorf("error getting node labels by node name: %v", err.Error())
+	}
+
+	return node.Labels, nil
+}
+
 // GetNodeInfo retrieves the Node identified by nodeID from the list of CRDs
 func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 	log.Tracef(">>>>>> GetNodeInfo from node ID %s", nodeID)
@@ -351,13 +344,11 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 				wwpns[i] = &nodeInfo.Spec.WWPNs[i]
 			}
 			node := &model.Node{
-				Name:         nodeInfo.ObjectMeta.Name,
-				UUID:         nodeInfo.Spec.UUID,
-				Iqns:         iqns,
-				Networks:     networks,
-				Wwpns:        wwpns,
-				ChapUser:     nodeInfo.Spec.ChapUser,
-				ChapPassword: nodeInfo.Spec.ChapPassword,
+				Name:     nodeInfo.ObjectMeta.Name,
+				UUID:     nodeInfo.Spec.UUID,
+				Iqns:     iqns,
+				Networks: networks,
+				Wwpns:    wwpns,
 			}
 
 			return node, nil
@@ -779,7 +770,9 @@ func (flavor *Flavor) DeletePod(podName string, namespace string, force bool) er
 		gracePeriodSec := int64(0)
 		deleteOptions.GracePeriodSeconds = &gracePeriodSec
 	}
+
 	err := flavor.kubeClient.CoreV1().Pods(namespace).Delete(context.Background(), podName, deleteOptions)
+
 	if err != nil {
 		return err
 	}
@@ -808,7 +801,9 @@ func (flavor *Flavor) DeleteVolumeAttachment(va string, force bool) error {
 		gracePeriodSec := int64(0)
 		deleteOptions.GracePeriodSeconds = &gracePeriodSec
 	}
-	err := flavor.kubeClient.StorageV1().VolumeAttachments().Delete(context.Background(), va, deleteOptions)
+
+	err := flavor.kubeClient.StorageV1().VolumeAttachments().Delete(context.Background(), va, meta_v1.DeleteOptions{})
+
 	if err != nil {
 		return err
 	}
@@ -934,4 +929,39 @@ func (flavor *Flavor) isVolumeAttachedToPod(pod *v1.Pod, va *storage_v1.VolumeAt
 		}
 	}
 	return false, nil
+}
+
+func (flavor *Flavor) GetChapCredentialsFromVolumeContext(volumeContext map[string]string) (map[string]string, error) {
+	log.Trace(">>>>> GetChapCredentialsFromVolumeContext")
+	defer log.Trace("<<<<< GetChapCredentialsFromVolumeContext")
+
+	var chapSecret map[string]string
+	if volumeContext[chapSecretNameKey] != "" && volumeContext[chapSecretNamespaceKey] != "" {
+		chapSecretName := volumeContext[chapSecretNameKey]
+		chapSecretNamespace := volumeContext[chapSecretNamespaceKey]
+		log.Infof("Found CHAP secret %s secret namespace %s", chapSecretName, chapSecretNamespace)
+
+		var err error
+		chapSecret, err = flavor.GetCredentialsFromSecret(chapSecretName, chapSecretNamespace)
+		if err != nil || len(chapSecret) == 0 {
+			return nil, fmt.Errorf("Failed to read CHAP credentials from secret name %s secret namespace %s: %v", chapSecretName, chapSecretNamespace, err)
+		}
+		chapUser := chapSecret[chapUserKey]
+		chapPassword := chapSecret[chapPasswordKey]
+
+		isUsernameValid := ValidateStringWithRegex(chapUser, chapUserValidationPattern)
+		if !isUsernameValid {
+			return nil, fmt.Errorf("Failed to validate CHAP username %s. The CHAP username should consist of up to 64 alphanumeric characters. Additionally, the characters '-', '.', and ':' are allowed after the first character. For example, 'myobject-5'", chapUser)
+		}
+
+		isPasswordValid := ValidateStringWithRegex(chapPassword, chapPasswordValidationPattern)
+		if !isPasswordValid {
+			return nil, fmt.Errorf("Failed to validate CHAP password '****'.The CHAP secret should be between 12-16 characters and cannot contain spaces or most punctuation. String of 12 to 16 printable ASCII characters excluding ampersand and ^[];`. Example: 'password_25-24'")
+		}
+
+	} else {
+		log.Infof("CHAP credentials are not provided")
+	}
+
+	return chapSecret, nil
 }

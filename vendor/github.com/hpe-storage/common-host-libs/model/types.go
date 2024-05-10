@@ -15,7 +15,7 @@ const (
 	FsOwnerOpt = "fsOwner"
 )
 
-//type of Scope (volume, group)
+// type of Scope (volume, group)
 type targetScope int
 
 const (
@@ -97,7 +97,7 @@ type Host struct {
 	Initiators        []*Initiator        `json:"initiators,omitempty"`
 }
 
-//Mount struct ID data type is string
+// Mount struct ID data type is string
 type Mount struct {
 	ID         string   `json:"id,omitempty"`
 	Mountpoint string   `json:"Mountpoint,omitempty"`
@@ -105,7 +105,7 @@ type Mount struct {
 	Device     *Device  `json:"device,omitempty"`
 }
 
-//NetworkInterface : network interface info for host
+// NetworkInterface : network interface info for host
 type NetworkInterface struct {
 	Name        string `json:"name,omitempty"`
 	AddressV4   string `json:"address_v4,omitempty"`
@@ -117,7 +117,7 @@ type NetworkInterface struct {
 	CidrNetwork string
 }
 
-//Initiator : Host initiator
+// Initiator : Host initiator
 type Initiator struct {
 	Type string    `json:"type,omitempty"`
 	Init []string  `json:"initiator,omitempty"`
@@ -139,7 +139,7 @@ type IscsiTarget struct {
 	Scope   string // GST or VST
 }
 
-//Device struct
+// Device struct
 type Device struct {
 	VolumeID            string         `json:"volume_id,omitempty"`
 	Pathname            string         `json:"path_name,omitempty"`
@@ -400,4 +400,16 @@ type Node struct {
 type KeyValue struct {
 	Key   string `json:"key,omitempty"`
 	Value string `json:"value,omitempty"`
+}
+
+// This is not a complete information of the multipath device.
+// A few fields are included that can be used to determine whether
+// the device is healthy or not
+type MultipathDeviceInfo struct {
+	Name        string
+	Vendor      string
+	Paths       float64
+	PathFaults  float64
+	UUID        string
+	IsUnhealthy bool
 }

@@ -24,6 +24,7 @@ type Flavor interface {
 	LoadNodeInfo(*model.Node) (string, error)
 	UnloadNodeInfo()
 	GetNodeInfo(nodeID string) (*model.Node, error)
+	GetNodeLabelsByName(name string) (map[string]string, error)
 	GetEphemeralVolumeSecretFromPod(volumeHandle string, podName string, namespace string) (string, error)
 	GetCredentialsFromVolume(name string) (map[string]string, error)
 	GetCredentialsFromSecret(name string, namespace string) (map[string]string, error)
@@ -38,7 +39,6 @@ type Flavor interface {
 	GetOrchestratorVersion() (*version.Info, error)
 	MonitorPod(podLabelkey, podLabelvalue string) error
 	GetGroupSnapshotNameFromSnapshotName(snapshotName string) (string, error)
-	GetChapUserFromEnvironment() string
-	GetChapPasswordFromEnvironment() string
 	ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error)
+	GetChapCredentialsFromVolumeContext(volumeContext map[string]string) (map[string]string, error)
 }
