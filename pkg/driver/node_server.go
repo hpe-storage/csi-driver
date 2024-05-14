@@ -464,7 +464,7 @@ func (driver *Driver) stageVolume(
 
 	if mountInfo.FilesystemOptions != nil && (mountInfo.FilesystemOptions.Type == "ext2" || mountInfo.FilesystemOptions.Type == "ext3" || mountInfo.FilesystemOptions.Type == "ext4") {
 		log.Debugf("Checking whether the file system of the volume %s is clean or not.", volumeID)
-		if !IsExtFileSystemClean(volumeID, device.AltFullPathName) {
+		if !driver.chapiDriver.IsExtFileSystemClean(volumeID, device.AltFullPathName) {
 			log.Infof("Attempting to repair the file system of the device %s", device.AltFullPathName)
 			err := driver.chapiDriver.RepairFsckFileSystem(volumeID, device)
 			if err != nil {
