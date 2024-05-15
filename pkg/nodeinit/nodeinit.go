@@ -36,7 +36,7 @@ func NewNodeInitContainer(flavorName string, nodeService bool) *NodeInitContaine
 
 func (nic *NodeInitContainer) NodeInit() error {
 
-	log.Trace(">>>>> node init container")
+	log.Info(">>>>> node init container ", nic.nodeName)
 	defer log.Trace("<<<<< node init container")
 
 	err := AnalyzeMultiPathDevices(nic.flavor, nic.nodeName)

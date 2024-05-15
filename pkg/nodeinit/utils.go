@@ -24,7 +24,7 @@ func doesDeviceBelongToTheNode(multipathDevice *model.MultipathDeviceInfo, volum
 }
 
 func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
-	log.Trace(">>>>> AnalyzeMultiPathDevices")
+	log.Trace(">>>>> AnalyzeMultiPathDevices for the node ", nodeName)
 	defer log.Trace("<<<<< AnalyzeMultiPathDevices")
 
 	multipathDevices, err := tunelinux.GetMultipathDevices() //driver.GetMultipathDevices()

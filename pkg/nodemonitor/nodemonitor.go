@@ -89,7 +89,7 @@ func (nm *NodeMonitor) StopNodeMonitor() error {
 }
 
 func (nm *NodeMonitor) monitorNode() error {
-	log.Trace(">>>>> monitorNode")
+	log.Trace(">>>>> monitorNode for the node ", nm.nodeName)
 	defer log.Trace("<<<<< monitorNode")
 	defer close(nm.done)
 
