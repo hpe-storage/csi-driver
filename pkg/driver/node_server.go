@@ -465,12 +465,16 @@ func (driver *Driver) stageVolume(
 	if mountInfo.FilesystemOptions != nil && (mountInfo.FilesystemOptions.Type == "ext2" || mountInfo.FilesystemOptions.Type == "ext3" || mountInfo.FilesystemOptions.Type == "ext4") {
 		log.Debugf("Checking whether the file system of the volume %s is clean or not.", volumeID)
 		if !driver.chapiDriver.IsExtFileSystemClean(volumeID, device.AltFullPathName) {
-			log.Infof("Attempting to repair the file system of the device %s", device.AltFullPathName)
-			err := driver.chapiDriver.RepairFsckFileSystem(volumeID, device)
-			if err != nil {
-				return nil, fmt.Errorf("Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
+			if volumeContext[fsRepairKey] != "" && volumeContext[fsRepairKey] == trueKey {
+				log.Infof("Attempting to repair the file system issues of the device %s", device.AltFullPathName)
+				err := driver.chapiDriver.RepairFsckFileSystem(volumeID, device)
+				if err != nil {
+					return nil, fmt.Errorf("Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
+				}
+				log.Infof("File system is repaired for the volume %s, proceeding to mount the device %s", volumeID, device.AltFullPathName)
+			} else {
+				return nil, fmt.Errorf("Filesystem issues has been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
 			}
-			log.Infof("File system is repaired for the volume %s, proceeding to mount the device %s", volumeID, device.AltFullPathName)
 		}
 	}
 
