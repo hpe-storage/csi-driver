@@ -3,20 +3,20 @@
 package kubernetes
 
 import (
+	"context"
 	"crypto/sha256"
-	b64 "encoding/base64"
 	"fmt"
 	"os"
 	"reflect"
 	"strings"
 	"time"
-        "context"
+
 	"github.com/hpe-storage/common-host-libs/chapi"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	crd_v1 "github.com/hpe-storage/k8s-custom-resources/pkg/apis/hpestorage/v1"
 	crd_client "github.com/hpe-storage/k8s-custom-resources/pkg/client/clientset/versioned"
-        v1beta1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	v1beta1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
 	snapclientset "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned"
 	v1 "k8s.io/api/core/v1"
 	storage_v1 "k8s.io/api/storage/v1"
@@ -41,8 +41,12 @@ const (
 	nodeLostCondition             = "NodeLost"
 	provisionerSecretNameKey      = "csi.storage.k8s.io/provisioner-secret-name"
 	provisionerSecretNamespaceKey = "csi.storage.k8s.io/provisioner-secret-namespace"
-	chapUserEnvKey                = "CHAP_USER"
-	chapPasswordEnvKey            = "CHAP_PASSWORD"
+	chapSecretNameKey             = "chapSecretName"
+	chapSecretNamespaceKey        = "chapSecretNamespace"
+	chapUserKey                   = "chapUser"
+	chapPasswordKey               = "chapPassword"
+	chapUserValidationPattern     = "^[a-zA-Z0-9][a-zA-Z0-9\\-:.]{0,63}$"
+	chapPasswordValidationPattern = "^$|^[a-zA-Z0-9+_)(*^%$#@!]{12,16}$"
 )
 
 var (
@@ -147,14 +151,6 @@ func NewKubernetesFlavor(nodeService bool, chapiDriver chapi.Driver) (*Flavor, e
 	return flavor, nil
 }
 
-func (flavor *Flavor) GetChapUserFromEnvironment() string {
-	return os.Getenv(chapUserEnvKey)
-}
-
-func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
-	return os.Getenv(chapPasswordEnvKey)
-}
-
 // ConfigureAnnotations takes the PVC annotations and overrides any parameters in the CSI create volume request
 func (flavor *Flavor) ConfigureAnnotations(name string, parameters map[string]string) (map[string]string, error) {
 	log.Tracef(">>>>> ConfigureAnnotations called with PVC Name %s", name)
@@ -234,24 +230,12 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			updateNodeRequired = true
 		}
 
-		chapUser := flavor.GetChapUserFromEnvironment()
-		if !reflect.DeepEqual(nodeInfo.Spec.ChapUser, chapUser) {
-			nodeInfo.Spec.ChapUser = chapUser
-			updateNodeRequired = true
-		}
-
-		chapPassword := flavor.GetChapPasswordFromEnvironment()
-		if !reflect.DeepEqual(nodeInfo.Spec.ChapPassword, b64.StdEncoding.EncodeToString([]byte(chapPassword))) {
-			nodeInfo.Spec.ChapPassword = b64.StdEncoding.EncodeToString([]byte(chapPassword))
-			updateNodeRequired = true
-		}
-
 		if !updateNodeRequired {
 			// no update needed to existing CRD
 			return node.UUID, nil
 		}
-		log.Infof("updating Node %s with iqns %v wwpns %v networks %v chapuser %s",
-			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.WWPNs, nodeInfo.Spec.Networks, nodeInfo.Spec.ChapUser)
+		log.Infof("updating Node %s with iqns %v wwpns %v networks %v",
+			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.WWPNs, nodeInfo.Spec.Networks)
 		_, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
 		if err != nil {
 			log.Errorf("Error updating the node %s - %s\n", nodeInfo.Name, err.Error())
@@ -264,12 +248,10 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 				Name: node.Name,
 			},
 			Spec: crd_v1.HPENodeInfoSpec{
-				UUID:         node.UUID,
-				IQNs:         getIqnsFromNode(node),
-				Networks:     getNetworksFromNode(node),
-				WWPNs:        getWwpnsFromNode(node),
-				ChapUser:     node.ChapUser,
-				ChapPassword: b64.StdEncoding.EncodeToString([]byte(node.ChapPassword)),
+				UUID:     node.UUID,
+				IQNs:     getIqnsFromNode(node),
+				Networks: getNetworksFromNode(node),
+				WWPNs:    getWwpnsFromNode(node),
 			},
 		}
 
@@ -322,6 +304,18 @@ func (flavor *Flavor) UnloadNodeInfo() {
 	}
 }
 
+func (flavor *Flavor) GetNodeLabelsByName(name string) (map[string]string, error) {
+	log.Tracef(">>>>>> GetNodeLabelsByName with name %s", name)
+	defer log.Trace("<<<<<< GetNodeLabelsByName")
+
+	node, err := flavor.GetNodeByName(name)
+	if err != nil {
+		return nil, fmt.Errorf("error getting node labels by node name: %v", err.Error())
+	}
+
+	return node.Labels, nil
+}
+
 // GetNodeInfo retrieves the Node identified by nodeID from the list of CRDs
 func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 	log.Tracef(">>>>>> GetNodeInfo from node ID %s", nodeID)
@@ -350,13 +344,11 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 				wwpns[i] = &nodeInfo.Spec.WWPNs[i]
 			}
 			node := &model.Node{
-				Name:         nodeInfo.ObjectMeta.Name,
-				UUID:         nodeInfo.Spec.UUID,
-				Iqns:         iqns,
-				Networks:     networks,
-				Wwpns:        wwpns,
-				ChapUser:     nodeInfo.Spec.ChapUser,
-				ChapPassword: nodeInfo.Spec.ChapPassword,
+				Name:     nodeInfo.ObjectMeta.Name,
+				UUID:     nodeInfo.Spec.UUID,
+				Iqns:     iqns,
+				Networks: networks,
+				Wwpns:    wwpns,
 			}
 
 			return node, nil
@@ -407,19 +399,19 @@ func (flavor *Flavor) newSnapshotIndexer() cache.Indexer {
 }
 
 func (flavor *Flavor) listAllSnapshots(options meta_v1.ListOptions) (runtime.Object, error) {
-	return flavor.snapClient.SnapshotV1().VolumeSnapshots(meta_v1.NamespaceAll).List(context.Background(),options)
+	return flavor.snapClient.SnapshotV1().VolumeSnapshots(meta_v1.NamespaceAll).List(context.Background(), options)
 }
 
 func (flavor *Flavor) watchAllSnapshots(options meta_v1.ListOptions) (watch.Interface, error) {
-	return flavor.snapClient.SnapshotV1().VolumeSnapshots(meta_v1.NamespaceAll).Watch(context.Background(),options)
+	return flavor.snapClient.SnapshotV1().VolumeSnapshots(meta_v1.NamespaceAll).Watch(context.Background(), options)
 }
 
 func (flavor *Flavor) listAllClaims(options meta_v1.ListOptions) (runtime.Object, error) {
-	return flavor.kubeClient.CoreV1().PersistentVolumeClaims(meta_v1.NamespaceAll).List(context.Background(),options)
+	return flavor.kubeClient.CoreV1().PersistentVolumeClaims(meta_v1.NamespaceAll).List(context.Background(), options)
 }
 
 func (flavor *Flavor) watchAllClaims(options meta_v1.ListOptions) (watch.Interface, error) {
-	return flavor.kubeClient.CoreV1().PersistentVolumeClaims(meta_v1.NamespaceAll).Watch(context.Background(),options)
+	return flavor.kubeClient.CoreV1().PersistentVolumeClaims(meta_v1.NamespaceAll).Watch(context.Background(), options)
 }
 
 func (flavor *Flavor) getSnapshotFromSnapshotName(name string) (*v1beta1.VolumeSnapshot, error) {
@@ -611,13 +603,13 @@ func (flavor *Flavor) GetCredentialsFromVolume(name string) (map[string]string, 
 	defer log.Trace("<<<<< GetCredentialsFromVolume")
 
 	credentials := map[string]string{}
-	pv, err := flavor.kubeClient.CoreV1().PersistentVolumes().Get(context.Background(),name, meta_v1.GetOptions{})
+	pv, err := flavor.kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), name, meta_v1.GetOptions{})
 	if err != nil {
 		log.Errorf("Error retrieving pv from name %s, err: %v", name, err.Error())
 		return credentials, err
 	}
 
-	storageClass, err := flavor.kubeClient.StorageV1().StorageClasses().Get(context.Background(),pv.Spec.StorageClassName, meta_v1.GetOptions{})
+	storageClass, err := flavor.kubeClient.StorageV1().StorageClasses().Get(context.Background(), pv.Spec.StorageClassName, meta_v1.GetOptions{})
 	if err != nil {
 		return credentials, fmt.Errorf("error getting storage classes: %v", err.Error())
 	}
@@ -640,7 +632,7 @@ func (flavor *Flavor) GetCredentialsFromSecret(name string, namespace string) (m
 	log.Tracef(">>>>> GetCredentialsFromSecret, name: %s, namespace: %s", name, namespace)
 	defer log.Trace("<<<<< GetCredentialsFromSecret")
 
-	secret, err := flavor.kubeClient.CoreV1().Secrets(namespace).Get(context.Background(),name, meta_v1.GetOptions{})
+	secret, err := flavor.kubeClient.CoreV1().Secrets(namespace).Get(context.Background(), name, meta_v1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error getting secret %s in namespace %s: %v", name, namespace, err)
 	}
@@ -657,7 +649,7 @@ func (flavor *Flavor) IsPodExists(uid string) (bool, error) {
 	log.Tracef(">>>>> IsPodExists, id: %s", uid)
 	defer log.Trace("<<<<< IsPodExists")
 
-	podList, err := flavor.kubeClient.CoreV1().Pods("").List(context.Background(),meta_v1.ListOptions{})
+	podList, err := flavor.kubeClient.CoreV1().Pods("").List(context.Background(), meta_v1.ListOptions{})
 	if err != nil {
 		log.Errorf("Error retrieving the pods, err: %v", err.Error())
 		return false, err
@@ -676,7 +668,7 @@ func (flavor *Flavor) getPodByName(name string, namespace string) (*v1.Pod, erro
 	log.Tracef(">>>>> getPodByName, name: %s, namespace: %s", name, namespace)
 	defer log.Trace("<<<<< getPodByName")
 
-	pod, err := flavor.kubeClient.CoreV1().Pods(namespace).Get(context.Background(),name, meta_v1.GetOptions{})
+	pod, err := flavor.kubeClient.CoreV1().Pods(namespace).Get(context.Background(), name, meta_v1.GetOptions{})
 	if err != nil {
 		log.Errorf("Error retrieving the pod %s/%s, err: %v", namespace, name, err.Error())
 		return nil, err
@@ -732,7 +724,7 @@ func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) 
 	log.Tracef(">>>>> GetVolumePropertyOfPV, pvName: %s, propertyName: %s", pvName, propertyName)
 	defer log.Trace("<<<<< GetVolumePropertyOfPV")
 
-	pv, err := flavor.kubeClient.CoreV1().PersistentVolumes().Get(context.Background(),pvName, meta_v1.GetOptions{})
+	pv, err := flavor.kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, meta_v1.GetOptions{})
 	if err != nil {
 		log.Errorf("Error retrieving the attribtue %s of the pv %s, err: %v", propertyName, pvName, err.Error())
 		return "", err
@@ -761,7 +753,7 @@ func (flavor *Flavor) GetNodeByName(nodeName string) (*v1.Node, error) {
 	log.Tracef(">>>>> GetNodeByName called with %s", nodeName)
 	defer log.Trace("<<<<< GetNodeByName")
 
-	node, err := flavor.kubeClient.CoreV1().Nodes().Get(context.Background(),nodeName, meta_v1.GetOptions{})
+	node, err := flavor.kubeClient.CoreV1().Nodes().Get(context.Background(), nodeName, meta_v1.GetOptions{})
 	if err != nil {
 		log.Errorf("unable to get node with name %s, err %s", nodeName, err.Error())
 		return nil, err
@@ -778,7 +770,9 @@ func (flavor *Flavor) DeletePod(podName string, namespace string, force bool) er
 		gracePeriodSec := int64(0)
 		deleteOptions.GracePeriodSeconds = &gracePeriodSec
 	}
-	err := flavor.kubeClient.CoreV1().Pods(namespace).Delete(context.Background(),podName, deleteOptions)
+
+	err := flavor.kubeClient.CoreV1().Pods(namespace).Delete(context.Background(), podName, deleteOptions)
+
 	if err != nil {
 		return err
 	}
@@ -789,7 +783,7 @@ func (flavor *Flavor) ListVolumeAttachments() (*storage_v1.VolumeAttachmentList,
 	log.Trace(">>>>> ListVolumeAttachments")
 	defer log.Trace("<<<<< ListVolumeAttachments")
 
-	vaList, err := flavor.kubeClient.StorageV1().VolumeAttachments().List(context.Background(),meta_v1.ListOptions{})
+	vaList, err := flavor.kubeClient.StorageV1().VolumeAttachments().List(context.Background(), meta_v1.ListOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -805,7 +799,9 @@ func (flavor *Flavor) DeleteVolumeAttachment(va string, force bool) error {
 		gracePeriodSec := int64(0)
 		deleteOptions.GracePeriodSeconds = &gracePeriodSec
 	}
-	err := flavor.kubeClient.StorageV1().VolumeAttachments().Delete(context.Background(),va, deleteOptions)
+
+	err := flavor.kubeClient.StorageV1().VolumeAttachments().Delete(context.Background(), va, meta_v1.DeleteOptions{})
+
 	if err != nil {
 		return err
 	}
@@ -822,7 +818,7 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
 	}
 
-	podList, err := flavor.kubeClient.CoreV1().Pods(meta_v1.NamespaceAll).List(context.Background(),listOptions)
+	podList, err := flavor.kubeClient.CoreV1().Pods(meta_v1.NamespaceAll).List(context.Background(), listOptions)
 	if err != nil {
 		log.Errorf("unable to list nfs pods for monitoring: %s", err.Error())
 		return err
@@ -931,4 +927,39 @@ func (flavor *Flavor) isVolumeAttachedToPod(pod *v1.Pod, va *storage_v1.VolumeAt
 		}
 	}
 	return false, nil
+}
+
+func (flavor *Flavor) GetChapCredentialsFromVolumeContext(volumeContext map[string]string) (map[string]string, error) {
+	log.Trace(">>>>> GetChapCredentialsFromVolumeContext")
+	defer log.Trace("<<<<< GetChapCredentialsFromVolumeContext")
+
+	var chapSecret map[string]string
+	if volumeContext[chapSecretNameKey] != "" && volumeContext[chapSecretNamespaceKey] != "" {
+		chapSecretName := volumeContext[chapSecretNameKey]
+		chapSecretNamespace := volumeContext[chapSecretNamespaceKey]
+		log.Infof("Found CHAP secret %s secret namespace %s", chapSecretName, chapSecretNamespace)
+
+		var err error
+		chapSecret, err = flavor.GetCredentialsFromSecret(chapSecretName, chapSecretNamespace)
+		if err != nil || len(chapSecret) == 0 {
+			return nil, fmt.Errorf("Failed to read CHAP credentials from secret name %s secret namespace %s: %v", chapSecretName, chapSecretNamespace, err)
+		}
+		chapUser := chapSecret[chapUserKey]
+		chapPassword := chapSecret[chapPasswordKey]
+
+		isUsernameValid := ValidateStringWithRegex(chapUser, chapUserValidationPattern)
+		if !isUsernameValid {
+			return nil, fmt.Errorf("Failed to validate CHAP username %s. The CHAP username should consist of up to 64 alphanumeric characters. Additionally, the characters '-', '.', and ':' are allowed after the first character. For example, 'myobject-5'", chapUser)
+		}
+
+		isPasswordValid := ValidateStringWithRegex(chapPassword, chapPasswordValidationPattern)
+		if !isPasswordValid {
+			return nil, fmt.Errorf("Failed to validate CHAP password '****'.The CHAP secret should be between 12-16 characters and cannot contain spaces or most punctuation. String of 12 to 16 printable ASCII characters excluding ampersand and ^[];`. Example: 'password_25-24'")
+		}
+
+	} else {
+		log.Infof("CHAP credentials are not provided")
+	}
+
+	return chapSecret, nil
 }

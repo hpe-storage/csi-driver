@@ -4,7 +4,6 @@
 package driver
 
 import (
-	b64 "encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -424,7 +423,7 @@ func (driver *Driver) stageVolume(
 	defer stageLock.Unlock()
 
 	// Create device for volume on the node
-	device, err := driver.setupDevice(volumeID, secrets, publishContext)
+	device, err := driver.setupDevice(volumeID, secrets, publishContext, volumeContext)
 	if err != nil {
 		return nil, status.Error(codes.Internal,
 			fmt.Sprintf("Error creating device for volume %s, err: %v", volumeID, err.Error()))
@@ -512,7 +511,8 @@ func (driver *Driver) stageVolume(
 func (driver *Driver) setupDevice(
 	volumeID string,
 	secrets map[string]string,
-	publishContext map[string]string) (*model.Device, error) {
+	publishContext map[string]string,
+	volumeContext map[string]string) (*model.Device, error) {
 
 	log.Tracef(">>>>> setupDevice, volumeID: %s, publishContext: %v", volumeID, log.MapScrubber(publishContext))
 	defer log.Trace("<<<<< setupDevice")
@@ -536,28 +536,23 @@ func (driver *Driver) setupDevice(
 
 	// Set iSCSI CHAP credentials if configured
 	if publishContext[accessProtocolKey] == iscsi {
-		// Get CHAP credentials from Cluster
-		nodeID, err := driver.nodeGetInfo()
+		// Get CHAP credentials from volume context
+		chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
 		if err != nil {
-			log.Errorf("Failed to update %s nodeInfo. Error: %s", nodeID, err.Error())
+			return nil, fmt.Errorf("Error: %s", err.Error())
 		}
-		// Decode and check if the node is configured
-		nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
-		if err != nil {
-			log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		if nodeInfo.ChapUser != "" && nodeInfo.ChapPassword != "" {
-			// Decode chap password
-			decodedChapPassword, _ := b64.StdEncoding.DecodeString(nodeInfo.ChapPassword)
-			nodeInfo.ChapPassword = string(decodedChapPassword)
+
+		if len(chapSecretMap) > 0 {
+			chapUser := chapSecretMap[chapUserKey]
+			chapPassword := chapSecretMap[chapPasswordKey]
+			log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
 
 			volume.Chap = &model.ChapInfo{
-				Name:     nodeInfo.ChapUser,
-				Password: nodeInfo.ChapPassword,
+				Name:     chapUser,
+				Password: chapPassword,
 			}
-			log.Infof("Using chap credentials from node %s", nodeID)
 		}
+
 	}
 
 	// Cleanup any stale device existing before stage
@@ -1517,6 +1512,7 @@ func (driver *Driver) createEphemeralVolume(
 		volCapabilities,
 		secrets,
 		nil, /* No Volume Source */
+		nil, /* No topology requirements */
 		volumeContext,
 	)
 	if err != nil {
@@ -1999,6 +1995,36 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
+	// Decode and check if the node is configured
+	nodeInfo, err := driver.flavor.GetNodeInfo(nodeID)
+	if err != nil {
+		log.Error("Cannot unmarshal node from node ID. err: ", err.Error())
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	nodeLabels, err := driver.flavor.GetNodeLabelsByName(nodeInfo.Name)
+	log.Infof("node %s nodeLabels: %+v", nodeInfo.Name, nodeLabels)
+	if err != nil {
+		log.Error("Cannot load node labels from node. err: ", err.Error())
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	accessableTopologySegments := make(map[string]string)
+	
+	for key, value := range nodeLabels {
+		log.Tracef("node %s label: %s => %s", nodeInfo.Name, key, value)
+		if key == defaultCSITopologyKey {
+			log.Infof("FOUND node %s label: %s => %s", nodeInfo.Name, key, value)
+			accessableTopologySegments[key] = value
+		}
+	}
+
+	topo := &csi.Topology{Segments: accessableTopologySegments}
+	if len(accessableTopologySegments) == 0 {
+		topo = nil
+	}
+
+	log.Infof("node %s topo: %+v", nodeInfo.Name, topo)
 	// Get max volume per node from environment variable
 	nodeMaxVolumesLimit := driver.nodeGetIntEnv(maxVolumesPerNodeKey)
 
@@ -2033,9 +2059,11 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		go watcher.StartWatcher()
 		isWatcherEnabled = true
 	}
+
 	return &csi.NodeGetInfoResponse{
-		NodeId:            nodeID,
-		MaxVolumesPerNode: nodeMaxVolumesLimit,
+		NodeId:             nodeID,
+		AccessibleTopology: topo,
+		MaxVolumesPerNode:  nodeMaxVolumesLimit,
 	}, nil
 }
 
@@ -2084,20 +2112,10 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 
 	var iqns []*string
 	var wwpns []*string
-	var chapUsername string
-	var chapPassword string
 	for _, initiator := range initiators {
 		if initiator.Type == iscsi {
 			for i := 0; i < len(initiator.Init); i++ {
 				iqns = append(iqns, &initiator.Init[i])
-				// we support only single host initiator
-				// check if CHAP credentials is set through configMap, ignore iscsid.conf reference
-				envChapUser := driver.flavor.GetChapUserFromEnvironment()
-				envChapPassword := driver.flavor.GetChapPasswordFromEnvironment()
-				if envChapUser != "" && envChapPassword != "" {
-					chapUsername = envChapUser
-					chapPassword = envChapPassword
-				}
 			}
 		} else {
 			for i := 0; i < len(initiator.Init); i++ {
@@ -2116,13 +2134,11 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 	}
 
 	node := &model.Node{
-		Name:         hostNameAndDomain[0],
-		UUID:         host.UUID,
-		Iqns:         iqns,
-		Networks:     cidrNetworks,
-		Wwpns:        wwpns,
-		ChapUser:     chapUsername,
-		ChapPassword: chapPassword,
+		Name:     hostNameAndDomain[0],
+		UUID:     host.UUID,
+		Iqns:     iqns,
+		Networks: cidrNetworks,
+		Wwpns:    wwpns,
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)

@@ -41,6 +41,10 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 func (flavor *Flavor) UnloadNodeInfo() {
 }
 
+func (flavor *Flavor) GetNodeLabelsByName(name string) (map[string]string, error) {
+	return make(map[string]string), nil
+}
+
 // GetNodeInfo returns the node details required to publish a volume to a node
 func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 	var node *model.Node
@@ -104,10 +108,6 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 	return nil
 }
 
-func (flavor *Flavor) GetChapUserFromEnvironment() string {
-	return ""
-}
-
-func (flavor *Flavor) GetChapPasswordFromEnvironment() string {
-	return ""
+func (flavor *Flavor) GetChapCredentialsFromVolumeContext(volumeContext map[string]string) (map[string]string, error) {
+	return nil, nil
 }

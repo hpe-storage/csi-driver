@@ -2,7 +2,9 @@ package tunelinux
 
 // Copyright 2019 Hewlett Packard Enterprise Development LP.
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"regexp"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/hpe-storage/common-host-libs/linux"
 	log "github.com/hpe-storage/common-host-libs/logger"
+	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/mpathconfig"
 	"github.com/hpe-storage/common-host-libs/util"
 )
@@ -374,4 +377,53 @@ func ConfigureMultipath() (err error) {
 		return err
 	}
 	return nil
+}
+
+func GetMultipathDevices() (multipathDevices []*model.MultipathDeviceInfo, err error) {
+	log.Tracef(">>>> getMultipathDevices ")
+	defer log.Trace("<<<<< getMultipathDevices")
+
+	out, _, err := util.ExecCommandOutput("multipathd", []string{"show", "multipaths", "json"})
+
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get the multipath devices due to the error: %s", err.Error())
+	}
+
+	if out != "" {
+		var rawJson map[string]any
+		err = json.Unmarshal([]byte(out), &rawJson)
+		if err != nil {
+			return nil, fmt.Errorf("Invalid JSON output of multipathd command: %s", err.Error())
+		}
+		maps := rawJson["maps"]
+		if x, ok := maps.([]interface{}); ok {
+			for _, mapItem := range x {
+				mapItem, _ := mapItem.(map[string]interface{})
+				if len(mapItem["vend"].(string)) > 0 && isSupportedDeviceVendor(linux.DeviceVendorPatterns, mapItem["vend"].(string)) {
+					multipathDevice := &model.MultipathDeviceInfo{
+						Name:       mapItem["name"].(string),
+						Vendor:     mapItem["vend"].(string),
+						Paths:      mapItem["paths"].(float64),
+						PathFaults: mapItem["path_faults"].(float64),
+						UUID:       mapItem["uuid"].(string),
+					}
+					if multipathDevice.Paths < 1 && multipathDevice.PathFaults > 0 {
+						multipathDevice.IsUnhealthy = true
+					}
+					multipathDevices = append(multipathDevices, multipathDevice)
+				}
+			}
+			return multipathDevices, nil
+		}
+	}
+	return nil, fmt.Errorf("Invalid multipathd command output received")
+}
+
+func isSupportedDeviceVendor(deviceVendors []string, vendor string) bool {
+	for _, value := range deviceVendors {
+		if value == vendor {
+			return true
+		}
+	}
+	return false
 }
