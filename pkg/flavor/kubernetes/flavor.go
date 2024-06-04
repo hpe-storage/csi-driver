@@ -358,8 +358,8 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 	return nil, fmt.Errorf("failed to get node with id %s", nodeID)
 }
 
-// NewClaimController provides a controller that watches for PersistentVolumeClaims and takes action on them
-// nolint: dupl
+//NewClaimController provides a controller that watches for PersistentVolumeClaims and takes action on them
+//nolint: dupl
 func (flavor *Flavor) newClaimIndexer() cache.Indexer {
 	claimListWatch := &cache.ListWatch{
 		ListFunc:  flavor.listAllClaims,
@@ -378,8 +378,8 @@ func (flavor *Flavor) newClaimIndexer() cache.Indexer {
 	return informer.GetIndexer()
 }
 
-// newSnapshotIndexer provides a controller that watches for VolumeSnapshots and takes action on them
-// nolint: dupl
+//newSnapshotIndexer provides a controller that watches for VolumeSnapshots and takes action on them
+//nolint: dupl
 func (flavor *Flavor) newSnapshotIndexer() cache.Indexer {
 	snapshotListWatch := &cache.ListWatch{
 		ListFunc:  flavor.listAllSnapshots,
@@ -787,8 +787,6 @@ func (flavor *Flavor) ListVolumeAttachments() (*storage_v1.VolumeAttachmentList,
 	if err != nil {
 		return nil, err
 	}
-	log.Trace("VOLUME ATTACHMENT LIST:", vaList)
-	log.Tracef("VOLUME ATTACHMENT LIST:%+v", vaList)
 	return vaList, nil
 }
 
