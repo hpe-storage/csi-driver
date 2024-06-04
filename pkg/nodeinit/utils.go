@@ -38,9 +38,9 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 			log.Tracef("Name:%s Vendor:%s Paths:%f Path Faults:%f UUID:%s IsUnhealthy:%t", device.Name, device.Vendor, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
 			//Remove Later
 			if device.IsUnhealthy {
-				log.Infof("Multipath device %s on the node %s is unhealthy", nodeName, device.Name)
+				log.Infof("Multipath device %s on the node %s is unhealthy", device.Name, nodeName)
 			} else {
-				log.Infof("Multipath device %s on the node %s is healthy", nodeName, device.Name)
+				log.Infof("Multipath device %s on the node %s is healthy", device.Name, nodeName)
 			}
 		}
 	} else {
