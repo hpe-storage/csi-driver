@@ -63,7 +63,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 					log.Info("The multipath device %s belongs to this node %s and is healthy. Nothing to do", device.Name, nodeName)
 				}
 			} else {
-				log.Infof("Multipath device %s doesnt not belong to the node %s", device.Name, nodeName)
+				log.Infof("Multipath device %s does not not belong to the node %s", device.Name, nodeName)
 				if device.IsUnhealthy {
 					log.Infof("The multipath device %s is unhealthy and it does not belong to the node %s", device.Name, nodeName)
 					//do cleanup
@@ -73,10 +73,10 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 			}
 		} else {
 			if device.IsUnhealthy {
-				log.Infof("No volume attachments found. The multipath device is unhealthy and does not belong to HPE CSI driver, Do cleanup!")
+				log.Infof("No volume attachments found. The multipath device is unhealthy and does not belong to the hpe csi driver, do cleanup!")
 				// Do cleanup
 			} else {
-				log.Infof("No volume attachmenst found. The multipath device is healthy and does not belong to HPE CSI driver")
+				log.Infof("No volume attachments found. The multipath device is healthy and does not belong to hpe csi driver.")
 				//Nothing to do
 			}
 		}
