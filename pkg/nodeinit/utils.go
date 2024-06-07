@@ -58,9 +58,9 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 			if doesDeviceBelongToTheNode(device, vaList, nodeName) {
 				log.Infof("Multipath device %s belongs to the node %s", device.Name, nodeName)
 				if device.IsUnhealthy {
-					log.Info("The multipath device %s belongs to this node %s and is unhealthy. Issue warnings!", device.Name, nodeName)
+					log.Infof("The multipath device %s belongs to this node %s and is unhealthy. Issue warnings!", device.Name, nodeName)
 				} else {
-					log.Info("The multipath device %s belongs to this node %s and is healthy. Nothing to do", device.Name, nodeName)
+					log.Infof("The multipath device %s belongs to this node %s and is healthy. Nothing to do", device.Name, nodeName)
 				}
 			} else {
 				log.Infof("Multipath device %s does not not belong to the node %s", device.Name, nodeName)
