@@ -474,8 +474,6 @@ func (driver *Driver) stageVolume(
 			} else {
 				return nil, fmt.Errorf("Filesystem issues has been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
 			}
-		} else {
-			log.Infof("File system is clean for the volume %s, proceeding to mount the volume")
 		}
 	}
 
