@@ -540,21 +540,40 @@ func (driver *Driver) setupDevice(
 
 	// Set iSCSI CHAP credentials if configured
 	if publishContext[accessProtocolKey] == iscsi {
-		// Get CHAP credentials from volume context
-		chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
+
+		// // Attempt to get CHAP credentials from volume context.
+		// chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("Error: %s", err.Error())
+		// }
+
+		// // If not found in volume context, attempt to get CHAP credentials from environment.
+		// if chapSecretMap == nil {
+		// 	chapSecretMap, err = driver.flavor.GetChapCredentialsFromEnvironment()
+		// 	if err != nil {
+		// 		return nil, fmt.Errorf("Error: %s", err.Error())
+		// 	}
+		// }
+
+		// // If CHAP credentials are found, construct and return the ChapInfo.
+		// if chapSecretMap != nil {
+		// 	chapUser := chapSecretMap[chapUserKey]
+		// 	chapPassword := chapSecretMap[chapPasswordKey]
+		// 	log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
+
+		// 	volume.Chap = &model.ChapInfo{
+		// 		Name:     chapUser,
+		// 		Password: chapPassword,
+		// 	}
+		// }
+
+		chapInfo, err := driver.flavor.GetChapCredentials(volumeContext)
 		if err != nil {
 			return nil, fmt.Errorf("Error: %s", err.Error())
 		}
 
-		if len(chapSecretMap) > 0 {
-			chapUser := chapSecretMap[chapUserKey]
-			chapPassword := chapSecretMap[chapPasswordKey]
-			log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
-
-			volume.Chap = &model.ChapInfo{
-				Name:     chapUser,
-				Password: chapPassword,
-			}
+		if chapInfo != nil {
+			volume.Chap = chapInfo
 		}
 
 	}
@@ -2014,7 +2033,7 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	}
 
 	accessableTopologySegments := make(map[string]string)
-	
+
 	for key, value := range nodeLabels {
 		log.Tracef("node %s label: %s => %s", nodeInfo.Name, key, value)
 		if key == defaultCSITopologyKey {

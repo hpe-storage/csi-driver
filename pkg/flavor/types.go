@@ -38,5 +38,5 @@ type Flavor interface {
 	GetOrchestratorVersion() (*version.Info, error)
 	MonitorPod(podLabelkey, podLabelvalue string) error
 	GetGroupSnapshotNameFromSnapshotName(snapshotName string) (string, error)
-	GetChapCredentialsFromVolumeContext(volumeContext map[string]string) (map[string]string, error)
+	GetChapCredentials(volumeContext map[string]string) (*model.ChapInfo, error)
 }

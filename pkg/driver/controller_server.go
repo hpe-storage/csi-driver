@@ -829,19 +829,30 @@ func (driver *Driver) controllerPublishVolume(
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
-	chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
+	chapInfo, err := driver.flavor.GetChapCredentials(volumeContext)
 	if err != nil {
-		return nil, status.Error(codes.Unavailable,
-			fmt.Sprintf("Error: %s", err.Error()))
+		return nil, fmt.Errorf("Error: %s", err.Error())
 	}
-	if len(chapSecretMap) > 0 {
-		chapUser := chapSecretMap[chapUserKey]
-		chapPassword := chapSecretMap[chapPasswordKey]
-		log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
 
-		node.ChapUser = chapUser
-		node.ChapPassword = chapPassword
+	if chapInfo != nil {
+		// volume.Chap = chapInfo
+		node.ChapUser = chapInfo.Name
+		node.ChapPassword = chapInfo.Password
 	}
+
+	// chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
+	// if err != nil {
+	// 	return nil, status.Error(codes.Unavailable,
+	// 		fmt.Sprintf("Error: %s", err.Error()))
+	// }
+	// if len(chapSecretMap) > 0 {
+	// 	chapUser := chapSecretMap[chapUserKey]
+	// 	chapPassword := chapSecretMap[chapPasswordKey]
+	// 	log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
+
+	// 	node.ChapUser = chapUser
+	// 	node.ChapPassword = chapPassword
+	// }
 
 	// Get storageProvider using secrets
 	storageProvider, err := driver.GetStorageProvider(secrets)
