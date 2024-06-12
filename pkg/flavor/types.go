@@ -5,6 +5,7 @@ package flavor
 import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/hpe-storage/common-host-libs/model"
+	storage_v1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/version"
 )
 
@@ -38,5 +39,6 @@ type Flavor interface {
 	GetOrchestratorVersion() (*version.Info, error)
 	MonitorPod(podLabelkey, podLabelvalue string) error
 	GetGroupSnapshotNameFromSnapshotName(snapshotName string) (string, error)
+	ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error)
 	GetChapCredentialsFromVolumeContext(volumeContext map[string]string) (map[string]string, error)
 }

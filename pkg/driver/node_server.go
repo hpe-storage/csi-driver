@@ -462,7 +462,7 @@ func (driver *Driver) stageVolume(
 	mountInfo := getMountInfo(volumeID, volCap, publishContext, stagingMountPoint)
 
 	if mountInfo.FilesystemOptions != nil && (mountInfo.FilesystemOptions.Type == "ext2" || mountInfo.FilesystemOptions.Type == "ext3" || mountInfo.FilesystemOptions.Type == "ext4") {
-		log.Debugf("Checking whether the file system of the volume %s is clean or not.", volumeID)
+		log.Infof("Checking whether the file system of the volume %s is clean or not.", volumeID)
 		if !driver.chapiDriver.IsExtFileSystemClean(volumeID, device.AltFullPathName) {
 			if volumeContext[fsRepairKey] != "" && volumeContext[fsRepairKey] == trueKey {
 				log.Infof("Attempting to repair the file system issues of the device %s", device.AltFullPathName)
@@ -2014,7 +2014,7 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	}
 
 	accessableTopologySegments := make(map[string]string)
-	
+
 	for key, value := range nodeLabels {
 		log.Tracef("node %s label: %s => %s", nodeInfo.Name, key, value)
 		if key == defaultCSITopologyKey {
