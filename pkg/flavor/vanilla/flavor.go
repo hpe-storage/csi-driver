@@ -108,6 +108,6 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 	return nil
 }
 
-func (flavor *Flavor) GetChapCredentialsFromVolumeContext(volumeContext map[string]string) (map[string]string, error) {
+func (flavor *Flavor) GetChapCredentials(volumeContext map[string]string) (*model.ChapInfo, error) {
 	return nil, nil
 }
