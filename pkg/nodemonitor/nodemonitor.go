@@ -89,7 +89,7 @@ func (nm *NodeMonitor) StopNodeMonitor() error {
 }
 
 func (nm *NodeMonitor) monitorNode() error {
-	log.Trace(">>>>> monitorNode")
+	log.Trace(">>>>> monitorNode for the node ", nm.nodeName)
 	defer log.Trace("<<<<< monitorNode")
 	defer close(nm.done)
 
@@ -100,9 +100,9 @@ func (nm *NodeMonitor) monitorNode() error {
 			select {
 			case <-tick.C:
 				log.Infof("Node monitor started monitoring the node %s", nm.nodeName)
-				err := nodeinit.GetMultipathDevices(nm.nodeName)
+				err := nodeinit.AnalyzeMultiPathDevices(nm.flavor, nm.nodeName)
 				if err != nil {
-					log.Errorf("Error while getting the information of multipath devices on the node %s: %s", nm.nodeName, err.Error())
+					log.Errorf("Error while analyzing the multipath devices %s on the node %s", err.Error(), nm.nodeName)
 					return
 				}
 			case <-nm.stopChannel:

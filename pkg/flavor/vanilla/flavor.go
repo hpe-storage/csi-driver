@@ -10,6 +10,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	storage_v1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/version"
 )
 
@@ -109,5 +110,9 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 }
 
 func (flavor *Flavor) GetChapCredentials(volumeContext map[string]string) (*model.ChapInfo, error) {
+	return nil, nil
+}
+
+func (flavor *Flavor) ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error) {
 	return nil, nil
 }
