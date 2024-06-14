@@ -939,25 +939,6 @@ func (flavor *Flavor) isVolumeAttachedToPod(pod *v1.Pod, va *storage_v1.VolumeAt
 	return false, nil
 }
 
-// func (flavor *Flavor) isChapCredentialsValid(chapSecret map[string]string) (bool, error) {
-// 	chapUser := chapSecret[chapUserKey]
-// 	chapPassword := chapSecret[chapPasswordKey]
-// 	log.Tracef(">>>>> isChapCredentialsValid")
-// 	defer log.Tracef("<<<<< isChapCredentialsValid")
-
-// 	isUsernameValid := ValidateStringWithRegex(chapUser, chapUserValidationPattern)
-// 	if !isUsernameValid {
-// 		return false, fmt.Errorf("Failed to validate CHAP username %s. The CHAP username should consist of up to 64 alphanumeric characters. Additionally, the characters '-', '.', and ':' are allowed after the first character. For example, 'myobject-5'", chapUser)
-// 	}
-
-// 	isPasswordValid := ValidateStringWithRegex(chapPassword, chapPasswordValidationPattern)
-// 	if !isPasswordValid {
-// 		return false, fmt.Errorf("Failed to validate CHAP password '****'.The CHAP secret should be between 12-16 characters and cannot contain spaces or most punctuation. String of 12 to 16 printable ASCII characters excluding ampersand and ^[];`. Example: 'password_25-24'")
-// 	}
-
-// 	return true, nil
-// }
-
 func (flavor *Flavor) isChapCredentialsValid(chapSecret map[string]string) (bool, error) {
 	chapUser := chapSecret[chapUserKey]
 	chapPassword := chapSecret[chapPasswordKey]
@@ -1009,33 +990,6 @@ func (flavor *Flavor) getChapCredentialsFromEnvironment() (map[string]string, er
 	return flavor.getChapCredentailsFromSecret(chapSecretName, chapSecretNamespace)
 }
 
-// func (flavor *Flavor) GetChapCredentialsFromEnvironment() (map[string]string, error) {
-// 	log.Tracef(">>>>> GetCredentialsFromEnv")
-// 	defer log.Trace("<<<<< GetCredentialsFromEnv")
-
-// 	var chapSecret map[string]string
-// 	chapSecretName := flavor.GetChapSecretNameFromEnvironment()
-// 	chapSecretNamespace := flavor.GetChapSecretNamespaceFromEnvironment()
-
-// 	if chapSecretNamespace != "" && chapSecretNamespace != "" {
-// 		log.Infof("Found CHAP environment variables secret %s secret namespace %s", chapSecretName, chapSecretNamespace)
-
-// 		chapSecret, err := flavor.GetCredentialsFromSecret(chapSecretName, chapSecretNamespace)
-// 		if err != nil || len(chapSecret) == 0 {
-// 			return nil, fmt.Errorf("Failed to read CHAP credentials from secret name %s secret namespace %s: %v", chapSecretName, chapSecretNamespace, err)
-// 		}
-
-// 		isValid, err := flavor.isChapCredentialsValid(chapSecret)
-// 		if !isValid {
-// 			return nil, fmt.Errorf("CHAP credentails are not valid, %v", err.Error())
-// 		}
-// 	} else {
-// 		log.Infof("CHAP credentials are not provided")
-// 	}
-
-// 	return chapSecret, nil
-// }
-
 func (flavor *Flavor) getChapCredentialsFromVolumeContext(volumeContext map[string]string) (map[string]string, error) {
 	log.Print("GetChapCredentialsFromVolumeContext")
 
@@ -1080,30 +1034,3 @@ func (flavor *Flavor) GetChapCredentials(volumeContext map[string]string) (*mode
 	// Return nil if no CHAP credentials are found.
 	return nil, nil
 }
-
-// func (flavor *Flavor) GetChapCredentialsFromVolumeContext(volumeContext map[string]string) (map[string]string, error) {
-// 	log.Trace(">>>>> GetChapCredentialsFromVolumeContext")
-// 	defer log.Trace("<<<<< GetChapCredentialsFromVolumeContext")
-
-// 	var chapSecret map[string]string
-// 	if volumeContext[chapSecretNameKey] != "" && volumeContext[chapSecretNamespaceKey] != "" {
-// 		chapSecretName := volumeContext[chapSecretNameKey]
-// 		chapSecretNamespace := volumeContext[chapSecretNamespaceKey]
-// 		log.Infof("Found CHAP secret %s secret namespace %s", chapSecretName, chapSecretNamespace)
-
-// 		var err error
-// 		chapSecret, err = flavor.GetCredentialsFromSecret(chapSecretName, chapSecretNamespace)
-// 		if err != nil || len(chapSecret) == 0 {
-// 			return nil, fmt.Errorf("Failed to read CHAP credentials from secret name %s secret namespace %s: %v", chapSecretName, chapSecretNamespace, err)
-// 		}
-// 		isValid, err := flavor.isChapCredentialsValid(chapSecret)
-// 		if !isValid {
-// 			return nil, fmt.Errorf("CHAP credentails are not valid, %v", err.Error())
-// 		}
-
-// 	} else {
-// 		log.Infof("CHAP credentials are not provided")
-// 	}
-
-// 	return chapSecret, nil
-// }
