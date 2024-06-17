@@ -35,7 +35,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 	if multipathDevices != nil && len(multipathDevices) > 0 {
 		for _, device := range multipathDevices {
 			//TODO: Assess whether the device belongs to this node or not and whether to do clean up or not
-			log.Tracef("Name:%s Vendor:%s Paths:%f Path Faults:%f UUID:%s IsUnhealthy:%t", device.Name, device.Vendor, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
+			log.Tracef("Name:%s Vendor:%s Paths:%f Path Faults:%f UUID:%s IsUnhealthy:%t", device.Name, device.Vend, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
 			//Remove Later
 			if device.IsUnhealthy {
 				log.Infof("Multipath device %s on the node %s is unhealthy", device.Name, nodeName)
@@ -52,6 +52,8 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 	if err != nil {
 		return err
 	}
+
+	var err_count int
 	for _, device := range multipathDevices {
 		if vaList != nil && len(vaList.Items) > 0 {
 			log.Infof("Assessing the multipath device %s", device.Name)
@@ -67,6 +69,11 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 				if device.IsUnhealthy {
 					log.Infof("The multipath device %s is unhealthy and it does not belong to the node %s", device.Name, nodeName)
 					//do cleanup
+					err = cleanup(device)
+					if err != nil {
+						log.Errorf("Unable to cleanup the multipath device %s", device.Name)
+						err_count = err_count + 1
+					}
 				} else {
 					log.Infof("The multipath device %s is healthy and it does not belong to the node %s. Issue warnings!", device.Name, nodeName)
 				}
@@ -75,11 +82,46 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 			if device.IsUnhealthy {
 				log.Infof("No volume attachments found. The multipath device is unhealthy and does not belong to the hpe csi driver, do cleanup!")
 				// Do cleanup
+				err = cleanup(device)
+				if err != nil {
+					log.Errorf("Unable to cleanup the multipath device %s", device.Name)
+					err_count = err_count + 1
+				}
 			} else {
 				log.Infof("No volume attachments found. The multipath device is healthy and does not belong to hpe csi driver.")
 				//Nothing to do
 			}
 		}
 	} // end-for loop
+
+	if err_count > 0 {
+		log.Infof("Failed to remove %d multipath devices on the node %s", err_count, nodeName)
+		return err
+	}
+	return nil
+}
+
+func cleanup(device *model.MultipathDevice) error {
+	log.Tracef(">>>>> cleanup of the device %s", device.Name)
+	defer log.Trace("<<<<< cleanup")
+
+	//unmount references & kill processes explicitly, if umount fails
+	err := tunelinux.UnmountMultipathDevice(device.Name)
+	if err != nil {
+		log.Errorf("Unable to unmount the multipath device's references%s: %s", device.Name, err.Error())
+		return err
+	}
+	//remove block devices of multipath device
+	err = tunelinux.RemoveBlockDevicesOfMultipathDevices(*device)
+	if err != nil {
+		log.Errorf("Unable to remove the block devices of multipath device %s: %s", device.Name, err.Error())
+		return err
+	}
+	//flush the multipath device
+	err = tunelinux.FlushMultipathDevice(device.Name)
+	if err != nil {
+		log.Errorf("Unable to flush the multipath device %s: %s", device.Name, err.Error())
+		return err
+	}
 	return nil
 }
