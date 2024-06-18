@@ -6,9 +6,11 @@ import (
 	"github.com/hpe-storage/common-host-libs/tunelinux"
 	"github.com/hpe-storage/csi-driver/pkg/flavor"
 	storage_v1 "k8s.io/api/storage/v1"
+
+	"os"
 )
 
-func doesDeviceBelongToTheNode(multipathDevice *model.MultipathDeviceInfo, volumeAttachmentList *storage_v1.VolumeAttachmentList, nodeName string) bool {
+func doesDeviceBelongToTheNode(multipathDevice *model.MultipathDevice, volumeAttachmentList *storage_v1.VolumeAttachmentList, nodeName string) bool {
 	if multipathDevice != nil {
 		for _, va := range volumeAttachmentList.Items {
 			log.Info("NAME:", va.Name, "PV:", *va.Spec.Source.PersistentVolumeName, "STATUS: ", va.Status)
@@ -26,6 +28,14 @@ func doesDeviceBelongToTheNode(multipathDevice *model.MultipathDeviceInfo, volum
 func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 	log.Trace(">>>>> AnalyzeMultiPathDevices for the node ", nodeName)
 	defer log.Trace("<<<<< AnalyzeMultiPathDevices")
+
+	var disableCleanup bool
+	disableNodeMonitor := os.Getenv("DISABLE_NODE_MONITOR")
+	if disableNodeMonitor == "true" {
+		log.Infof("Node monitor is disabled, DISABLE_NODE_MONITOR=%v."+
+			"Skipping the node monitor", disableNodeMonitor)
+		disableCleanup = true
+	}
 
 	multipathDevices, err := tunelinux.GetMultipathDevices() //driver.GetMultipathDevices()
 	if err != nil {
@@ -69,10 +79,15 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 				if device.IsUnhealthy {
 					log.Infof("The multipath device %s is unhealthy and it does not belong to the node %s", device.Name, nodeName)
 					//do cleanup
-					err = cleanup(device)
-					if err != nil {
-						log.Errorf("Unable to cleanup the multipath device %s", device.Name)
-						err_count = err_count + 1
+					if !disableCleanup {
+						log.Infof("Cleaning the stale multipath device %s as the DISABLE_NODE_MONITOR is set", device.Name)
+						err = cleanup(device)
+						if err != nil {
+							log.Errorf("Unable to cleanup the multipath device %s", device.Name)
+							err_count = err_count + 1
+						}
+					} else {
+						log.Warnf("Skipping the removal of stale multipath device %s as the DISABLE_NODE_MONITOR is set to %s", device.Name, disableNodeMonitor)
 					}
 				} else {
 					log.Infof("The multipath device %s is healthy and it does not belong to the node %s. Issue warnings!", device.Name, nodeName)
@@ -82,10 +97,15 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 			if device.IsUnhealthy {
 				log.Infof("No volume attachments found. The multipath device is unhealthy and does not belong to the hpe csi driver, do cleanup!")
 				// Do cleanup
-				err = cleanup(device)
-				if err != nil {
-					log.Errorf("Unable to cleanup the multipath device %s", device.Name)
-					err_count = err_count + 1
+				if !disableCleanup {
+					log.Infof("Cleaning the stale multipath device %s as the DISABLE_CLEANUP is set", device.Name)
+					err = cleanup(device)
+					if err != nil {
+						log.Errorf("Unable to cleanup the multipath device %s", device.Name)
+						err_count = err_count + 1
+					}
+				} else {
+					log.Warnf("Skipping the removal of stale multipath device %s as the DISABLE_NODE_MONITOR is set to %s", device.Name, disableNodeMonitor)
 				}
 			} else {
 				log.Infof("No volume attachments found. The multipath device is healthy and does not belong to hpe csi driver.")
