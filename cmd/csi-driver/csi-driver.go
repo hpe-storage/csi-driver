@@ -162,9 +162,17 @@ func csiCliHandler(cmd *cobra.Command) error {
 		return fmt.Errorf("invalid interval %s provided for monitoring pods on unreachable nodes", podMonitorInterval)
 	}
 
-	nmInterval, err := strconv.ParseInt(nodeMonitorInterval, 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid interval %s provided for monitoring the node", nmInterval)
+	var nmInterval int64
+	disableNodeMonitor := os.Getenv("DISABLE_NODE_MONITOR")
+	if disableNodeMonitor == "true" {
+		log.Infof("Node monitor is disabled, DISABLE_NODE_MONITOR=%v."+
+			"Skipping the node monitor", disableNodeMonitor)
+		nodeMonitor = false
+	} else {
+		nmInterval, err = strconv.ParseInt(nodeMonitorInterval, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid interval %s provided for monitoring the node", nmInterval)
+		}
 	}
 
 	pid := os.Getpid()

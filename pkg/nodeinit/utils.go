@@ -1,13 +1,13 @@
 package nodeinit
 
 import (
+	"os"
+
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/tunelinux"
 	"github.com/hpe-storage/csi-driver/pkg/flavor"
 	storage_v1 "k8s.io/api/storage/v1"
-
-	"os"
 )
 
 func doesDeviceBelongToTheNode(multipathDevice *model.MultipathDevice, volumeAttachmentList *storage_v1.VolumeAttachmentList, nodeName string) bool {
@@ -33,7 +33,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 	disableNodeMonitor := os.Getenv("DISABLE_NODE_MONITOR")
 	if disableNodeMonitor == "true" {
 		log.Infof("Node monitor is disabled, DISABLE_NODE_MONITOR=%v."+
-			"Skipping the node monitor", disableNodeMonitor)
+			"Skipping the cleanup of stale multipath devices", disableNodeMonitor)
 		disableCleanup = true
 	}
 
