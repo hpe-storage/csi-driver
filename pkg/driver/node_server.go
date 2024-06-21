@@ -502,7 +502,6 @@ func (driver *Driver) stageVolume(
 		} else {
 			return nil, fmt.Errorf("Filesystem intact, still failed to mount device %s: %v", device.AltFullPathName, err.Error())
 		}
-		return nil, fmt.Errorf("Failed to mount device %s, %v", device.AltFullPathName, err.Error())
 	}
 	log.Tracef("Device %s mounted successfully, Mount: %+v", device.AltFullPathName, mount)
 
