@@ -292,6 +292,23 @@ func (driver *LinuxDriver) MountDevice(device *model.Device, mountPoint string, 
 	return mount, nil
 }
 
+func (driver *LinuxDriver) IsExtFileSystemClean(volumeID string, device string) bool {
+	log.Tracef(">>>>> IsExtFileSystemClean, volumeID: %s, device: %s", volumeID, device)
+	defer log.Trace("<<<<< IsExtFileSystemClean")
+	if len(device) > 0 && len(volumeID) > 0 {
+		var args []string
+		cmd := "tune2fs"
+		args = append(args, "-l")
+		args = append(args, device)
+		output, _, err := util.ExecCommandOutput(cmd, args)
+		if err != nil || (output != "" && getInfoFromTune2fsOutput(output, "Filesystem state") == "clean") {
+			log.Debugf("File system state of the volume %s is clean", volumeID)
+			return true
+		}
+	}
+	return false
+}
+
 func (driver *LinuxDriver) IsFileSystemCorrupted(volumeID string, device *model.Device, fsOpts *model.FilesystemOpts) bool {
 	log.Tracef(">>>>> IsFileSystemCorrupted, volumeID: %s, device: %+v, fsOpts: %+v", volumeID, device, fsOpts)
 	defer log.Trace("<<<<< IsFileSystemCorrupted")
@@ -302,20 +319,13 @@ func (driver *LinuxDriver) IsFileSystemCorrupted(volumeID string, device *model.
 		var args []string
 		log.Debugf("File system of the volume %s is %s", volumeID, fileSystemType)
 		if fileSystemType == "ext2" || fileSystemType == "ext3" || fileSystemType == "ext4" {
-			cmd = "tune2fs"
-			args = append(args, "-l")
+			cmd = "fsck"
+			args = append(args, "-n")
 			args = append(args, device.AltFullPathName)
-			output, _, err := util.ExecCommandOutput(cmd, args)
-			if err != nil || (output != "" && getInfoFromTune2fsOutput(output, "Filesystem state") != "clean") {
-				log.Debugf("File system state is not clean, checking the file system corruption using fsck command for the volume %s", volumeID)
-				cmd = "fsck"
-				args = append(args, "-n")
-				args = append(args, device.AltFullPathName)
-				err = checkFileSystemCorruption(volumeID, cmd, args)
-				if err != nil {
-					log.Infof("Filesystem issues detected for the volume %s and device %s", volumeID, device.AltFullPathName)
-					return true
-				}
+			err := checkFileSystemCorruption(volumeID, cmd, args)
+			if err != nil {
+				log.Infof("Filesystem issues detected for the volume %s and device %s", volumeID, device.AltFullPathName)
+				return true
 			}
 		} else if fileSystemType == "xfs" {
 			cmd = "xfs_repair"
@@ -408,7 +418,7 @@ func (driver *LinuxDriver) RepairFileSystem(volumeID string, device *model.Devic
 		log.Debugf("Determining the filesystem of the volume %s", volumeID)
 		fileSystemType := fsOpts.Type
 		if fileSystemType == "ext2" || fileSystemType == "ext3" || fileSystemType == "ext4" {
-			err := repairFsckFileSystem(volumeID, device)
+			err := driver.RepairFsckFileSystem(volumeID, device)
 			if err != nil {
 				log.Errorf("Failed to repair the %s file system for the volume %s due to the error %v", fileSystemType, volumeID, err)
 				return err
@@ -431,7 +441,7 @@ func (driver *LinuxDriver) RepairFileSystem(volumeID string, device *model.Devic
 	return nil
 }
 
-func repairFsckFileSystem(volumeID string, device *model.Device) error {
+func (driver *LinuxDriver) RepairFsckFileSystem(volumeID string, device *model.Device) error {
 	log.Tracef(">>>>> RepairFsckFileSystem, volumeID: %s, device: %+v", volumeID, device)
 	var err error
 	c := exec.Command("fsck", "-y", device.AltFullPathName)
