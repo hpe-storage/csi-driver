@@ -48,7 +48,7 @@ const (
 	chapSecretNameEnvKey          = "CHAP_SECRET_NAME"
 	chapSecretNamespaceEnvKey     = "CHAP_SECRET_NAMESPACE"
 	chapUserValidationPattern     = "^[a-zA-Z0-9][a-zA-Z0-9\\-:.]{0,63}$"
-	chapPasswordValidationPattern = "^$|^[a-zA-Z0-9+_)(*^%$#@!]{12,16}$"
+	chapPasswordValidationPattern = "^[a-zA-Z0-9!#$%()*+,-./:<>?@_{}|~]{12,16}$"
 )
 
 var (
