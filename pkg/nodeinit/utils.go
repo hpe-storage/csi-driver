@@ -30,6 +30,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 	defer log.Trace("<<<<< AnalyzeMultiPathDevices")
 
 	var disableCleanup bool
+	var err_count int
 	disableNodeMonitor := os.Getenv("DISABLE_NODE_MONITOR")
 	if disableNodeMonitor == "true" {
 		log.Infof("Node monitor is disabled, DISABLE_NODE_MONITOR=%v."+
@@ -42,20 +43,35 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 		log.Errorf("Error while getting the information of multipath devices on the node %s", nodeName)
 		return err
 	}
-	if multipathDevices != nil && len(multipathDevices) > 0 {
-		for _, device := range multipathDevices {
-			//TODO: Assess whether the device belongs to this node or not and whether to do clean up or not
-			log.Tracef("Name:%s Vendor:%s Paths:%f Path Faults:%f UUID:%s IsUnhealthy:%t", device.Name, device.Vend, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
-			//Remove Later
-			if device.IsUnhealthy {
-				log.Infof("Multipath device %s on the node %s is unhealthy", device.Name, nodeName)
-			} else {
-				log.Infof("Multipath device %s on the node %s is healthy", device.Name, nodeName)
+
+	log.Infof("Checking the connection to control plane....")
+	if !flavor.CheckConnection() {
+		log.Infof("Node %s is unable to connect to the control plane.", nodeName)
+		if multipathDevices != nil && len(multipathDevices) > 0 {
+			for _, device := range multipathDevices {
+				log.Tracef("Name:%s Vendor:%s Paths:%f Path Faults:%f UUID:%s IsUnhealthy:%t", device.Name, device.Vend, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
+				if device.IsUnhealthy {
+					log.Infof("Multipath device %s on the node %s is unhealthy", device.Name, nodeName)
+					log.Infof("Cleaning the stale multipath device %s as the DISABLE_CLEANUP is set", device.Name)
+					err = cleanup(device)
+					if err != nil {
+						log.Errorf("Unable to cleanup the multipath device %s: %s", device.Name, err.Error())
+						err_count = err_count + 1
+					}
+				} else {
+					log.Infof("Multipath device %s on the node %s is healthy", device.Name, nodeName)
+				}
 			}
+			if err_count > 0 {
+				log.Infof("Failed to remove %d multipath devices on the node %s", err_count, nodeName)
+				return err
+			}
+		} else {
+			log.Tracef("No multipath devices found on the node %s", nodeName)
+			return nil
 		}
 	} else {
-		log.Tracef("No multipath devices found on the node %s", nodeName)
-		return nil
+		log.Infof("Node %s has proper connection with control plane", nodeName)
 	}
 
 	vaList, err := flavor.ListVolumeAttachments()
@@ -63,7 +79,6 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 		return err
 	}
 
-	var err_count int
 	for _, device := range multipathDevices {
 		if vaList != nil && len(vaList.Items) > 0 {
 			log.Infof("Assessing the multipath device %s", device.Name)
