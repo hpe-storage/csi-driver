@@ -539,23 +539,14 @@ func (driver *Driver) setupDevice(
 
 	// Set iSCSI CHAP credentials if configured
 	if publishContext[accessProtocolKey] == iscsi {
-		// Get CHAP credentials from volume context
-		chapSecretMap, err := driver.flavor.GetChapCredentialsFromVolumeContext(volumeContext)
+		chapInfo, err := driver.flavor.GetChapCredentials(volumeContext)
 		if err != nil {
 			return nil, fmt.Errorf("Error: %s", err.Error())
 		}
 
-		if len(chapSecretMap) > 0 {
-			chapUser := chapSecretMap[chapUserKey]
-			chapPassword := chapSecretMap[chapPasswordKey]
-			log.Tracef("Found chap credentials(username %s) for volume %s", chapUser, volume.Name)
-
-			volume.Chap = &model.ChapInfo{
-				Name:     chapUser,
-				Password: chapPassword,
-			}
+		if chapInfo != nil {
+			volume.Chap = chapInfo
 		}
-
 	}
 
 	// Cleanup any stale device existing before stage
