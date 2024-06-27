@@ -43,6 +43,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 		log.Errorf("Error while getting the information of multipath devices on the node %s", nodeName)
 		return err
 	}
+	log.Infof(" %d multipath devices found on the node %s", len(multipathDevices), nodeName)
 
 	log.Infof("Checking the connection to control plane....")
 	if !flavor.CheckConnection() {
@@ -77,6 +78,10 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 	vaList, err := flavor.ListVolumeAttachments()
 	if err != nil {
 		return err
+	}
+
+	if vaList != nil {
+		log.Infof("%d volume attachments found", len(vaList.Items))
 	}
 
 	for _, device := range multipathDevices {
