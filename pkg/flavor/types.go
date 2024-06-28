@@ -41,4 +41,5 @@ type Flavor interface {
 	GetGroupSnapshotNameFromSnapshotName(snapshotName string) (string, error)
 	ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error)
 	GetChapCredentials(volumeContext map[string]string) (*model.ChapInfo, error)
+	CheckConnection() bool
 }

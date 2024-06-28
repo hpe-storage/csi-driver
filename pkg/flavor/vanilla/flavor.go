@@ -116,3 +116,7 @@ func (flavor *Flavor) GetChapCredentials(volumeContext map[string]string) (*mode
 func (flavor *Flavor) ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error) {
 	return nil, nil
 }
+
+func (flavor *Flavor) CheckConnection() bool {
+	return false
+}

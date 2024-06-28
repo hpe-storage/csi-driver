@@ -103,7 +103,6 @@ func (nm *NodeMonitor) monitorNode() error {
 				err := nodeinit.AnalyzeMultiPathDevices(nm.flavor, nm.nodeName)
 				if err != nil {
 					log.Errorf("Error while analyzing the multipath devices %s on the node %s", err.Error(), nm.nodeName)
-					return
 				}
 			case <-nm.stopChannel:
 				return
