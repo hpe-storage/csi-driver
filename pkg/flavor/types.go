@@ -40,6 +40,6 @@ type Flavor interface {
 	MonitorPod(podLabelkey, podLabelvalue string) error
 	GetGroupSnapshotNameFromSnapshotName(snapshotName string) (string, error)
 	ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error)
-	GetChapCredentialsFromVolumeContext(volumeContext map[string]string) (map[string]string, error)
+	GetChapCredentials(volumeContext map[string]string) (*model.ChapInfo, error)
 	CheckConnection() bool
 }
