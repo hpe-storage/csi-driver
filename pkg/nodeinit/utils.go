@@ -84,16 +84,14 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 		if vaList != nil && len(vaList.Items) > 0 {
 			log.Infof("Assessing the multipath device %s", device.Name)
 			if doesDeviceBelongToTheNode(&device, vaList, nodeName) {
-				log.Infof("Multipath device %s belongs to the node %s", device.Name, nodeName)
 				if device.IsUnhealthy {
 					log.Infof("The multipath device %s belongs to this node %s and is unhealthy.", device.Name, nodeName)
 				} else {
 					log.Infof("The multipath device %s belongs to this node %s and is healthy.", device.Name, nodeName)
 				}
 			} else {
-				log.Infof("Multipath device %s does not not belong to the node %s", device.Name, nodeName)
 				if device.IsUnhealthy {
-					log.Infof("The multipath device %s is unhealthy and it does not belong to the node %s", device.Name, nodeName)
+					log.Infof("The multipath device %s is unhealthy and either it does not belong to the node %s or is not created by the hpe csi driver.", device.Name, nodeName)
 					//do cleanup
 					if !disableCleanup {
 						err = cleanup(&device)
@@ -105,7 +103,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 						log.Warnf("Skipping the removal of stale multipath device %s as the DISABLE_NODE_MONITOR is set to %s", device.Name, disableNodeMonitor)
 					}
 				} else {
-					log.Infof("The multipath device %s is healthy and it does not belong to the node %s.", device.Name, nodeName)
+					log.Infof("The multipath device %s is healthy and either it does not belong to the node %s or is not created by the hpe csi driver.", device.Name, nodeName)
 				}
 			}
 		} else {
