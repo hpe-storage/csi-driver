@@ -13,10 +13,7 @@ import (
 func doesDeviceBelongToTheNode(multipathDevice *model.MultipathDevice, volumeAttachmentList *storage_v1.VolumeAttachmentList, nodeName string) bool {
 	if multipathDevice != nil {
 		for _, va := range volumeAttachmentList.Items {
-			log.Info("NAME:", va.Name, "PV:", *va.Spec.Source.PersistentVolumeName, "STATUS: ", va.Status)
-			log.Info("ATTATCHMENTMETADATA: ", va.Status.AttachmentMetadata, "SERIAL NUMBER: ", va.Status.AttachmentMetadata["serialNumber"])
-			log.Info("NODE NAME:", va.Spec.NodeName)
-
+			log.Tracef("SERIAL NUMBER: ", va.Status.AttachmentMetadata["serialNumber"], "NAME:", va.Name)
 			if multipathDevice.UUID[1:] == va.Status.AttachmentMetadata["serialNumber"] && nodeName == va.Spec.NodeName {
 				return true
 			}
@@ -26,7 +23,7 @@ func doesDeviceBelongToTheNode(multipathDevice *model.MultipathDevice, volumeAtt
 }
 
 func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
-	log.Trace(">>>>> AnalyzeMultiPathDevices for the node ", nodeName)
+	log.Tracef(">>>>> AnalyzeMultiPathDevices for the node %s", nodeName)
 	defer log.Trace("<<<<< AnalyzeMultiPathDevices")
 
 	var disableCleanup bool
@@ -45,7 +42,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 	}
 	log.Infof(" %d multipath devices found on the node %s", len(multipathDevices), nodeName)
 
-	log.Infof("Checking the connection to control plane....")
+	log.Tracef("Checking the connection to control plane....")
 	if !flavor.CheckConnection() {
 		log.Infof("Node %s is unable to connect to the control plane.", nodeName)
 		if multipathDevices != nil && len(multipathDevices) > 0 {
@@ -100,7 +97,6 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 					log.Infof("The multipath device %s is unhealthy and it does not belong to the node %s", device.Name, nodeName)
 					//do cleanup
 					if !disableCleanup {
-						log.Infof("Cleaning the stale multipath device %s as the DISABLE_NODE_MONITOR is set", device.Name)
 						err = cleanup(&device)
 						if err != nil {
 							log.Errorf("Unable to cleanup the multipath device %s", device.Name)
@@ -118,7 +114,6 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 				log.Infof("No volume attachments found. The multipath device is unhealthy and does not belong to the hpe csi driver, do cleanup!")
 				// Do cleanup
 				if !disableCleanup {
-					log.Infof("Cleaning the stale multipath device %s as the DISABLE_CLEANUP is set", device.Name)
 					err = cleanup(&device)
 					if err != nil {
 						log.Errorf("Unable to cleanup the multipath device %s", device.Name)
@@ -142,7 +137,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 }
 
 func cleanup(device *model.MultipathDevice) error {
-	log.Tracef(">>>>> cleanup of the device %s", device.Name)
+	log.Tracef(">>>>> Cleaning up the multipath device %s", device.Name)
 	defer log.Trace("<<<<< cleanup")
 
 	//unmount references & kill processes explicitly, if umount fails

@@ -809,19 +809,15 @@ func (flavor *Flavor) DeleteVolumeAttachment(va string, force bool) error {
 }
 
 func (flavor *Flavor) CheckConnection() bool {
-	log.Tracef(">>>>> CheckConnection")
-	defer log.Trace("<<<<< CheckConnection")
 	return checkConnection(flavor.kubeClient)
 }
 
 func checkConnection(clientset kubernetes.Interface) bool {
-	log.Tracef(">>>>> checkConnection %+v", clientset)
-	defer log.Trace("<<<<< checkConnection")
 	_, err := clientset.CoreV1().Nodes().List(context.TODO(), meta_v1.ListOptions{})
 	if err != nil {
 		log.Errorf("Error connecting to the API server: %s\n", err.Error())
 	} else {
-		log.Infof("Successfully connected to the API server")
+		log.Tracef("Successfully connected to the API server")
 		return true
 	}
 	return false
