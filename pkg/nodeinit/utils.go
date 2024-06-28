@@ -54,7 +54,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 				if device.IsUnhealthy {
 					log.Infof("Multipath device %s on the node %s is unhealthy", device.Name, nodeName)
 					log.Infof("Cleaning the stale multipath device %s as the DISABLE_CLEANUP is set", device.Name)
-					err = cleanup(device)
+					err = cleanup(&device)
 					if err != nil {
 						log.Errorf("Unable to cleanup the multipath device %s: %s", device.Name, err.Error())
 						err_count = err_count + 1
@@ -87,7 +87,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 	for _, device := range multipathDevices {
 		if vaList != nil && len(vaList.Items) > 0 {
 			log.Infof("Assessing the multipath device %s", device.Name)
-			if doesDeviceBelongToTheNode(device, vaList, nodeName) {
+			if doesDeviceBelongToTheNode(&device, vaList, nodeName) {
 				log.Infof("Multipath device %s belongs to the node %s", device.Name, nodeName)
 				if device.IsUnhealthy {
 					log.Infof("The multipath device %s belongs to this node %s and is unhealthy. Issue warnings!", device.Name, nodeName)
@@ -101,7 +101,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 					//do cleanup
 					if !disableCleanup {
 						log.Infof("Cleaning the stale multipath device %s as the DISABLE_NODE_MONITOR is set", device.Name)
-						err = cleanup(device)
+						err = cleanup(&device)
 						if err != nil {
 							log.Errorf("Unable to cleanup the multipath device %s", device.Name)
 							err_count = err_count + 1
@@ -119,7 +119,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 				// Do cleanup
 				if !disableCleanup {
 					log.Infof("Cleaning the stale multipath device %s as the DISABLE_CLEANUP is set", device.Name)
-					err = cleanup(device)
+					err = cleanup(&device)
 					if err != nil {
 						log.Errorf("Unable to cleanup the multipath device %s", device.Name)
 						err_count = err_count + 1
