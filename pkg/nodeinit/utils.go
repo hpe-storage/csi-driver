@@ -50,7 +50,6 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 				log.Tracef("Name:%s Vendor:%s Paths:%f Path Faults:%f UUID:%s IsUnhealthy:%t", device.Name, device.Vend, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
 				if device.IsUnhealthy {
 					log.Infof("Multipath device %s on the node %s is unhealthy", device.Name, nodeName)
-					log.Infof("Cleaning the stale multipath device %s as the DISABLE_CLEANUP is set", device.Name)
 					err = cleanup(&device)
 					if err != nil {
 						log.Errorf("Unable to cleanup the multipath device %s: %s", device.Name, err.Error())
@@ -87,9 +86,9 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 			if doesDeviceBelongToTheNode(&device, vaList, nodeName) {
 				log.Infof("Multipath device %s belongs to the node %s", device.Name, nodeName)
 				if device.IsUnhealthy {
-					log.Infof("The multipath device %s belongs to this node %s and is unhealthy. Issue warnings!", device.Name, nodeName)
+					log.Infof("The multipath device %s belongs to this node %s and is unhealthy.", device.Name, nodeName)
 				} else {
-					log.Infof("The multipath device %s belongs to this node %s and is healthy. Nothing to do", device.Name, nodeName)
+					log.Infof("The multipath device %s belongs to this node %s and is healthy.", device.Name, nodeName)
 				}
 			} else {
 				log.Infof("Multipath device %s does not not belong to the node %s", device.Name, nodeName)
@@ -106,7 +105,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 						log.Warnf("Skipping the removal of stale multipath device %s as the DISABLE_NODE_MONITOR is set to %s", device.Name, disableNodeMonitor)
 					}
 				} else {
-					log.Infof("The multipath device %s is healthy and it does not belong to the node %s. Issue warnings!", device.Name, nodeName)
+					log.Infof("The multipath device %s is healthy and it does not belong to the node %s.", device.Name, nodeName)
 				}
 			}
 		} else {
