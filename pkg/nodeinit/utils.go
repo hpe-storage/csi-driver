@@ -145,7 +145,7 @@ func cleanup(device *model.MultipathDevice) error {
 	}
 
 	log.Infof("Killing the processes using the device %s if any", device.Name)
-	err = tunelinux.killProcessesUisngMountPoints("/dev/mapper/" + device.Name)
+	err = tunelinux.KillProcessesUisngMountPoints("/dev/mapper/" + device.Name)
 	if err != nil {
 		log.Errorf("Unable to kill the processes using the device %s: %s", device.Name, err.Error())
 		return err
