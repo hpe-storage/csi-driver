@@ -44,7 +44,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 
 	log.Tracef("Checking the connection to control plane....")
 	if !flavor.CheckConnection() {
-		log.Infof("Node %s is unable to connect to the control plane.", nodeName)
+		log.Infof("The node %s is unable to connect to the control plane.", nodeName)
 		if multipathDevices != nil && len(multipathDevices) > 0 {
 			for _, device := range multipathDevices {
 				log.Tracef("Name:%s Vendor:%s Paths:%f Path Faults:%f UUID:%s IsUnhealthy:%t", device.Name, device.Vend, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
@@ -68,7 +68,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 			return nil
 		}
 	} else {
-		log.Infof("Node %s has proper connection with control plane", nodeName)
+		log.Infof("Node %s has a proper connection with the control plane", nodeName)
 	}
 
 	vaList, err := flavor.ListVolumeAttachments()
@@ -108,7 +108,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 			}
 		} else {
 			if device.IsUnhealthy {
-				log.Infof("No volume attachments found. The multipath device is unhealthy and does not belong to the hpe csi driver, do cleanup!")
+				log.Infof("No volume attachments found. The multipath device is unhealthy and does not belong to the hpe csi driver, do clean up!")
 				// Do cleanup
 				if !disableCleanup {
 					err = cleanup(&device)
@@ -140,7 +140,7 @@ func cleanup(device *model.MultipathDevice) error {
 	//unmount references & kill processes explicitly, if umount fails
 	err := tunelinux.UnmountMultipathDevice(device.Name)
 	if err != nil {
-		log.Errorf("Unable to unmount the multipath device's references%s: %s", device.Name, err.Error())
+		log.Errorf("Unable to unmount the multipath device's references %s: %s", device.Name, err.Error())
 		return err
 	}
 

@@ -30,7 +30,6 @@ func NewNodeInitContainer(flavorName string, nodeService bool) *NodeInitContaine
 		nic.nodeName = key
 	}
 	log.Debugf("NodeInitContainer: %+v", nic)
-	// initialize NodeInitContainer
 	return nic
 }
 
