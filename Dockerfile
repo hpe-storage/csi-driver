@@ -22,7 +22,7 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:9.4-949.1714662671
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD cmd/csi-driver/AlmaLinux-Base.repo /etc/yum.repos.d/
 
-RUN microdnf install -y cryptsetup tar procps psmisc
+RUN microdnf install -y cryptsetup tar procps
 
 COPY --from=centos:centos7.9.2009 /usr/bin/systemctl /usr/bin/systemctl
 COPY --from=centos:7.9.2009 /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11.8.2
@@ -65,6 +65,7 @@ RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/multipath \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/multipathd \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/umount \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/fuser \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/ip \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmidecode \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/dnsdomainname \
