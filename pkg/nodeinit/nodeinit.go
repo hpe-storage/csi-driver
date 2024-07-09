@@ -17,7 +17,7 @@ type NodeInitContainer struct {
 func NewNodeInitContainer(flavorName string) *NodeInitContainer {
 	var nodeInitFlavour flavor.Flavor
 	if flavorName == flavor.Kubernetes {
-		flavor, err := kubernetes.NewKubernetesFlavor(false, nil)
+		flavor, err := kubernetes.NewKubernetesFlavor(true, nil)
 		if err != nil {
 			return nil
 		}
