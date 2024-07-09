@@ -144,12 +144,6 @@ func cleanup(device *model.MultipathDevice) error {
 		return err
 	}
 
-	log.Infof("Killing the processes using the device %s if any", device.Name)
-	err = tunelinux.KillProcessesUisngMountPoints("/dev/mapper/" + device.Name)
-	if err != nil {
-		log.Errorf("Unable to kill the processes using the device %s: %s", device.Name, err.Error())
-		return err
-	}
 	//remove block devices of multipath device
 	err = tunelinux.RemoveBlockDevicesOfMultipathDevices(*device)
 	if err != nil {
