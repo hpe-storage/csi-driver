@@ -18,18 +18,6 @@ disableNodeConformance=${DISABLE_NODE_CONFORMANCE}
 disableNodeConfiguration=${DISABLE_NODE_CONFIGURATION}
 
 if [ "$nodeInit" = true ]; then
-
-    # Copy /etc/multipath.conf template if missing on host
-    if [ ! -f /host/etc/multipath.conf ] &&
-        [ "$disableNodeConfiguration" != true ]; then
-        cp /opt/hpe-storage/nimbletune/multipath.conf.upstream /host/etc/multipath.conf
-    fi
-
-    # symlink to host iscsi/multipath config files
-    ln -s /host/etc/multipath.conf /etc/multipath.conf
-    ln -s /host/etc/multipath /etc/multipath
-    ln -s /host/etc/iscsi /etc/iscsi
-
     # Disable the conformance checks
     if [ "$disableNodeConformance" = "true" ]; then
         echo "Node conformance checks are disabled"
@@ -67,6 +55,17 @@ if [ "$nodeService" = true ]; then
     cp -f "/opt/hpe-storage/bin/hpe-logcollector.sh" \
         /usr/local/bin/hpe-logcollector.sh
     chmod +x /usr/local/bin/hpe-logcollector.sh
+
+    # Copy /etc/multipath.conf template if missing on host
+    if [ ! -f /host/etc/multipath.conf ] &&
+        [ "$disableNodeConfiguration" != true ]; then
+        cp /opt/hpe-storage/nimbletune/multipath.conf.upstream /host/etc/multipath.conf
+    fi
+
+    # symlink to host iscsi/multipath config files
+    ln -s /host/etc/multipath.conf /etc/multipath.conf
+    ln -s /host/etc/multipath /etc/multipath
+    ln -s /host/etc/iscsi /etc/iscsi
 
     # symlink to host os release files for parsing
     if [ -f /host/etc/redhat-release ]; then
