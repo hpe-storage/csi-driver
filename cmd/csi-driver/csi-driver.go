@@ -125,16 +125,6 @@ func csiCliHandler(cmd *cobra.Command) error {
 	}
 
 	if nodeInit {
-		nodeInitContainer := nodeinit.NewNodeInitContainer(flavorName, nodeService)
-		err := nodeInitContainer.NodeInit()
-		if err != nil {
-			log.Errorf("Error while running the init container logic: %s", err.Error())
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
-
-	if nodeService {
 		// Check if the node configuration is disabled
 		disableNodeConfiguraton := os.Getenv("DISABLE_NODE_CONFIGURATION")
 
@@ -155,6 +145,13 @@ func csiCliHandler(cmd *cobra.Command) error {
 				return fmt.Errorf("Unable to configure multipathd service, err %v", err.Error())
 			}
 		}
+		nodeInitContainer := nodeinit.NewNodeInitContainer(flavorName, nodeService)
+		err := nodeInitContainer.NodeInit()
+		if err != nil {
+			log.Errorf("Error while running the init container logic: %s", err.Error())
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
 	monitorInterval, err := strconv.ParseInt(podMonitorInterval, 10, 64)
