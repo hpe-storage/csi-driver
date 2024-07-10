@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	defaultIntervalSec = 30
+	defaultIntervalSec = 60
 	minimumIntervalSec = 15
 )
 

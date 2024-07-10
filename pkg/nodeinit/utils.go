@@ -40,8 +40,13 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 		log.Errorf("Error while getting the information of multipath devices on the node %s", nodeName)
 		return err
 	}
-	log.Infof(" %d multipath devices found on the node %s", len(multipathDevices), nodeName)
 
+	if len(multipathDevices) == 0 {
+		log.Infof("No multipath devices found on this node %s.", nodeName)
+		return nil
+	}
+
+	log.Infof(" %d multipath devices found on the node %s", len(multipathDevices), nodeName)
 	log.Tracef("Checking the connection to control plane....")
 	if !flavor.CheckConnection() {
 		log.Infof("The node %s is unable to connect to the control plane.", nodeName)
