@@ -129,8 +129,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 		disableNodeConfiguraton := os.Getenv("DISABLE_NODE_CONFIGURATION")
 
 		if disableNodeConfiguraton == "true" {
-			log.Infof("Node configuration is disabled, DISABLE_NODE_CONFIGURATION=%v."+
-				"Skipping the Multipath and ISCSI configurations", disableNodeConfiguraton)
+			log.Infof("Skipping node configuration, DISABLE_NODE_CONFIGURATION=%v. All block storage services needs to be installed and configured manually.", disableNodeConfiguraton)
 		} else {
 			// perform conformance checks and service management
 			// configure iscsi
