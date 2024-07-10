@@ -67,6 +67,9 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 			if err_count > 0 {
 				log.Infof("Failed to remove %d multipath devices on the node %s", err_count, nodeName)
 				return err
+			} else {
+				//No error while cleaninup or no devices are there to clean
+				return nil
 			}
 		} else {
 			log.Tracef("No multipath devices found on the node %s", nodeName)
@@ -161,5 +164,6 @@ func cleanup(device *model.MultipathDevice) error {
 		log.Errorf("Unable to flush the multipath device %s: %s", device.Name, err.Error())
 		return err
 	}
+	log.Infof("The multipath device %s is removed successfully", device.Name)
 	return nil
 }
