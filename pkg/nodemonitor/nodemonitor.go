@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	defaultIntervalSec = 60
-	minimumIntervalSec = 15
+	defaultIntervalSec = 90
+	minimumIntervalSec = 60
 )
 
 func NewNodeMonitor(flavor flavor.Flavor, monitorInterval int64) *NodeMonitor {

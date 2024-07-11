@@ -145,8 +145,14 @@ func cleanup(device *model.MultipathDevice) error {
 	log.Tracef(">>>>> Cleaning up the multipath device %s", device.Name)
 	defer log.Trace("<<<<< cleanup")
 
+	err := tunelinux.KillProcessesUsingMountPoints(device.Name)
+	if err != nil {
+		log.Errorf("Unable to kill the processes using the multipath device's references %s: %s", device.Name, err.Error())
+		return err
+	}
+
 	//unmount references & kill processes explicitly, if umount fails
-	err := tunelinux.UnmountMultipathDevice(device.Name)
+	err = tunelinux.UnmountMultipathDevice(device.Name)
 	if err != nil {
 		log.Errorf("Unable to unmount the multipath device's references %s: %s", device.Name, err.Error())
 		return err
@@ -159,9 +165,9 @@ func cleanup(device *model.MultipathDevice) error {
 		return err
 	}
 	//flush the multipath device
-	err = tunelinux.FlushMultipathDevice(device.Name)
+	err = tunelinux.RemoveMultipathDevice(device.Name)
 	if err != nil {
-		log.Errorf("Unable to flush the multipath device %s: %s", device.Name, err.Error())
+		log.Errorf("Unable to remove the multipath device %s: %s", device.Name, err.Error())
 		return err
 	}
 	log.Infof("The multipath device %s is removed successfully", device.Name)

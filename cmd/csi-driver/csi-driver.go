@@ -125,36 +125,34 @@ func csiCliHandler(cmd *cobra.Command) error {
 	}
 
 	if nodeInit {
-		nodeInitContainer := nodeinit.NewNodeInitContainer(flavorName)
-		err := nodeInitContainer.NodeInit()
-		if err != nil {
-			log.Errorf("Error while running the init container logic: %s", err.Error())
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
-
-	if nodeService {
 		// Check if the node configuration is disabled
 		disableNodeConfiguraton := os.Getenv("DISABLE_NODE_CONFIGURATION")
 
 		if disableNodeConfiguraton == "true" {
-			log.Infof("Node configuration is disabled, DISABLE_NODE_CONFIGURATION=%v."+
-				"Skipping the Multipath and ISCSI configurations", disableNodeConfiguraton)
+			log.Infof("Skipping node configuration, DISABLE_NODE_CONFIGURATION=%v. All block storage services needs to be installed and configured manually.", disableNodeConfiguraton)
 		} else {
 			// perform conformance checks and service management
 			// configure iscsi
 			err = tunelinux.ConfigureIscsi()
 			if err != nil {
-				return fmt.Errorf("Unable to configure iscsid service, err %v", err.Error())
+				log.Errorf("Unable to configure iscsid service, err %v", err.Error())
+				os.Exit(1)
 			}
 
 			// configure multipath
 			err = tunelinux.ConfigureMultipath()
 			if err != nil {
-				return fmt.Errorf("Unable to configure multipathd service, err %v", err.Error())
+				log.Errorf("Unable to configure multipathd service, err %v", err.Error())
+				os.Exit(1)
 			}
 		}
+		nodeInitContainer := nodeinit.NewNodeInitContainer(flavorName)
+		err := nodeInitContainer.NodeInit()
+		if err != nil {
+			log.Errorf("Error while initiating the hpe csi driver container, refer the logs for more information: %s", err.Error())
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
 	monitorInterval, err := strconv.ParseInt(podMonitorInterval, 10, 64)
