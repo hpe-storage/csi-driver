@@ -6,14 +6,14 @@ require (
 	github.com/Scalingo/go-etcd-lock v3.0.1+incompatible
 	github.com/container-storage-interface/spec v1.7.0
 	github.com/golang/protobuf v1.5.4
-	github.com/hpe-storage/common-host-libs v0.0.0-20240508160035-5807318e319e
+	github.com/hpe-storage/common-host-libs v0.0.0-20240715144320-82b6622e0433
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20240118202512-5f62990a7c2d
 	github.com/kubernetes-csi/csi-lib-utils v0.11.0
 	github.com/kubernetes-csi/csi-test v2.1.0+incompatible
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.1.0
 	github.com/spf13/cobra v1.6.0
 	github.com/stretchr/testify v1.8.1
-	golang.org/x/mod v0.12.0
+	golang.org/x/mod v0.14.0
 	golang.org/x/net v0.23.0
 	google.golang.org/grpc v1.56.3
 	k8s.io/api v0.29.0
@@ -60,7 +60,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/onsi/ginkgo v1.16.4 // indirect
-	github.com/onsi/gomega v1.23.0 // indirect
+	github.com/onsi/gomega v1.27.4 // indirect
 	github.com/opencontainers/selinux v1.10.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -69,7 +69,7 @@ require (
 	github.com/prometheus/common v0.45.0 // indirect
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/satori/go.uuid v1.2.0 // indirect
-	github.com/sirupsen/logrus v1.8.1 // indirect
+	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/smarty/assertions v1.15.0 // indirect
 	github.com/sparrc/go-ping v0.0.0-20190613174326-4e5b6552494c // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
