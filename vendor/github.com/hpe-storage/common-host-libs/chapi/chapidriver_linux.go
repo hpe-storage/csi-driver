@@ -351,7 +351,7 @@ func (driver *LinuxDriver) IsFileSystemCorrupted(volumeID string, device *model.
 }
 
 func getInfoFromTune2fsOutput(output string, pattern string) string {
-	log.Tracef(">>>>> getInfoFromTune2fsOutput, Pattern:", pattern)
+	log.Tracef(">>>>> getInfoFromTune2fsOutput, Pattern: %s", pattern)
 	defer log.Trace("<<<<< getInfoFromTune2fsOutput")
 	lines := strings.Split(output, "\n")
 	var relevantInfo string
@@ -489,7 +489,7 @@ func (driver *LinuxDriver) RepairFsckFileSystem(volumeID string, device *model.D
 				case 128:
 					return fmt.Errorf("Shared library error for the device %s.", device.AltFullPathName)
 				default:
-					return fmt.Errorf("Unknown exit code: %d\n", status.ExitStatus)
+					return fmt.Errorf("Unknown exit code: %d\n", status.ExitStatus())
 				}
 			} else {
 				// send the error code and stderr content to the caller

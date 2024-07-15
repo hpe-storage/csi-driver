@@ -402,14 +402,58 @@ type KeyValue struct {
 	Value string `json:"value,omitempty"`
 }
 
-// This is not a complete information of the multipath device.
-// A few fields are included that can be used to determine whether
-// the device is healthy or not
-type MultipathDeviceInfo struct {
-	Name        string
-	Vendor      string
-	Paths       float64
-	PathFaults  float64
-	UUID        string
-	IsUnhealthy bool
+type MultipathInfo struct {
+	MajorVersion int               `json:"major_version,omitempty"`
+	MinorVersion int               `json:"minor_version,omitempty"`
+	Maps         []MultipathDevice `json:"maps,omitempty"`
+}
+
+type MultipathDevice struct {
+	Name       string `json:"name,omitempty"`
+	UUID       string `json:"uuid,omitempty"`
+	Sysfs      string `json:"sysfs,omitempty"`
+	Failback   string `json:"failback,omitempty"`
+	Queueing   string `json:"queueing,omitempty"`
+	Paths      int    `json:"paths,omitempty"`
+	WriteProt  string `json:"write_prot,omitempty"`
+	DmSt       string `json:"dm_st,omitempty"`
+	Features   string `json:"features,omitempty"`
+	Hwhandler  string `json:"hwhandler,omitempty"`
+	Action     string `json:"action,omitempty"`
+	PathFaults int    `json:"path_faults,omitempty"`
+	Vend       string `json:"vend,omitempty"`
+	Prod       string `json:"prod,omitempty"`
+	Rev        string `json:"rev,omitempty"`
+	SwitchGrp  int    `json:"switch_grp,omitempty"`
+	MapLoads   int    `json:"map_loads,omitempty"`
+	TotalQTime int    `json:"total_q_time,omitempty"`
+	QTimeouts  int    `json:"q_timeouts,omitempty"`
+	PathGroups []struct {
+		Selector string `json:"selector,omitempty"`
+		Pri      int    `json:"pri,omitempty"`
+		DmSt     string `json:"dm_st,omitempty"`
+		Group    int    `json:"group,omitempty"`
+		Paths    []struct {
+			Dev         string `json:"dev,omitempty"`
+			DevT        string `json:"dev_t,omitempty"`
+			DmSt        string `json:"dm_st,omitempty"`
+			DevSt       string `json:"dev_st,omitempty"`
+			ChkSt       string `json:"chk_st,omitempty"`
+			Checker     string `json:"checker,omitempty"`
+			Pri         int    `json:"pri,omitempty"`
+			HostWwnn    string `json:"host_wwnn,omitempty"`
+			TargetWwnn  string `json:"target_wwnn,omitempty"`
+			HostWwpn    string `json:"host_wwpn,omitempty"`
+			TargetWwpn  string `json:"target_wwpn,omitempty"`
+			HostAdapter string `json:"host_adapter,omitempty"`
+		} `json:"paths,omitempty"`
+	} `json:"path_groups,omitempty"`
+	IsUnhealthy bool // Custom field added to capture whether the multipath device is healthy or not
+}
+
+type ProcMount struct {
+	Device     string `json:"device,omitempty"`
+	MountPoint string `json:"Mountpoint,omitempty"`
+	FileSystem string `json:"FileSystem,omitempty"`
+	Options    string `json:"Options,omitempty"`
 }

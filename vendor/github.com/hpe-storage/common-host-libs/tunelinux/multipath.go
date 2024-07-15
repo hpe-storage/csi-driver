@@ -2,14 +2,17 @@ package tunelinux
 
 // Copyright 2019 Hewlett Packard Enterprise Development LP.
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/hpe-storage/common-host-libs/linux"
 	log "github.com/hpe-storage/common-host-libs/logger"
@@ -30,6 +33,10 @@ var (
 		"Nimble": "(?s)devices\\s+{\\s*.*device\\s*{(?P<device_block>.*Nimble.*?)}",
 		"3par":   "(?s)devices\\s+{\\s*.*device\\s*{(?P<device_block>.*3PAR.*?)}",
 	}
+	mountMutex              sync.Mutex
+	umountMutex             sync.Mutex
+	staleDeviceRemovalMutex sync.Mutex
+	readProcMountsMutex     sync.Mutex
 )
 
 // GetMultipathConfigFile returns path of the template multipath.conf file according to OS distro
@@ -379,7 +386,7 @@ func ConfigureMultipath() (err error) {
 	return nil
 }
 
-func GetMultipathDevices() (multipathDevices []*model.MultipathDeviceInfo, err error) {
+func GetMultipathDevices() (multipathDevices []model.MultipathDevice, err error) {
 	log.Tracef(">>>> getMultipathDevices ")
 	defer log.Trace("<<<<< getMultipathDevices")
 
@@ -390,31 +397,31 @@ func GetMultipathDevices() (multipathDevices []*model.MultipathDeviceInfo, err e
 	}
 
 	if out != "" {
-		var rawJson map[string]any
-		err = json.Unmarshal([]byte(out), &rawJson)
+		multipathJson := new(model.MultipathInfo)
+		err = json.Unmarshal([]byte(out), multipathJson)
 		if err != nil {
 			return nil, fmt.Errorf("Invalid JSON output of multipathd command: %s", err.Error())
 		}
-		maps := rawJson["maps"]
-		if x, ok := maps.([]interface{}); ok {
-			for _, mapItem := range x {
-				mapItem, _ := mapItem.(map[string]interface{})
-				if len(mapItem["vend"].(string)) > 0 && isSupportedDeviceVendor(linux.DeviceVendorPatterns, mapItem["vend"].(string)) {
-					multipathDevice := &model.MultipathDeviceInfo{
-						Name:       mapItem["name"].(string),
-						Vendor:     mapItem["vend"].(string),
-						Paths:      mapItem["paths"].(float64),
-						PathFaults: mapItem["path_faults"].(float64),
-						UUID:       mapItem["uuid"].(string),
-					}
-					if multipathDevice.Paths < 1 && multipathDevice.PathFaults > 0 {
-						multipathDevice.IsUnhealthy = true
-					}
-					multipathDevices = append(multipathDevices, multipathDevice)
+
+		for _, mapItem := range multipathJson.Maps {
+			if len(mapItem.Vend) > 0 && isSupportedDeviceVendor(linux.DeviceVendorPatterns, mapItem.Vend) {
+				if mapItem.Paths < 1 && mapItem.PathFaults > 0 {
+					mapItem.IsUnhealthy = true
+					log.Tracef("Known unhealthy multipath device: %s", mapItem.Name)
 				}
+				multipathDevices = append(multipathDevices, mapItem)
+				continue
 			}
-			return multipathDevices, nil
+
+			// residual non-functional multipath devices
+			if len(mapItem.PathGroups) == 0 && mapItem.Queueing == "off" && mapItem.Features == "0" {
+				mapItem.IsUnhealthy = true
+				log.Tracef("Unknown orphan multipath device without path_groups: %s", mapItem.Name)
+				multipathDevices = append(multipathDevices, mapItem)
+			}
 		}
+		log.Infof("Found %d multipath devices %+v", len(multipathDevices), multipathDevices)
+		return multipathDevices, nil
 	}
 	return nil, fmt.Errorf("Invalid multipathd command output received")
 }
@@ -426,4 +433,193 @@ func isSupportedDeviceVendor(deviceVendors []string, vendor string) bool {
 		}
 	}
 	return false
+}
+
+func RemoveBlockDevicesOfMultipathDevices(device model.MultipathDevice) error {
+	log.Trace(">>>> RemoveBlockDevicesOfMultipathDevices")
+	defer log.Trace("<<<<< RemoveBlockDevicesOfMultipathDevices")
+
+	blockDevices := getBlockDevicesOfMultipathDevice(device)
+	if len(blockDevices) == 0 {
+		log.Infof("No block devices were found for the multipath device %s", device.Name)
+		return nil
+	}
+	log.Infof("%d block devices found for the multipath device %s", len(blockDevices), device.Name)
+	err := removeBlockDevices(blockDevices, device.Name)
+	if err != nil {
+		log.Errorf("Error occurred while removing the block devices of the  multipath device %s", device.Name)
+		return err
+	}
+	log.Infof("Block devices of the multipath device %s are removed successfully.", device.Name)
+	return nil
+}
+
+func getBlockDevicesOfMultipathDevice(device model.MultipathDevice) (blockDevices []string) {
+	log.Tracef(">>>> getBlockDevicesOfMultipathDevice: %+v", device)
+	defer log.Trace("<<<<< getBlockDevicesOfMultipathDevice")
+
+	if len(device.PathGroups) > 0 {
+		for _, pathGroup := range device.PathGroups {
+			if len(pathGroup.Paths) > 0 {
+				for _, path := range pathGroup.Paths {
+					blockDevices = append(blockDevices, path.Dev)
+				}
+			}
+		}
+	}
+	return blockDevices
+}
+
+func removeBlockDevices(blockDevices []string, multipathDevice string) error {
+	log.Trace(">>>> removeBlockDevices: ", blockDevices)
+	defer log.Trace("<<<<< removeBlockDevices")
+	for _, blockDevice := range blockDevices {
+		log.Debugf("Removing the block device %s of the multipath device %s", blockDevice, multipathDevice)
+		cmd := exec.Command("sh", "-c", "echo 1 > /sys/block/"+blockDevice+"/device/delete")
+		err := cmd.Run()
+		if err != nil {
+			log.Errorf("Error occurred while deleting the block device %s of the multipath device %s: %s", blockDevice, multipathDevice, err.Error())
+			return err
+		}
+	}
+	return nil
+}
+
+func UnmountMultipathDevice(multipathDevice string) error {
+	log.Tracef(">>>> UnmountMultipathDevice: %s", multipathDevice)
+	defer log.Trace("<<<<< UnmountMultipathDevice")
+
+	mountPoints, err := findMountPointsOfMultipathDevice("/dev/mapper/" + multipathDevice)
+	if err != nil {
+		return fmt.Errorf("Error occurred while fetching the mount points of the multipath device %s:%s", multipathDevice, err.Error())
+	}
+	if len(mountPoints) == 0 {
+		log.Infof("No mount points found for the multipath device %s", multipathDevice)
+		return nil
+	}
+
+	for _, mountPoint := range mountPoints {
+		err = unmount(mountPoint)
+		if err != nil {
+			log.Errorf("Error occurred while unmounting the mount point %s: %s", mountPoint, err.Error())
+			return err
+		}
+		log.Debugf("Mount point %s unmounted successfully.", mountPoint)
+	}
+	return nil
+}
+
+func unmount(mountPoint string) error {
+	log.Tracef("Unmount the mount point %s", mountPoint)
+
+	umountMutex.Lock()
+	defer umountMutex.Unlock()
+
+	args := []string{mountPoint}
+	_, rc, err := util.ExecCommandOutput("umount", args)
+	if err != nil || rc != 0 {
+		log.Errorf("Error occurred while unmounting the mount point %s: %s", mountPoint, err.Error())
+		return err
+	}
+	return nil
+}
+
+func parseMounts() (mounts []model.ProcMount, err error) {
+	log.Tracef(">>>> parseMounts")
+	defer log.Trace("<<<<< parseMounts")
+	readProcMountsMutex.Lock()
+	defer readProcMountsMutex.Unlock()
+	file, err := os.Open("/proc/mounts")
+	if err != nil {
+		return nil, fmt.Errorf("failed to open /proc/mounts: %w", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 6 {
+			continue // Ignore invalid lines
+		}
+
+		mounts = append(mounts, model.ProcMount{
+			Device:     fields[0],
+			MountPoint: fields[1],
+			FileSystem: fields[2],
+			Options:    fields[3],
+		})
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read /proc/mounts: %w", err)
+	}
+
+	return mounts, nil
+}
+
+func findMountPointsOfMultipathDevice(multipathDevice string) (mountPoints []string, err error) {
+	log.Tracef(">>>> findMountPointsOfMultipathDevice: %s", multipathDevice)
+	defer log.Trace("<<<<< findMountPointsOfMultipathDevice")
+
+	procMounts, err := parseMounts()
+	if err != nil {
+		log.Errorf("Error while getting the mount points of the device %s", multipathDevice)
+		return mountPoints, err
+	}
+	for _, mount := range procMounts {
+		if mount.Device == multipathDevice {
+			if !strings.HasPrefix(mount.MountPoint, "/host/") {
+				mountPoints = append(mountPoints, mount.MountPoint)
+			}
+		}
+	}
+
+	return mountPoints, nil
+}
+
+func RemoveMultipathDevice(multipathDevice string) error {
+	log.Tracef(">>>> RemoveMultipathDevice: %s", multipathDevice)
+	defer log.Trace("<<<<< RemoveMultipathDevice")
+
+	staleDeviceRemovalMutex.Lock()
+	defer staleDeviceRemovalMutex.Unlock()
+
+	//check if the multipath device exists
+	log.Infof("Checking whether the multipath device %s exists or not.", multipathDevice)
+	if multipathDeviceExists(multipathDevice) {
+		_, _, err := util.ExecCommandOutput("dmsetup", []string{"remove", multipathDevice})
+		if err != nil {
+			log.Errorf("Error occurred while removing the multipath device %s: %s", multipathDevice, err.Error())
+			return err
+		}
+		log.Debugf("Multipath device %s is removed successfully.", multipathDevice)
+	}
+	log.Infof("Multipath device %s is already removed.", multipathDevice)
+	return nil
+}
+
+func multipathDeviceExists(multipathDevice string) bool {
+	log.Tracef(">>>> multipathDeviceExists: %s", multipathDevice)
+	out, _, err := util.ExecCommandOutput("dmsetup", []string{"table"})
+	if err != nil {
+		log.Errorf("Unable to get the multipath devices information using dmsetup table command: %s", err.Error())
+		return false
+	}
+	if strings.Contains(out, multipathDevice) {
+		return true
+	}
+	return false
+}
+
+func forceDeleteMultipathDevice(multipathDevice string) error {
+	log.Tracef(">>>> forceDeleteMultipathDevice: %s", multipathDevice)
+	defer log.Trace("<<<<< forceDeleteMultipathDevice")
+
+	_, _, err := util.ExecCommandOutput("dmsetup", []string{"remove", "-f", multipathDevice})
+	if err != nil {
+		log.Errorf("Error occurred while removing the multipath device %s by force: %s", multipathDevice, err.Error())
+		return err
+	}
+	return nil
 }
