@@ -65,7 +65,6 @@ RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/multipath \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/multipathd \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/umount \
-    && ln -s /chroot/chroot-host-wrapper.sh /chroot/fuser \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/ip \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmidecode \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/dnsdomainname \
