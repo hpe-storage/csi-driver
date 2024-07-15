@@ -368,8 +368,8 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 	return nil, fmt.Errorf("failed to get node with id %s", nodeID)
 }
 
-//NewClaimController provides a controller that watches for PersistentVolumeClaims and takes action on them
-//nolint: dupl
+// NewClaimController provides a controller that watches for PersistentVolumeClaims and takes action on them
+// nolint: dupl
 func (flavor *Flavor) newClaimIndexer() cache.Indexer {
 	claimListWatch := &cache.ListWatch{
 		ListFunc:  flavor.listAllClaims,
@@ -388,8 +388,8 @@ func (flavor *Flavor) newClaimIndexer() cache.Indexer {
 	return informer.GetIndexer()
 }
 
-//newSnapshotIndexer provides a controller that watches for VolumeSnapshots and takes action on them
-//nolint: dupl
+// newSnapshotIndexer provides a controller that watches for VolumeSnapshots and takes action on them
+// nolint: dupl
 func (flavor *Flavor) newSnapshotIndexer() cache.Indexer {
 	snapshotListWatch := &cache.ListWatch{
 		ListFunc:  flavor.listAllSnapshots,
@@ -816,6 +816,21 @@ func (flavor *Flavor) DeleteVolumeAttachment(va string, force bool) error {
 		return err
 	}
 	return nil
+}
+
+func (flavor *Flavor) CheckConnection() bool {
+	return checkConnection(flavor.kubeClient)
+}
+
+func checkConnection(clientset kubernetes.Interface) bool {
+	_, err := clientset.CoreV1().Nodes().List(context.TODO(), meta_v1.ListOptions{})
+	if err != nil {
+		log.Errorf("Error connecting to the API server: %s\n", err.Error())
+	} else {
+		log.Tracef("Successfully connected to the API server")
+		return true
+	}
+	return false
 }
 
 // MonitorPod monitors pods with given labels for being in unknown state(node unreachable/lost) and assist them to move to different node

@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	defaultIntervalSec = 30
-	minimumIntervalSec = 15
+	defaultIntervalSec = 90
+	minimumIntervalSec = 60
 )
 
 func NewNodeMonitor(flavor flavor.Flavor, monitorInterval int64) *NodeMonitor {
@@ -23,8 +23,7 @@ func NewNodeMonitor(flavor flavor.Flavor, monitorInterval int64) *NodeMonitor {
 	if key := os.Getenv("NODE_NAME"); key != "" {
 		nm.nodeName = key
 	}
-	log.Infof("NODE MONITOR: %+v", nm)
-	// initialize node monitor
+	log.Tracef("NODE MONITOR: %+v", nm)
 	return nm
 }
 
@@ -54,7 +53,7 @@ func (nm *NodeMonitor) StartNodeMonitor() error {
 	if nm.intervalSec == 0 {
 		nm.intervalSec = defaultIntervalSec
 	} else if nm.intervalSec < minimumIntervalSec {
-		log.Warnf("minimum interval for health monitor is %v seconds", minimumIntervalSec)
+		log.Warnf("minimum interval for node monitor is %v seconds", minimumIntervalSec)
 		nm.intervalSec = minimumIntervalSec
 	}
 
@@ -103,7 +102,6 @@ func (nm *NodeMonitor) monitorNode() error {
 				err := nodeinit.AnalyzeMultiPathDevices(nm.flavor, nm.nodeName)
 				if err != nil {
 					log.Errorf("Error while analyzing the multipath devices %s on the node %s", err.Error(), nm.nodeName)
-					return
 				}
 			case <-nm.stopChannel:
 				return

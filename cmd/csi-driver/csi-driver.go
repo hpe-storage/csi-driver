@@ -135,19 +135,21 @@ func csiCliHandler(cmd *cobra.Command) error {
 			// configure iscsi
 			err = tunelinux.ConfigureIscsi()
 			if err != nil {
-				return fmt.Errorf("Unable to configure iscsid service, err %v", err.Error())
+				log.Errorf("Unable to configure iscsid service, err %v", err.Error())
+				os.Exit(1)
 			}
 
 			// configure multipath
 			err = tunelinux.ConfigureMultipath()
 			if err != nil {
-				return fmt.Errorf("Unable to configure multipathd service, err %v", err.Error())
+				log.Errorf("Unable to configure multipathd service, err %v", err.Error())
+				os.Exit(1)
 			}
 		}
-		nodeInitContainer := nodeinit.NewNodeInitContainer(flavorName, nodeService)
+		nodeInitContainer := nodeinit.NewNodeInitContainer(flavorName)
 		err := nodeInitContainer.NodeInit()
 		if err != nil {
-			log.Errorf("Error while running the init container logic: %s", err.Error())
+			log.Errorf("Error while initiating the hpe csi driver container, refer the logs for more information: %s", err.Error())
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -158,9 +160,17 @@ func csiCliHandler(cmd *cobra.Command) error {
 		return fmt.Errorf("invalid interval %s provided for monitoring pods on unreachable nodes", podMonitorInterval)
 	}
 
-	nmInterval, err := strconv.ParseInt(nodeMonitorInterval, 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid interval %s provided for monitoring the node", nmInterval)
+	var nmInterval int64
+	disableNodeMonitor := os.Getenv("DISABLE_NODE_MONITOR")
+	if disableNodeMonitor == "true" {
+		log.Infof("Node monitor is disabled, DISABLE_NODE_MONITOR=%v."+
+			"Skipping the node monitor", disableNodeMonitor)
+		nodeMonitor = false
+	} else {
+		nmInterval, err = strconv.ParseInt(nodeMonitorInterval, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid interval %s provided for monitoring the node", nmInterval)
+		}
 	}
 
 	pid := os.Getpid()

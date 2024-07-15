@@ -14,10 +14,10 @@ type NodeInitContainer struct {
 	nodeName string
 }
 
-func NewNodeInitContainer(flavorName string, nodeService bool) *NodeInitContainer {
+func NewNodeInitContainer(flavorName string) *NodeInitContainer {
 	var nodeInitFlavour flavor.Flavor
 	if flavorName == flavor.Kubernetes {
-		flavor, err := kubernetes.NewKubernetesFlavor(nodeService, nil)
+		flavor, err := kubernetes.NewKubernetesFlavor(true, nil)
 		if err != nil {
 			return nil
 		}
@@ -30,7 +30,6 @@ func NewNodeInitContainer(flavorName string, nodeService bool) *NodeInitContaine
 		nic.nodeName = key
 	}
 	log.Debugf("NodeInitContainer: %+v", nic)
-	// initialize NodeInitContainer
 	return nic
 }
 
