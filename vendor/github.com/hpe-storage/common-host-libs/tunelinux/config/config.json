@@ -368,9 +368,9 @@
 			{
 				"category": "multipath",
 				"severity": "critical",
-				"description": "getuid_callout whitelist is recommended. Can be set in /etc/multipath.conf",
-				"parameter": "getuid_callout",
-				"recommendation": "\"/lib/udev/scsi_id --whitelisted --device=/dev/%n\""
+				"description": "UID by serial. Can be set in /etc/multipath.conf",
+				"parameter": "uid_attribute",
+				"recommendation": "ID_SERIAL"
 			},
 			{
 				"category": "multipath",
