@@ -50,7 +50,6 @@ const (
 
 	discoveryIPsKey       = "discoveryIps"
 	readOnlyKey           = "readOnly"
-	volumeAccessModeKey   = "volumeAccessMode"
 	multiInitiatorKey     = "multiInitiator"
 	defaultConnectionMode = "manual"
 	KubeletRootDirEnvKey  = "KUBELET_ROOT_DIR"

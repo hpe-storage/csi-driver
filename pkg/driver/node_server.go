@@ -209,15 +209,6 @@ func (driver *Driver) nodeStageVolume(
 			fmt.Sprintf("Failed to retrieve volume access type, %v", err.Error()))
 	}
 
-	// Controller published volume access type must match with the requested volcap
-	if publishContext[volumeAccessModeKey] != "" && publishContext[volumeAccessModeKey] != volAccessType.String() {
-		log.Errorf("Controller published volume access type %v mismatched with the requested access type %v",
-			publishContext[volumeAccessModeKey], volAccessType.String())
-		return status.Error(codes.InvalidArgument,
-			fmt.Sprintf("Controller already published the volume with access type %v, but node staging requested with access type %v",
-				publishContext[volumeAccessModeKey], volAccessType.String()))
-	}
-
 	log.Infof("NodeStageVolume requested volume %s with access type %s, targetPath %s, capability %v, publishContext %v and volumeContext %v",
 		volumeID, volAccessType.String(), stagingTargetPath, volumeCapability, publishContext, volumeContext)
 
@@ -812,21 +803,9 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	}
 
 	// Create target path
-	if request.PublishContext[volumeAccessModeKey] == model.MountType.String() {
+	if volAccessType.String() == model.MountType.String() {
 		if err := util.CreateDirIfNotExists(targetPath, 0750); err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to create installation directory %v, %v", targetPath, err))
-		}
-	}
-
-	// Ephemeral volume request does not contain 'publishContext'. So, skip this validation.
-	if !ephemeral {
-		// Controller published volume access type must match with the requested volcap
-		if request.PublishContext[volumeAccessModeKey] != "" && request.PublishContext[volumeAccessModeKey] != volAccessType.String() {
-			log.Errorf("Controller published volume access type '%v' mismatched with the requested access type '%v'",
-				request.PublishContext[volumeAccessModeKey], volAccessType.String())
-			return nil, status.Error(codes.InvalidArgument,
-				fmt.Sprintf("Controller already published the volume with access type %v, but node publish requested with access type %v",
-					request.PublishContext[volumeAccessModeKey], volAccessType.String()))
 		}
 	}
 
@@ -947,8 +926,15 @@ func (driver *Driver) nodePublishVolume(
 		return nil // VOLUME TARGET ALREADY PUBLISHED
 	}
 
+	// Get volume access type
+	volAccessType, err := driver.getVolumeAccessType(volumeCapability)
+	if err != nil {
+		log.Errorf("Error retrieving volume access type, err: %v", err.Error())
+		return err
+	}
+
 	// If Block, then stage the volume for raw block device access
-	if publishContext[volumeAccessModeKey] == model.BlockType.String() {
+	if volAccessType.String() == model.BlockType.String() {
 		log.Tracef("Publishing the volume for raw block access (create symlink), devicePath: %s, targetPath: %v",
 			stagingDev.Device.AltFullPathName, targetPath)
 
