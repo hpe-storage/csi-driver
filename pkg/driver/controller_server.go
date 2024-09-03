@@ -392,8 +392,7 @@ func (driver *Driver) createVolume(
 		// Copy the request parameters into resp context
 		respVolContext = createParameters
 	}
-	// Block or Mount type
-	respVolContext[volumeAccessModeKey] = volAccessType.String()
+
 	// For block access, the filesystem will be empty.
 	if filesystem != "" {
 		log.Trace("Adding filesystem to the volume context, Filesystem: ", filesystem)
@@ -784,15 +783,6 @@ func (driver *Driver) controllerPublishVolume(
 			fmt.Sprintf("Failed to retrieve volume access type, %v", err.Error()))
 	}
 
-	// Check if the requested access type matches with the volume created access type
-	if volumeContext[volumeAccessModeKey] != "" && volumeContext[volumeAccessModeKey] != volAccessType.String() {
-		log.Errorf("Volume access type '%v' specified at the creation time mismatched with the requested access type '%v'",
-			volumeContext[volumeAccessModeKey], volAccessType.String())
-		return nil, status.Error(codes.InvalidArgument,
-			fmt.Sprintf("Volume %s created with access type %v, but controller publish requested with access type %v",
-				volumeID, volumeContext[volumeAccessModeKey], volAccessType.String()))
-	}
-
 	// Check if volume is created with type RO or ROX modes and force ro mode with publish
 	// NOTE: required until this is fixed to set request.Readonly correctly: https://github.com/kubernetes/kubernetes/issues/70505
 	readOnlyAccessMode := driver.IsReadOnlyAccessMode([]*csi.VolumeCapability{volumeCapability})
@@ -802,7 +792,6 @@ func (driver *Driver) controllerPublishVolume(
 		// TODO: check and add client ACL here
 		log.Info("ControllerPublish requested with NFS resources, returning success")
 		return map[string]string{
-			volumeAccessModeKey: volAccessType.String(),
 			readOnlyKey:         strconv.FormatBool(readOnlyAccessMode),
 			nfsMountOptionsKey:  volumeContext[nfsMountOptionsKey],
 		}, nil
@@ -922,10 +911,9 @@ func (driver *Driver) controllerPublishVolume(
 	} else { // Default case, we stick to old behavior
 		publishContext[readOnlyKey] = strconv.FormatBool(readOnlyFlag)
 	}
-	publishContext[volumeAccessModeKey] = volumeContext[volumeAccessModeKey] // Block or Mount type
 
 	// Publish FS details only if 'mount' access is being requested
-	if publishContext[volumeAccessModeKey] == model.MountType.String() {
+	if volAccessType.String() == model.MountType.String() {
 		// Filesystem Details
 		log.Trace("Adding filesystem details to the publish context")
 		publishContext[fsTypeKey] = volumeContext[fsTypeKey]
