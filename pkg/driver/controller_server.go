@@ -674,7 +674,7 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	// Get volume snapshots
 	snapshots, err := storageProvider.GetSnapshots(volumeID)
 	if err != nil {
-		log.Error("Error fetching snapshots for volume %s: %s", volumeID, err.Error())
+		log.Error("Error fetching snapshots for volume:", volumeID, ", error: ", err.Error())
 		return status.Error(codes.FailedPrecondition, fmt.Sprintf("Error while attempting to get snapshots for volume %s: %s", volumeID, err.Error()))
 	}
 
@@ -1566,7 +1566,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 			corrected_volumeId := "pvc-" + request.VolumeId
 			log.Infof("Found the RWO volume %s associated with the NFS volume %s", nfsVolumeID, corrected_volumeId)
 			if !strings.Contains(nfsVolumeID, "pvc-") {
-				log.Tracef("This backend RWO volume is a Nimble Volume, %s", nfsVolumeID, "lets find the appropriate pv name")
+				log.Tracef("This backend RWO volume is a Nimble Volume, %s, lets find the appropriate pv name", nfsVolumeID)
 				existingVolume, err := driver.GetVolumeByID(nfsVolumeID, request.Secrets)
 				if err != nil {
 					log.Error("Failed to get Nimble volume with ID ", request.VolumeId)
