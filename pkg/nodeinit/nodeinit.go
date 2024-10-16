@@ -9,6 +9,7 @@ import (
 	"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
 )
 
+//nolint:revive
 type NodeInitContainer struct {
 	flavor   flavor.Flavor
 	nodeName string

@@ -35,7 +35,7 @@ var (
 	ephemeralPublishLock   sync.Mutex
 	ephemeralUnpublishLock sync.Mutex
 )
-var isWatcherEnabled bool = false
+var isWatcherEnabled = false
 
 // Helper utility to construct default mountpoint path
 func (driver *Driver) getDefaultMountPoint(id string) string {
@@ -139,7 +139,8 @@ func (driver *Driver) removeStaleBindMounts(device *model.Device, stagingPath st
 //
 // If this RPC failed, or the CO does not know if it failed or not, it MAY choose to call NodeStageVolume again, or choose to call
 // NodeUnstageVolume.
-// nolint: gocyclo
+//
+//nolint:gocyclo,revive
 func (driver *Driver) NodeStageVolume(ctx context.Context, request *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	log.Tracef(">>>>> NodeStageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
 	defer log.Tracef("<<<<< NodeStageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
@@ -306,6 +307,8 @@ func (driver *Driver) getEncryptionPassphraseFromSecret(volEncryptionSecretName,
 
 // isVolumeStaged checks if the volume is already been staged on the node.
 // If already staged, then returns true else false
+//
+//nolint:revive // TODO: fix the ununsed arguments secrets and volumeContext
 func (driver *Driver) isVolumeStaged(
 	volumeID string,
 	stagingTargetPath string,
@@ -476,7 +479,7 @@ func (driver *Driver) stageVolume(
 		//Check whether file system is corrupted or not
 		if driver.chapiDriver.IsFileSystemCorrupted(volumeID, device, mountInfo.FilesystemOptions) {
 			if volumeContext[fsRepairKey] != "" && volumeContext[fsRepairKey] == trueKey {
-				log.Debug("Attempting to repair the file system of the device %s", device.AltFullPathName)
+				log.Debug(fmt.Printf("Attempting to repair the file system of the device %s", device.AltFullPathName))
 				err = driver.chapiDriver.RepairFileSystem(volumeID, device, mountInfo.FilesystemOptions)
 				if err != nil {
 					return nil, fmt.Errorf("Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
@@ -502,6 +505,7 @@ func (driver *Driver) stageVolume(
 	return stagingDevice, nil
 }
 
+//nolint:revive // TODO: fix the ununsed arguments secrets and volumeContext
 func (driver *Driver) setupDevice(
 	volumeID string,
 	secrets map[string]string,
@@ -596,7 +600,8 @@ func (driver *Driver) setupDevice(
 // reply 0 OK.
 //
 // If this RPC failed, or the CO does not know if it failed or not, it MAY choose to call NodeUnstageVolume again.
-// nolint: gocyclo
+//
+//nolint:gocyclo,revive
 func (driver *Driver) NodeUnstageVolume(ctx context.Context, request *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	log.Tracef(">>>>> NodeUnstageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
 	defer log.Tracef("<<<<< NodeUnstageVolume, VolumeId: %s, targetStagingPath: %s", request.VolumeId, request.StagingTargetPath)
@@ -752,6 +757,8 @@ func getEphemeralVolName(podName string, volumeHandle string) string {
 //
 // MULTI_NODE		OK (idempotent)		ALREADY_EXISTS		OK						OK
 // Non MULTI_NODE	OK (idempotent)		ALREADY_EXISTS		FAILED_PRECONDITION		FAILED_PRECONDITION
+//
+//nolint:revive
 func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	log.Tracef(">>>>> NodePublishVolume, VolumeId: %s, stagingPath: %s, targetStagingPath: %s",
 		request.VolumeId, request.TargetPath, request.StagingTargetPath)
@@ -875,6 +882,7 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	return &csi.NodePublishVolumeResponse{}, nil
 }
 
+//nolint:revive // TODO: fix the ununsed arguments secrets and volumeContext
 func (driver *Driver) nodePublishVolume(
 	volumeID string,
 	stagingTargetPath string,
@@ -1126,6 +1134,7 @@ func (driver *Driver) getEphemeralVolumeSecret(volumeHandle string, volumeContex
 	return secrets, secretRef, nil
 }
 
+//nolint:unused
 func (driver *Driver) getEncryptedVolumeSecret(volumeHandle string, secretName, secretNamespace string) (map[string]string, *Secret, error) {
 	log.Tracef(">>>>> getEncryptedVolumeSecret, volumeHandle: %s, secretName: %s, secretNamespace: %s", volumeHandle, secretName, secretNamespace)
 	defer log.Trace("<<<<< getEncryptedVolumeSecret")
@@ -1543,6 +1552,8 @@ func (driver *Driver) createEphemeralVolume(
 //
 // This operation MUST be idempotent. If this RPC failed, or the CO does not know if it failed or not, it can choose to call NodeUnpublishVolume
 // again.
+//
+//nolint:revive
 func (driver *Driver) NodeUnpublishVolume(ctx context.Context, request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	log.Tracef(">>>>> NodeUnpublishVolume, VolumeId: %s, TargetPath: %s", request.VolumeId, request.TargetPath)
 	defer log.Tracef("<<<<< NodeUnpublishVolume, VolumeId: %s, TargetPath: %s", request.VolumeId, request.TargetPath)
@@ -1791,7 +1802,8 @@ func (driver *Driver) nodeUnpublishEphemeralVolume(volumeHandle string, targetPa
 //
 // If the volume is being used in BlockVolume mode then used and available MAY be omitted from usage field of NodeGetVolumeStatsResponse.
 // Similarly, inode information MAY be omitted from NodeGetVolumeStatsResponse when unavailable.
-// nolint: dupl
+//
+//nolint:revive
 func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVolumeStatsRequest) (*csi.NodeGetVolumeStatsResponse, error) {
 	log.Trace(">>>>> NodeGetVolumeStats")
 	defer log.Trace("<<<<< NodeGetVolumeStats")
@@ -1881,7 +1893,8 @@ func (driver *Driver) NodeGetVolumeStats(ctx context.Context, in *csi.NodeGetVol
 // Otherwise NodeExpandVolume MUST be called after successful NodePublishVolume.
 // Handles both filesystem type device and raw block device
 // TODO assuming expand to underlying device size irrespective of provided capacity range. Need to add support of FS resize to fixed capacity eventhough underlying device is much bigger.
-// nolint: dupl
+//
+//nolint:revive
 func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExpandVolumeRequest) (*csi.NodeExpandVolumeResponse, error) {
 	log.Trace(">>>>> NodeExpandVolume for volume path", request.GetVolumePath())
 	defer log.Trace("<<<<< NodeExpandVolume")
@@ -1966,6 +1979,8 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 // this RPC will be executed on the node where the volume will be used. The CO SHOULD call this RPC for the node at which it wants to place
 // the workload. The CO MAY call this RPC more than once for a given node. The SP SHALL NOT expect the CO to call this RPC more than once. The
 // result of this call will be used by CO in ControllerPublishVolume.
+//
+//nolint:revive
 func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoRequest) (*csi.NodeGetInfoResponse, error) {
 	log.Trace(">>>>> NodeGetInfo")
 	defer log.Trace("<<<<< NodeGetInfo")
@@ -2137,7 +2152,8 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 //
 // A Node Plugin MUST implement this RPC call. This RPC allows the CO to check the supported capabilities of node service provided by the
 // Plugin.
-// nolint: dupl
+//
+//nolint:revive
 func (driver *Driver) NodeGetCapabilities(ctx context.Context, req *csi.NodeGetCapabilitiesRequest) (*csi.NodeGetCapabilitiesResponse, error) {
 	log.Trace(">>>>> NodeGetCapabilities")
 	defer log.Trace("<<<<< NodeGetCapabilities")

@@ -163,3 +163,5 @@ replace k8s.io/sample-controller => k8s.io/sample-controller v0.25.16
 replace k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20230525220651-2546d827e515
 
 replace google.golang.org/protobuf => google.golang.org/protobuf v1.33.0
+
+replace github.com/hpe-storage/common-host-libs => ../common-host-libs

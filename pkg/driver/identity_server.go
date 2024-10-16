@@ -12,6 +12,8 @@ import (
 // GetPluginInfo ...
 //
 // The name says it all
+//
+//nolint:revive
 func (driver *Driver) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
 	log.Info(">>>>> GetPluginInfo")
 	defer log.Info("<<<<< GetPluginInfo")
@@ -35,6 +37,8 @@ func (driver *Driver) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoR
 // plugin's implementation MAY NOT be trivial and there MAY be overhead incurred by such repeated calls. The SP SHALL document guidance and known
 // limitations regarding a particular Plugin's implementation of this RPC. For example, the SP MAY document the maximum frequency at which its
 // Probe implementation SHOULD be called.
+//
+//nolint:revive
 func (driver *Driver) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
 	log.Info(">>>>> Probe")
 	defer log.Info("<<<<< Probe")
@@ -48,6 +52,8 @@ func (driver *Driver) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.Pr
 // of all instances of the Plugin software, as it is intended to be deployed. All instances of the same version (see vendor_version of
 // GetPluginInfoResponse) of the Plugin SHALL return the same set of capabilities, regardless of both: (a) where instances are deployed on
 // the cluster as well as; (b) which RPCs an instance is serving.
+//
+//nolint:revive
 func (driver *Driver) GetPluginCapabilities(ctx context.Context, req *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
 	log.Info(">>>>> GetPluginCapabilities")
 	defer log.Info("<<<<< GetPluginCapabilities")
