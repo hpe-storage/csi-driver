@@ -26,7 +26,7 @@ endif
 
 # golangci-lint allows us to have a single target that runs multiple linters in
 # the same fashion.  This variable controls which linters are used.
-LINTER_FLAGS = --disable-all --enable=vet --enable=vetshadow --enable=golint --enable=ineffassign --enable=goconst --enable=deadcode --enable=dupl --enable=varcheck --enable=gocyclo --enable=misspell --deadline=240s
+LINTER_FLAGS = --disable-all --enable=govet --enable=revive --enable=ineffassign --enable=goconst --enable=unused --enable=dupl --enable=gocyclo --enable=misspell
 
 # Our target binary is for Linux.  To build an exec for your local (non-linux)
 # machine, use go build directly.

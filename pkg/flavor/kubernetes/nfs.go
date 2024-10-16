@@ -471,18 +471,16 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 
 	if err != nil {
 		return nil, err
-	} else {
-		resourceLimits[core_v1.ResourceCPU] = cpuLimitsQuantity
 	}
+	resourceLimits[core_v1.ResourceCPU] = cpuLimitsQuantity
 
 	// memory limits eg: 1Gi
 	memoryLimitsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceLimitsMemoryKey, defaultRLimitMemory)
 
 	if err != nil {
 		return nil, err
-	} else {
-		resourceLimits[core_v1.ResourceMemory] = memoryLimitsQuantity
 	}
+	resourceLimits[core_v1.ResourceMemory] = memoryLimitsQuantity
 
 	// requests
 	resourceRequests := make(core_v1.ResourceList)
@@ -492,18 +490,16 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 
 	if err != nil {
 		return nil, err
-	} else {
-		resourceRequests[core_v1.ResourceCPU] = cpuRequestsQuantity
 	}
+	resourceRequests[core_v1.ResourceCPU] = cpuRequestsQuantity
 
 	// memory limits eg: 1Gi
 	memoryRequestsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceRequestsMemoryKey, defaultRRequestMemory)
 
 	if err != nil {
 		return nil, err
-	} else {
-		resourceRequests[core_v1.ResourceMemory] = memoryRequestsQuantity
 	}
+	resourceRequests[core_v1.ResourceMemory] = memoryRequestsQuantity
 
 	// apply resources
 	nfsSpec.resourceRequirements = &core_v1.ResourceRequirements{
@@ -782,7 +778,7 @@ func (flavor *Flavor) createNFSDeployment(deploymentName string, nfsSpec *NFSSpe
 	return nil
 }
 
-// nolint
+//nolint:dupl
 func (flavor *Flavor) makeNFSService(svcName string, nfsNamespace string) *core_v1.Service {
 	log.Tracef(">>>>> makeNFSService with name %s", svcName)
 	defer log.Tracef("<<<<< makeNFSService")
@@ -952,7 +948,7 @@ func getEnv(key, defaultValue string) string {
 	return value
 }
 
-// nolint
+//nolint:dupl
 func (flavor *Flavor) makeContainer(name string, nfsSpec *NFSSpec) core_v1.Container {
 	log.Tracef(">>>>> makeContainer with name %s, volume %s", name, nfsSpec.volumeClaim)
 	defer log.Tracef("<<<<< makeContainer")

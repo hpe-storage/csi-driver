@@ -13,7 +13,7 @@ import (
 func doesDeviceBelongToTheNode(multipathDevice *model.MultipathDevice, volumeAttachmentList *storage_v1.VolumeAttachmentList, nodeName string) bool {
 	if multipathDevice != nil {
 		for _, va := range volumeAttachmentList.Items {
-			log.Tracef("SERIAL NUMBER: ", va.Status.AttachmentMetadata["serialNumber"], "NAME:", va.Name)
+			log.Tracef("SERIAL NUMBER: %s, NAME: %s", va.Status.AttachmentMetadata["serialNumber"], va.Name)
 			if multipathDevice.UUID[1:] == va.Status.AttachmentMetadata["serialNumber"] && nodeName == va.Spec.NodeName {
 				return true
 			}
@@ -27,7 +27,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 	defer log.Trace("<<<<< AnalyzeMultiPathDevices")
 
 	var disableCleanup bool
-	var err_count int
+	var errCount int
 	disableNodeMonitor := os.Getenv("DISABLE_NODE_MONITOR")
 	if disableNodeMonitor == "true" {
 		log.Infof("Node monitor is disabled, DISABLE_NODE_MONITOR=%v."+
@@ -52,32 +52,29 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 		log.Infof("The node %s is unable to connect to the control plane.", nodeName)
 		if multipathDevices != nil && len(multipathDevices) > 0 {
 			for _, device := range multipathDevices {
-				log.Tracef("Name:%s Vendor:%s Paths:%f Path Faults:%f UUID:%s IsUnhealthy:%t", device.Name, device.Vend, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
+				log.Tracef("Name:%s Vendor:%s Paths:%d Path Faults:%d UUID:%s IsUnhealthy:%t", device.Name, device.Vend, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
 				if device.IsUnhealthy {
 					log.Infof("Multipath device %s on the node %s is unhealthy", device.Name, nodeName)
 					err = cleanup(&device)
 					if err != nil {
 						log.Errorf("Unable to cleanup the multipath device %s: %s", device.Name, err.Error())
-						err_count = err_count + 1
+						errCount = errCount + 1
 					}
 				} else {
 					log.Infof("Multipath device %s on the node %s is healthy", device.Name, nodeName)
 				}
 			}
-			if err_count > 0 {
-				log.Infof("Failed to remove %d multipath devices on the node %s", err_count, nodeName)
+			if errCount > 0 {
+				log.Infof("Failed to remove %d multipath devices on the node %s", errCount, nodeName)
 				return err
-			} else {
-				//No error while cleaninup or no devices are there to clean
-				return nil
 			}
-		} else {
-			log.Tracef("No multipath devices found on the node %s", nodeName)
+			//No error while cleaninup or no devices are there to clean
 			return nil
 		}
-	} else {
-		log.Infof("Node %s has a proper connection with the control plane", nodeName)
+		log.Tracef("No multipath devices found on the node %s", nodeName)
+		return nil
 	}
+	log.Infof("Node %s has a proper connection with the control plane", nodeName)
 
 	vaList, err := flavor.ListVolumeAttachments()
 	if err != nil {
@@ -105,7 +102,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 						err = cleanup(&device)
 						if err != nil {
 							log.Errorf("Unable to cleanup the multipath device %s", device.Name)
-							err_count = err_count + 1
+							errCount = errCount + 1
 						}
 					} else {
 						log.Warnf("Skipping the removal of stale multipath device %s as the DISABLE_NODE_MONITOR is set to %s", device.Name, disableNodeMonitor)
@@ -122,7 +119,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 					err = cleanup(&device)
 					if err != nil {
 						log.Errorf("Unable to cleanup the multipath device %s", device.Name)
-						err_count = err_count + 1
+						errCount = errCount + 1
 					}
 				} else {
 					log.Warnf("Skipping the removal of stale multipath device %s as the DISABLE_NODE_MONITOR is set to %s", device.Name, disableNodeMonitor)
@@ -134,8 +131,8 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 		}
 	} // end-for loop
 
-	if err_count > 0 {
-		log.Infof("Failed to remove %d multipath devices on the node %s", err_count, nodeName)
+	if errCount > 0 {
+		log.Infof("Failed to remove %d multipath devices on the node %s", errCount, nodeName)
 		return err
 	}
 	return nil

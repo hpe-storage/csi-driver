@@ -369,7 +369,8 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 }
 
 // NewClaimController provides a controller that watches for PersistentVolumeClaims and takes action on them
-// nolint: dupl
+//
+//nolint:dupl,unused
 func (flavor *Flavor) newClaimIndexer() cache.Indexer {
 	claimListWatch := &cache.ListWatch{
 		ListFunc:  flavor.listAllClaims,
@@ -389,7 +390,8 @@ func (flavor *Flavor) newClaimIndexer() cache.Indexer {
 }
 
 // newSnapshotIndexer provides a controller that watches for VolumeSnapshots and takes action on them
-// nolint: dupl
+//
+//nolint:dupl,unused
 func (flavor *Flavor) newSnapshotIndexer() cache.Indexer {
 	snapshotListWatch := &cache.ListWatch{
 		ListFunc:  flavor.listAllSnapshots,
@@ -476,6 +478,8 @@ func (flavor *Flavor) GetGroupSnapshotNameFromSnapshotName(name string) (string,
 }
 
 // get the pv corresponding to this pvc and substitute with pv (docker/csi volume name)
+//
+//nolint:unused //TODO: Fix the linter issue
 func (flavor *Flavor) getVolumeNameFromClaimName(name string) (string, error) {
 	log.Tracef(">>>>> getVolumeNameFromClaimName called with PVC Name %s", name)
 	defer log.Trace("<<<<< getVolumeNameFromClaimName")
