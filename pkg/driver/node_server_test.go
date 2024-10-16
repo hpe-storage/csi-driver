@@ -10,7 +10,6 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/hpe-storage/common-host-libs/chapi"
-	"github.com/hpe-storage/common-host-libs/concurrent"
 	"github.com/hpe-storage/common-host-libs/storageprovider"
 	"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
 )
@@ -92,14 +91,12 @@ func TestKubeletRootDir(t *testing.T) {
 func TestNodeGetVolumeStats(t *testing.T) {
 	endpoint := "unix://" + testsocket
 	driver := &Driver{
-		name:              "fake-test-driver",
-		version:           "2.0",
-		endpoint:          endpoint,
-		storageProviders:  make(map[string]storageprovider.StorageProvider),
-		chapiDriver:       &chapi.FakeDriver{},
-		flavor:            &vanilla.Flavor{},
-		requestCache:      make(map[string]interface{}),
-		requestCacheMutex: concurrent.NewMapMutex(),
+		name:             "fake-test-driver",
+		version:          "2.0",
+		endpoint:         endpoint,
+		storageProviders: make(map[string]storageprovider.StorageProvider),
+		chapiDriver:      &chapi.FakeDriver{},
+		flavor:           &vanilla.Flavor{},
 	}
 
 	tempDir, err := ioutil.TempDir("", "ngvs")

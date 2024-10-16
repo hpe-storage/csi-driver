@@ -3,11 +3,16 @@ package driver
 
 import (
 	"os"
+	"strconv"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"k8s.io/apimachinery/pkg/util/rand"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/hpe-storage/common-host-libs/chapi"
-	"github.com/hpe-storage/common-host-libs/concurrent"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/storageprovider"
 	"github.com/hpe-storage/common-host-libs/storageprovider/fake"
@@ -18,6 +23,9 @@ import (
 
 const (
 	testsocket string = "/tmp/csi.sock"
+	testKey    string = "testKey"
+	testValue  string = "testValue"
+	testCount  int    = 500
 )
 
 func TestPluginSuite(t *testing.T) {
@@ -69,14 +77,12 @@ func realDriver(t *testing.T, endpoint string) *Driver {
 
 func fakeDriver(endpoint string) *Driver {
 	driver := &Driver{
-		name:              "fake-test-driver",
-		version:           "0.1",
-		endpoint:          endpoint,
-		storageProviders:  make(map[string]storageprovider.StorageProvider),
-		chapiDriver:       &chapi.FakeDriver{},
-		flavor:            &vanilla.Flavor{},
-		requestCache:      make(map[string]interface{}),
-		requestCacheMutex: concurrent.NewMapMutex(),
+		name:             "fake-test-driver",
+		version:          "0.1",
+		endpoint:         endpoint,
+		storageProviders: make(map[string]storageprovider.StorageProvider),
+		chapiDriver:      &chapi.FakeDriver{},
+		flavor:           &vanilla.Flavor{},
 	}
 
 	credential := &storageprovider.Credentials{
@@ -177,4 +183,115 @@ func TestGenerateStorageProviderCacheKey(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAddRequest(t *testing.T) {
+	driver := &Driver{}
+
+	key := testKey
+	value := testValue
+
+	driver.AddRequest(key, value)
+
+	assert.Equal(t, value, driver.GetRequest(key))
+}
+
+func TestAddRequestConcurrent(t *testing.T) {
+	driver := &Driver{}
+
+	key := testKey
+	value := testValue
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			driver.AddRequest(key, value)
+		}()
+	}
+	wg.Wait()
+
+	assert.Equal(t, value, driver.GetRequest(key))
+}
+
+func TestClearRequest(t *testing.T) {
+	driver := &Driver{}
+
+	key := testKey
+	value := testValue
+
+	driver.AddRequest(key, value)
+	driver.ClearRequest(key)
+
+	assert.Nil(t, driver.GetRequest(key))
+}
+
+func TestAddAndClearRequestConcurrent(_ *testing.T) {
+	driver := &Driver{}
+
+	var key [testCount]string
+	var value [testCount]string
+	for i := 0; i < (testCount - 5); i += 5 {
+		key[i] = testKey + strconv.Itoa(i)
+		value[i] = testValue + strconv.Itoa(i)
+		key[i+1] = testKey + strconv.Itoa(i)
+		value[i+1] = testValue + strconv.Itoa(i)
+		key[i+2] = testKey + strconv.Itoa(i)
+		value[i+2] = testValue + strconv.Itoa(i)
+		key[i+3] = testKey + strconv.Itoa(i)
+		value[i+3] = testValue + strconv.Itoa(i)
+		key[i+4] = testKey + strconv.Itoa(i)
+		value[i+4] = testValue + strconv.Itoa(i)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < testCount; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			driver.AddRequest(key[i], value[i])
+			driver.HandleDuplicateRequest(key[i])
+			rand.Seed(time.Now().UnixNano())
+			n := rand.Intn(1000) // n will be between 0 and 10
+			time.Sleep(time.Duration(n) * time.Microsecond)
+			driver.ClearRequest(key[i])
+		}(i)
+	}
+	wg.Wait()
+
+}
+
+func TestClearRequestConcurrent(_ *testing.T) {
+	driver := &Driver{}
+
+	var key [testCount]string
+	var value [testCount]string
+	for i := 0; i < (testCount - 5); i += 5 {
+		key[i] = testKey + strconv.Itoa(i)
+		value[i] = testValue + strconv.Itoa(i)
+		key[i+1] = testKey + strconv.Itoa(i)
+		value[i+1] = testValue + strconv.Itoa(i)
+		key[i+2] = testKey + strconv.Itoa(i)
+		value[i+2] = testValue + strconv.Itoa(i)
+		key[i+3] = testKey + strconv.Itoa(i)
+		value[i+3] = testValue + strconv.Itoa(i)
+		key[i+4] = testKey + strconv.Itoa(i)
+		value[i+4] = testValue + strconv.Itoa(i)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < testCount; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			driver.HandleDuplicateRequest(key[i])
+			rand.Seed(time.Now().UnixNano())
+			n := rand.Intn(1000) // n will be between 0 and 10
+			time.Sleep(time.Duration(n) * time.Microsecond)
+			driver.ClearRequest(key[i])
+		}(i)
+	}
+	wg.Wait()
+
 }

@@ -1152,18 +1152,18 @@ func (flavor *Flavor) getResourceQuantity(scParams map[string]string, paramKey s
 	return quantity, nil
 }
 
-func (flavor *Flavor) IsNFSVolumeExpandable(volumeId string) bool {
-	log.Tracef(">>>>>> IsNFSVolumeExpandable, volume:%s", volumeId)
+func (flavor *Flavor) IsNFSVolumeExpandable(volumeID string) bool {
+	log.Tracef(">>>>>> IsNFSVolumeExpandable, volume:%s", volumeID)
 	defer log.Tracef("<<<<<<< IsNFSVolumeExpandable")
 
-	accessModes, err := flavor.GetAccessModesOfPV(volumeId)
+	accessModes, err := flavor.GetAccessModesOfPV(volumeID)
 	if err != nil {
-		log.Errorf("Failed to get the access modes of the volume %s: %s", volumeId, err.Error())
+		log.Errorf("Failed to get the access modes of the volume %s: %s", volumeID, err.Error())
 		return false
 	}
 
 	if len(accessModes) > 1 {
-		log.Errorf("Multiple access modes exist for the volume %s, hence this volume can't be expanded.", volumeId)
+		log.Errorf("Multiple access modes exist for the volume %s, hence this volume can't be expanded.", volumeID)
 		return false
 	}
 
