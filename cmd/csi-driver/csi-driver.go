@@ -85,6 +85,7 @@ func init() {
 
 }
 
+//nolint:govet //TODO: fix the non-constant format string being sent to log.Errorf
 func csiCliHandler(cmd *cobra.Command) error {
 	log.Trace(">>>>> csiCliHandler")
 	defer log.Trace("<<<<< csiCliHandler")
@@ -169,7 +170,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 	} else {
 		nmInterval, err = strconv.ParseInt(nodeMonitorInterval, 10, 64)
 		if err != nil {
-			return fmt.Errorf("invalid interval %s provided for monitoring the node", nmInterval)
+			return fmt.Errorf("invalid interval %d provided for monitoring the node", nmInterval)
 		}
 	}
 

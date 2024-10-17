@@ -39,7 +39,7 @@ func NewCluster(nodes int) (*fake.Clientset, error) {
 		n := &v1.Node{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:   name,
-				Labels: map[string]string{nfsNodeSelectorKey: nfsNodeSelectorValue},
+				Labels: map[string]string{nfsNodeSelectorKey: nfsNodeSelectorDefaultValue},
 			},
 			Status: v1.NodeStatus{
 				Conditions: []v1.NodeCondition{
@@ -63,7 +63,7 @@ func NewCluster(nodes int) (*fake.Clientset, error) {
 }
 
 func TestGetNodes(t *testing.T) {
-	nodes, err := flavor.getNFSNodes()
+	nodes, err := flavor.getNFSNodes(nfsNodeSelectorDefaultValue)
 	assert.Nil(t, err)
 	assert.NotNil(t, nodes)
 	assert.Equal(t, len(nodes), 3)
