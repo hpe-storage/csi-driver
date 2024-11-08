@@ -792,8 +792,8 @@ func (driver *Driver) controllerPublishVolume(
 		// TODO: check and add client ACL here
 		log.Info("ControllerPublish requested with NFS resources, returning success")
 		return map[string]string{
-			readOnlyKey:         strconv.FormatBool(readOnlyAccessMode),
-			nfsMountOptionsKey:  volumeContext[nfsMountOptionsKey],
+			readOnlyKey:        strconv.FormatBool(readOnlyAccessMode),
+			nfsMountOptionsKey: volumeContext[nfsMountOptionsKey],
 		}, nil
 	}
 
@@ -1521,6 +1521,34 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 	defer driver.ClearRequest(key)
 
 	// TODO: Add info to DB
+
+	if request.GetVolumeCapability() != nil {
+		if request.VolumeCapability.AccessMode != nil {
+			if request.VolumeCapability.AccessMode.Mode == 5 {
+				log.Infof("This volume %s is RWX volume, need some special care!", request.VolumeId)
+				log.Infof("Lets find out its backend RWO volume!")
+				corrected_volumeId := "pvc-" + request.VolumeId
+				// volume id of RWX volume will be added to the label of backend NFS RWO volume
+				nfsVolumeID, err := driver.flavor.GetNFSVolumeID(request.VolumeId)
+				if err != nil {
+					return nil, status.Error(fmt.Sprintf("Failed to get the volume details of backend RWO volume of RWX volume %s: %s", corrected_volumeId, err.Error()))
+				}
+
+				expandReq := &csi.ControllerExpandVolumeRequest{
+					VolumeId:      nfsVolumeID,
+					CapacityRange: request.CapacityRange,
+				}
+				//Send the Expand volume request for the backedn RWO volume
+				response, err := driver.ControllerExpandVolume(ctx, expandReq)
+				if response == nil || request.CapacityRange != nil || response.CapacityBytes != request.CapacityRange.RequiredBytes {
+					return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to update the backend NFS RWO volume %s of the RWX volume %s", nfsVolumeID, corrected_volumeId))
+				}
+				log.Infof("The backend RWO NFS volume %s size is updated, next step is to update at the node level")
+				//For now lets continue teh flow with the RWX volume expansion and lets see what happens
+				request.VolumeId = corrected_volumeId
+			}
+		}
+	}
 
 	// Get Volume
 	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
