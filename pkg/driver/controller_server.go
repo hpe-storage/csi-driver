@@ -1531,7 +1531,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 				// volume id of RWX volume will be added to the label of backend NFS RWO volume
 				nfsVolumeID, err := driver.flavor.GetNFSVolumeID(request.VolumeId)
 				if err != nil {
-					return nil, status.Error(fmt.Sprintf("Failed to get the volume details of backend RWO volume of RWX volume %s: %s", corrected_volumeId, err.Error()))
+					return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get the volume details of backend RWO volume of RWX volume %s: %s", corrected_volumeId, err.Error()))
 				}
 
 				expandReq := &csi.ControllerExpandVolumeRequest{
