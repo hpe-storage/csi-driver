@@ -1490,7 +1490,7 @@ func (driver *Driver) ListSnapshots(ctx context.Context, request *csi.ListSnapsh
 //
 // nolint: dupl
 func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
-	log.Trace(">>>>> ControllerExpandVolume")
+	log.Trace(">>>>> ControllerExpandVolume: ", request, ": Volume ID: ", request.VolumeId)
 	defer log.Trace("<<<<< ControllerExpandVolume")
 
 	if request.GetVolumeId() == "" {
@@ -1541,6 +1541,11 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 				}
 				//Send the Expand volume request for the backedn RWO volume
 				response, err := driver.ControllerExpandVolume(ctx, expandReq)
+				if err != nil {
+					log.Tracef("Error occured while expanding the backedn RWO volume %s", nfsVolumeID)
+					return nil, status.Error(codes.Internal, err.Error())
+				}
+				log.Trace("Response from the ControllerExpandVolume: ", response, "\n Capacity Range: ", request.CapacityRange, "\n RequiredBytes: ", request.CapacityRange.RequiredBytes)
 				if response == nil || request.CapacityRange != nil || response.CapacityBytes != request.CapacityRange.RequiredBytes {
 					return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to update the backend NFS RWO volume %s of the RWX volume %s", nfsVolumeID, corrected_volumeId))
 				}
@@ -1573,6 +1578,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 
 	if existingVolume.Size == request.CapacityRange.GetLimitBytes() || existingVolume.Size == request.CapacityRange.GetRequiredBytes() {
 		// volume is already at requested size, so no action required.
+		log.Tracef("volume %s is already at requested size, so no action required", request.VolumeId)
 		return &csi.ControllerExpandVolumeResponse{
 			CapacityBytes:         existingVolume.Size,
 			NodeExpansionRequired: nodeExpansionRequired,
