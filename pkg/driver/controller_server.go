@@ -1537,6 +1537,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 				expandReq := &csi.ControllerExpandVolumeRequest{
 					VolumeId:      nfsVolumeID,
 					CapacityRange: request.CapacityRange,
+					Secrets:       request.Secrets,
 				}
 				//Send the Expand volume request for the backedn RWO volume
 				response, err := driver.ControllerExpandVolume(ctx, expandReq)
