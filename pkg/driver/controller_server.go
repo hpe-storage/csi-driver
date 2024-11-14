@@ -1528,28 +1528,12 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 				log.Infof("This volume %s is RWX volume, need some special care!", request.VolumeId)
 				log.Infof("Lets find out its backend RWO volume!")
 				corrected_volumeId := "pvc-" + request.VolumeId
-				// volume id of RWX volume will be added to the label of backend NFS RWO volume
-				nfsVolumeID, err := driver.flavor.GetNFSVolumeID(request.VolumeId)
+				err := driver.flavor.ExpandNFSBackendVolume(corrected_volumeId, request.CapacityRange.GetRequiredBytes())
 				if err != nil {
-					return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get the volume details of backend RWO volume of RWX volume %s: %s", corrected_volumeId, err.Error()))
+					log.Errorf("Failed to update the NFS backend volume of RWX volume %s: %s", corrected_volumeId, err.Error())
+					return nil, err
 				}
-
-				expandReq := &csi.ControllerExpandVolumeRequest{
-					VolumeId:      nfsVolumeID,
-					CapacityRange: request.CapacityRange,
-					Secrets:       request.Secrets,
-				}
-				//Send the Expand volume request for the backedn RWO volume
-				response, err := driver.ControllerExpandVolume(ctx, expandReq)
-				if err != nil {
-					log.Tracef("Error occured while expanding the backedn RWO volume %s", nfsVolumeID)
-					return nil, status.Error(codes.Internal, err.Error())
-				}
-				log.Trace("Response from the ControllerExpandVolume: ", response, "\n Capacity Range: ", request.CapacityRange, "\n RequiredBytes: ", request.CapacityRange.RequiredBytes)
-				if response == nil || request.CapacityRange != nil || response.CapacityBytes != request.CapacityRange.RequiredBytes {
-					return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to update the backend NFS RWO volume %s of the RWX volume %s", nfsVolumeID, corrected_volumeId))
-				}
-				log.Infof("The backend RWO NFS volume %s size is updated, next step is to update at the node level")
+				log.Infof("The backend RWO NFS volume %s size is updated")
 				//For now lets continue teh flow with the RWX volume expansion and lets see what happens
 				request.VolumeId = corrected_volumeId
 			}
