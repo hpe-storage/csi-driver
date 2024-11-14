@@ -1536,7 +1536,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 				log.Infof("The backend RWO NFS volume %s size is updated")
 				return &csi.ControllerExpandVolumeResponse{
 					CapacityBytes:         request.CapacityRange.GetRequiredBytes(),
-					NodeExpansionRequired: true,
+					NodeExpansionRequired: false,
 				}, nil
 				//For now lets continue teh flow with the RWX volume expansion and lets see what happens
 				//request.VolumeId = corrected_volumeId
