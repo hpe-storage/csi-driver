@@ -1165,16 +1165,19 @@ func (flavor *Flavor) ExpandNFSBackendVolume(volumeID string, newCapacity int64)
 	if err != nil {
 		return status.Error(codes.Internal, fmt.Sprintf("Failed to get the volume details of backend RWO volume of RWX volume %s: %s", volumeID, err.Error()))
 	}
+	log.Infof("Found the RWO volume %s for the RWX volume %s", nfsVolumeID, "pvc-"+volumeID)
 
 	rwoPVCName, err := flavor.GetVolumePropertyOfPV("csi.storage.k8s.io/pvc/name", nfsVolumeID)
 	if err != nil {
 		log.Errorf("Failed to get the name of the claim name of the PV %s", nfsVolumeID)
+		return fmt.Errorf("Unable to find the claim name for the backend RWO volume %s", nfsVolumeID)
 	}
 	log.Infof("PVC Name of the backend RWO volume %s is: %s", nfsVolumeID, rwoPVCName)
 
 	pvcNamespace, err := flavor.GetVolumePropertyOfPV("csi.storage.k8s.io/pvc/namespace", nfsVolumeID)
 	if err != nil {
 		log.Errorf("Failed to get the namespace of the claim name of the PV %s", nfsVolumeID)
+		return fmt.Errorf("Unable to find the namespace for the backend RWO volume claim %s", rwoPVCName)
 	}
 	log.Infof("PVC namesapce of the backend RWO volume %s is: %s", nfsVolumeID, pvcNamespace)
 
