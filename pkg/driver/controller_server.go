@@ -1528,7 +1528,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 				log.Infof("This volume %s is RWX volume, need some special care!", request.VolumeId)
 				log.Infof("Lets find out its backend RWO volume!")
 				corrected_volumeId := "pvc-" + request.VolumeId
-				err := driver.flavor.ExpandNFSBackendVolume(corrected_volumeId, request.CapacityRange.GetRequiredBytes())
+				err := driver.flavor.ExpandNFSBackendVolume(request.VolumeId, request.CapacityRange.GetRequiredBytes())
 				if err != nil {
 					log.Errorf("Failed to update the NFS backend volume of RWX volume %s: %s", corrected_volumeId, err.Error())
 					return nil, err
