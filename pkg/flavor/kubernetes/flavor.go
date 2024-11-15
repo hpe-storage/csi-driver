@@ -747,6 +747,18 @@ func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) 
 	return "", nil
 }
 
+func (flavor *Flavor) GetAccessModesOfPV(pvName string) ([]v1.PersistentVolumeAccessMode, error) {
+	log.Tracef(">>>>> GetAccessModeOfPV, pvName: %s", pvName)
+	defer log.Trace("<<<<< GetAccessModeOfPV")
+
+	pv, err := flavor.kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), pvName, meta_v1.GetOptions{})
+	if err != nil {
+		log.Errorf("Error retrieving the access modes of the pv %s, err: %v", pvName, err.Error())
+		return nil, err
+	}
+	return pv.Spec.AccessModes, nil
+}
+
 func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
 	log.Tracef(">>>>> GetOrchestratorVersion")
 	defer log.Tracef("<<<<< GetOrchestratorVersion")

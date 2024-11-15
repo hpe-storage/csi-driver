@@ -1522,25 +1522,30 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 
 	// TODO: Add info to DB
 
-	if request.GetVolumeCapability() != nil {
-		if request.VolumeCapability.AccessMode != nil {
-			if request.VolumeCapability.AccessMode.Mode == 5 {
-				log.Infof("This volume %s is RWX volume, need some special care!", request.VolumeId)
-				log.Infof("Lets find out its backend RWO volume!")
-				corrected_volumeId := "pvc-" + request.VolumeId
-				err := driver.flavor.ExpandNFSBackendVolume(request.VolumeId, request.CapacityRange.GetRequiredBytes())
-				if err != nil {
-					log.Errorf("Failed to update the NFS backend volume of RWX volume %s: %s", corrected_volumeId, err.Error())
-					return nil, err
-				}
-				log.Infof("The backend RWO NFS volume %s size is updated")
-				return &csi.ControllerExpandVolumeResponse{
-					CapacityBytes:         request.CapacityRange.GetRequiredBytes(),
-					NodeExpansionRequired: false,
-				}, nil
-				//For now lets continue teh flow with the RWX volume expansion and lets see what happens
-				//request.VolumeId = corrected_volumeId
+	if !strings.Contains(request.VolumeId, "pvc-") {
+		log.Tracef(" Found a foreign UUID for the volume, check if it is NFS volume or not")
+		nfsVolumeID, err := driver.flavor.GetNFSVolumeID(request.VolumeId)
+		if err != nil {
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get the volume details for the foreign UUID %s: %s", request.VolumeId, err.Error()))
+		}
+		log.Infof("Found the RWO volume %s for the NFS volume %s", nfsVolumeID, "pvc-"+request.VolumeId)
+		log.Infof("Checking whether the foreign UUID belongs to RWX Volume or not")
+		corrected_volumeId := "pvc-" + request.VolumeId
+		if driver.flavor.IsRwxVolume(corrected_volumeId) {
+			log.Infof("This volume %s is RWX volume, need some special care!", request.VolumeId)
+			err := driver.flavor.ExpandNFSBackendVolume(nfsVolumeID, request.CapacityRange.GetRequiredBytes())
+			if err != nil {
+				log.Errorf("Failed to update the NFS backend volume of RWX volume %s: %s", corrected_volumeId, err.Error())
+				return nil, err
 			}
+			log.Infof("The backend RWO NFS volume %s size is updated")
+			//NFS client will take care of resizing
+			return &csi.ControllerExpandVolumeResponse{
+				CapacityBytes:         request.CapacityRange.GetRequiredBytes(),
+				NodeExpansionRequired: false,
+			}, nil
+		} else {
+			return nil, status.Error(codes.Canceled, fmt.Sprintf("This volume %s either not a RWX volume or have multiple access modes, hence this volume can't be expanded", corrected_volumeId))
 		}
 	}
 

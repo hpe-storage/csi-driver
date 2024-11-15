@@ -1156,16 +1156,31 @@ func (flavor *Flavor) getResourceQuantity(scParams map[string]string, paramKey s
 	return quantity, nil
 }
 
-func (flavor *Flavor) ExpandNFSBackendVolume(volumeID string, newCapacity int64) error {
-	log.Tracef(">>>>> ExpandNFSBackendVolume: %s", volumeID)
-	defer log.Trace("<<<<< ExpandNFSBackendVolume")
+func (flavor *Flavor) IsRwxVolume(volumeId string) bool {
+	log.Tracef(">>>>>> IsRwxVolume, volume:%s", volumeId)
+	defer log.Tracef("<<<<<<< IsRwxVolume")
 
-	// volume id of RWX volume will be added to the label of backend NFS RWO volume
-	nfsVolumeID, err := flavor.GetNFSVolumeID(volumeID)
+	accessModes, err := flavor.GetAccessModesOfPV(volumeId)
 	if err != nil {
-		return status.Error(codes.Internal, fmt.Sprintf("Failed to get the volume details of backend RWO volume of RWX volume %s: %s", volumeID, err.Error()))
+		log.Errorf("Failed to get the access modes of the volume %s: %s", volumeId, err.Error())
+		return false
 	}
-	log.Infof("Found the RWO volume %s for the RWX volume %s", nfsVolumeID, "pvc-"+volumeID)
+
+	if len(accessModes) > 1 {
+		log.Errorf("Multiple access modes exist for the volume %s, hence this volume can't be expanded.", volumeId)
+		return false
+	}
+
+	if len(accessModes) == 1 && accessModes[0] == core_v1.ReadWriteMany {
+		log.Tracef("Access mode of the volume %s is ReadWriteMany", volumeId)
+		return true
+	}
+	return false
+}
+
+func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int64) error {
+	log.Tracef(">>>>> ExpandNFSBackendVolume: %s", nfsVolumeID)
+	defer log.Trace("<<<<< ExpandNFSBackendVolume")
 
 	rwoPVCName, err := flavor.GetVolumePropertyOfPV("csi.storage.k8s.io/pvc/name", nfsVolumeID)
 	if err != nil {
