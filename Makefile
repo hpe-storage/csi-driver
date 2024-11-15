@@ -3,7 +3,7 @@ ifndef REPO_NAME
 	REPO_NAME ?= hpestorage/csi-driver
 endif
 
-TAG = edge
+TAG = snapshot_fix_1
 
 ARCH ?= amd64
 
@@ -81,11 +81,11 @@ test:
 .PHONY: image
 image:
 	@echo "Building multiarch docker images and manifest"
-	docker-buildx build --platform=linux/amd64,linux/arm64 --progress=plain \
-		--provenance=false -t $(IMAGE) .
+	docker buildx build --platform=linux/amd64,linux/arm64 --progress=plain \
+		--provenance=false --load -t $(IMAGE) .
 
 .PHONY: push
 push:
 	@echo "Publishing $(IMAGE)"
-	docker-buildx build --platform=linux/amd64,linux/arm64 --progress=plain \
+	docker buildx build --platform=linux/amd64,linux/arm64 --progress=plain \
 		--provenance=false --push -t $(IMAGE) .
