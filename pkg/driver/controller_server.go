@@ -1528,24 +1528,24 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get the volume details for the foreign UUID %s: %s", request.VolumeId, err.Error()))
 		}
-		log.Infof("Found the RWO volume %s for the NFS volume %s", nfsVolumeID, "pvc-"+request.VolumeId)
-		log.Infof("Checking whether the foreign UUID belongs to RWX Volume or not")
 		corrected_volumeId := "pvc-" + request.VolumeId
+		log.Infof("Found the RWO volume %s associated with the NFS volume %s", nfsVolumeID, corrected_volumeId)
+		log.Infof("Checking the access mode of the NFS Volume %s", corrected_volumeId)
 		if driver.flavor.IsRwxVolume(corrected_volumeId) {
-			log.Infof("This volume %s is RWX volume, need some special care!", request.VolumeId)
+			log.Infof("The access mode of the NFS volume %s is ReadWriteMany.", corrected_volumeId)
 			err := driver.flavor.ExpandNFSBackendVolume(nfsVolumeID, request.CapacityRange.GetRequiredBytes())
 			if err != nil {
-				log.Errorf("Failed to update the NFS backend volume of RWX volume %s: %s", corrected_volumeId, err.Error())
+				log.Errorf("Failed to update the backend RWO volume of NFS volume %s: %s", corrected_volumeId, err.Error())
 				return nil, err
 			}
-			log.Infof("The backend RWO NFS volume %s size is updated")
+			log.Infof("The size of the backend RWO volume %s associated with the NFS volume %s has been updated", nfsVolumeID, corrected_volumeId)
 			//NFS client will take care of resizing
 			return &csi.ControllerExpandVolumeResponse{
 				CapacityBytes:         request.CapacityRange.GetRequiredBytes(),
 				NodeExpansionRequired: false,
 			}, nil
 		} else {
-			return nil, status.Error(codes.Canceled, fmt.Sprintf("This volume %s either not a RWX volume or have multiple access modes, hence this volume can't be expanded", corrected_volumeId))
+			return nil, status.Error(codes.Canceled, fmt.Sprintf("The NFS volume %s either does not have a ReadWriteMany access mode or has multiple access modes, and therefore this volume can't be expanded.", corrected_volumeId))
 		}
 	}
 

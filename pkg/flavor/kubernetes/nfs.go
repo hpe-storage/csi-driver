@@ -1172,7 +1172,6 @@ func (flavor *Flavor) IsRwxVolume(volumeId string) bool {
 	}
 
 	if len(accessModes) == 1 && accessModes[0] == core_v1.ReadWriteMany {
-		log.Tracef("Access mode of the volume %s is ReadWriteMany", volumeId)
 		return true
 	}
 	return false
@@ -1187,12 +1186,12 @@ func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int
 		log.Errorf("Failed to get the name of the claim name of the PV %s", nfsVolumeID)
 		return fmt.Errorf("Unable to find the claim name for the backend RWO volume %s", nfsVolumeID)
 	}
-	log.Infof("PVC Name of the backend RWO volume %s is: %s", nfsVolumeID, rwoPVCName)
+	log.Infof("PVC name of the backend RWO volume %s is: %s", nfsVolumeID, rwoPVCName)
 
 	pvcNamespace, err := flavor.GetVolumePropertyOfPV("csi.storage.k8s.io/pvc/namespace", nfsVolumeID)
 	if err != nil {
-		log.Errorf("Failed to get the namespace of the claim name of the PV %s", nfsVolumeID)
-		return fmt.Errorf("Unable to find the namespace for the backend RWO volume claim %s", rwoPVCName)
+		log.Errorf("Failed to get the namespace of the volume claim %s", rwoPVCName)
+		return fmt.Errorf("Unable to find the namespace of the backend RWO volume claim %s", rwoPVCName)
 	}
 	log.Infof("PVC namesapce of the backend RWO volume %s is: %s", nfsVolumeID, pvcNamespace)
 
@@ -1218,6 +1217,6 @@ func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int
 	if err != nil {
 		return fmt.Errorf("failed to patch PVC: %v", err)
 	}
-	log.Info("Response from the the patch request: ", response)
+	log.Trace("Response from the the patch request: ", response)
 	return nil
 }
