@@ -101,7 +101,7 @@ func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
 	return "", nil
 }
 
-func (flavor *Flavor) IsRwxVolume(volumeId string) bool {
+func (flavor *Flavor) IsNFSVolumeExpandable(volumeId string) bool {
 	return false
 }
 

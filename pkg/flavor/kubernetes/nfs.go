@@ -1156,9 +1156,9 @@ func (flavor *Flavor) getResourceQuantity(scParams map[string]string, paramKey s
 	return quantity, nil
 }
 
-func (flavor *Flavor) IsRwxVolume(volumeId string) bool {
-	log.Tracef(">>>>>> IsRwxVolume, volume:%s", volumeId)
-	defer log.Tracef("<<<<<<< IsRwxVolume")
+func (flavor *Flavor) IsNFSVolumeExpandable(volumeId string) bool {
+	log.Tracef(">>>>>> IsNFSVolumeExpandable, volume:%s", volumeId)
+	defer log.Tracef("<<<<<<< IsNFSVolumeExpandable")
 
 	accessModes, err := flavor.GetAccessModesOfPV(volumeId)
 	if err != nil {
@@ -1171,7 +1171,7 @@ func (flavor *Flavor) IsRwxVolume(volumeId string) bool {
 		return false
 	}
 
-	if len(accessModes) == 1 && accessModes[0] == core_v1.ReadWriteMany {
+	if len(accessModes) == 1 && (accessModes[0] == core_v1.ReadWriteMany || accessModes[0] == core_v1.ReadWriteOnce) {
 		return true
 	}
 	return false

@@ -37,7 +37,7 @@ type Flavor interface {
 	GetVolumePropertyOfPV(propertyName string, pvName string) (string, error)
 	GetNFSVolumeID(volumeID string) (string, error)
 	ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int64) error
-	IsRwxVolume(volumeId string) bool
+	IsNFSVolumeExpandable(volumeId string) bool
 	GetOrchestratorVersion() (*version.Info, error)
 	MonitorPod(podLabelkey, podLabelvalue string) error
 	GetGroupSnapshotNameFromSnapshotName(snapshotName string) (string, error)
