@@ -1531,7 +1531,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 		corrected_volumeId := "pvc-" + request.VolumeId
 		log.Infof("Found the RWO volume %s associated with the NFS volume %s", nfsVolumeID, corrected_volumeId)
 		log.Infof("Checking the access mode of the NFS Volume %s", corrected_volumeId)
-		if driver.flavor.IsRwxVolume(corrected_volumeId) {
+		if driver.flavor.IsNFSVolumeExpandable(corrected_volumeId) {
 			log.Infof("The access mode of the NFS volume %s is ReadWriteMany.", corrected_volumeId)
 			err := driver.flavor.ExpandNFSBackendVolume(nfsVolumeID, request.CapacityRange.GetRequiredBytes())
 			if err != nil {
