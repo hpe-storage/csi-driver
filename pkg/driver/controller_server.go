@@ -668,6 +668,19 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 			fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
 	}
 
+	// Get volume snapshots
+	snapshots, err := storageProvider.GetSnapshots(volumeID)
+	if err != nil {
+		log.Error("Error fetching snapshots for volume %s: %s", volumeID, err.Error())
+		return status.Error(codes.FailedPrecondition, fmt.Sprintf("Error while attempting to get snapshots for volume %s: %s", volumeID, err.Error()))
+	}
+
+	// check if snapshots exist
+	if len(snapshots) > 0 {
+		log.Tracef("Found snapshots for volume %s: %+v", volumeID, snapshots)
+		return status.Errorf(codes.FailedPrecondition, fmt.Sprintf("Volume %s with ID %s cannot be deleted as it has snapshots attached", existingVolume.Name, existingVolume.ID))
+	}
+
 	// Delete the volume from the array
 	log.Infof("About to delete volume %s with force=%v", volumeID, force)
 	if err := storageProvider.DeleteVolume(volumeID, force); err != nil {
