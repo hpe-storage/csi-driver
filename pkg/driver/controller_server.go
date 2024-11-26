@@ -1536,10 +1536,10 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 	// TODO: Add info to DB
 
 	if !strings.Contains(request.VolumeId, "pvc-") {
-		log.Tracef("Found a foreign UUID for the volume, check if it is Nimble Volume or not")
+		log.Tracef("Found a foreign UUID for the volume %s, check if it is Nimble Volume or not", request.VolumeId)
 		_, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
 		if err != nil {
-			log.Tracef("Failed to get volume with ID ", request.VolumeId, ". Check whether it is NFS volume or not")
+			log.Tracef("Failed to get volume with ID %s. Check whether it is NFS volume or not", request.VolumeId)
 			nfsVolumeID, err := driver.flavor.GetNFSVolumeID(request.VolumeId)
 			if err != nil {
 				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get the volume details for the foreign UUID %s: %s", request.VolumeId, err.Error()))
@@ -1548,7 +1548,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 			log.Infof("Found the RWO volume %s associated with the NFS volume %s", nfsVolumeID, corrected_volumeId)
 			if !strings.Contains(nfsVolumeID, "pvc-") {
 				log.Tracef("This backend RWO volume is a Nimble Volume, %s", nfsVolumeID, "lets find the appropriate pv name")
-				existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+				existingVolume, err := driver.GetVolumeByID(nfsVolumeID, request.Secrets)
 				if err != nil {
 					log.Error("Failed to get volume with ID ", request.VolumeId)
 					return nil, err
