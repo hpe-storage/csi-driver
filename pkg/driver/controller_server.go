@@ -1546,6 +1546,16 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 			}
 			corrected_volumeId := "pvc-" + request.VolumeId
 			log.Infof("Found the RWO volume %s associated with the NFS volume %s", nfsVolumeID, corrected_volumeId)
+			if !strings.Contains(nfsVolumeID, "pvc-") {
+				log.Tracef("This backend RWO volume is a Nimble Volume, %s", nfsVolumeID, "lets find the appropriate pv name")
+				existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+				if err != nil {
+					log.Error("Failed to get volume with ID ", request.VolumeId)
+					return nil, err
+				}
+				log.Tracef("Found Nimble backend RWO Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
+				nfsVolumeID = existingVolume.Name
+			}
 			log.Infof("Checking the access mode of the NFS Volume %s", corrected_volumeId)
 			if driver.flavor.IsNFSVolumeExpandable(corrected_volumeId) {
 				log.Infof("The access mode of the NFS volume %s is ReadWriteMany.", corrected_volumeId)
