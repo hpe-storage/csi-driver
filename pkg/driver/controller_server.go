@@ -252,7 +252,7 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 	}, nil
 }
 
-// nolint: gocyclo
+//nolint:gocyclo,govet //TODO: fix the non-constant format string being sent to log.Errorf
 func (driver *Driver) createVolume(
 	name string,
 	size int64,
@@ -603,6 +603,8 @@ func (driver *Driver) createVolume(
 //
 // This operation MUST be idempotent. If a volume corresponding to the specified volume_id does not exist or the
 // artifacts associated with the volume do not exist anymore, the Plugin MUST reply 0 OK.
+//
+//nolint:revive
 func (driver *Driver) DeleteVolume(ctx context.Context, request *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	log.Trace(">>>>> DeleteVolume")
 	defer log.Trace("<<<<< DeleteVolume")
@@ -626,6 +628,7 @@ func (driver *Driver) DeleteVolume(ctx context.Context, request *csi.DeleteVolum
 	return &csi.DeleteVolumeResponse{}, nil
 }
 
+//nolint:govet //TODO: fix the non-constant format string being sent to log.Errorf
 func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, force bool) error {
 	log.Tracef(">>>>> deleteVolume, volumeID: %s, force: %v", volumeID, force)
 	defer log.Trace("<<<<< deleteVolume")
@@ -711,7 +714,8 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 //
 // The CO MAY call this RPC for publishing a volume to multiple nodes if the volume has MULTI_NODE capability (i.e., MULTI_NODE_READER_ONLY,
 // MULTI_NODE_SINGLE_WRITER or MULTI_NODE_MULTI_WRITER).
-// nolint: gocyclo
+//
+//nolint:revive
 func (driver *Driver) ControllerPublishVolume(ctx context.Context, request *csi.ControllerPublishVolumeRequest) (*csi.ControllerPublishVolumeResponse, error) {
 	log.Trace(">>>>> ControllerPublishVolume")
 	defer log.Trace("<<<<< ControllerPublishVolume")
@@ -958,6 +962,8 @@ func (driver *Driver) controllerPublishVolume(
 // This operation MUST be idempotent. If the volume corresponding to the volume_id is not attached to the node corresponding to the node_id,
 // the Plugin MUST reply 0 OK. If this operation failed, or the CO does not know if the operation failed or not, it can choose to call
 // ControllerUnpublishVolume again.
+//
+//nolint:revive
 func (driver *Driver) ControllerUnpublishVolume(ctx context.Context, request *csi.ControllerUnpublishVolumeRequest) (*csi.ControllerUnpublishVolumeResponse, error) {
 	log.Trace(">>>>> ControllerUnpublishVolume")
 	defer log.Trace("<<<<< ControllerUnpublishVolume")
@@ -1047,7 +1053,8 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 // NOTE: Older plugins will parse but likely not "process" newer fields that MAY be present in capability-validation messages (and sub-messages)
 // sent by a CO that is communicating using a newer, backwards-compatible version of the CSI protobufs. Therefore, the CO SHALL reconcile successful
 // capability-validation responses by comparing the validated capabilities with those that it had originally requested.
-// nolint: gocyclo
+//
+//nolint:revive
 func (driver *Driver) ValidateVolumeCapabilities(ctx context.Context, request *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
 	log.Trace(">>>>> ValidateVolumeCapabilities")
 	defer log.Trace("<<<<< ValidateVolumeCapabilities")
@@ -1099,6 +1106,8 @@ func (driver *Driver) ValidateVolumeCapabilities(ctx context.Context, request *c
 // volumes that it knows about. If volumes are created and/or deleted while the CO is concurrently paging through ListVolumes results then it
 // is possible that the CO MAY either witness duplicate volumes in the list, not witness existing volumes, or both. The CO SHALL NOT expect a
 // consistent "view" of all volumes when paging through the volume list via multiple calls to ListVolumes.
+//
+//nolint:revive // TODO: fix the ununsed arguments secrets and volumeContext
 func (driver *Driver) ListVolumes(ctx context.Context, request *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
 	log.Trace(">>>>> ListVolumes")
 	defer log.Trace("<<<<< ListVolumes")
@@ -1148,6 +1157,8 @@ func (driver *Driver) ListVolumes(ctx context.Context, request *csi.ListVolumesR
 // ControllerGetVolumeResponse if it has VOLUME_CONDITION capability.
 // ControllerGetVolumeResponse should contain current information of a volume if it exists. If the volume does not exist any more,
 // ControllerGetVolume should return gRPC error code NOT_FOUND
+//
+//nolint:revive // TODO: fix the ununsed arguments secrets and volumeContext
 func (driver *Driver) ControllerGetVolume(ctx context.Context, request *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
 	log.Trace(">>>>> ControllerGetVolume")
 	defer log.Trace("<<<<< ControllerGetVolume")
@@ -1161,7 +1172,8 @@ func (driver *Driver) ControllerGetVolume(ctx context.Context, request *csi.Cont
 //
 // A Controller Plugin MUST implement this RPC call if it has GET_CAPACITY controller capability. The RPC allows the CO to query the capacity of
 // the storage pool from which the controller provisions volumes.
-// nolint: dupl
+//
+//nolint:dupl,revive
 func (driver *Driver) GetCapacity(ctx context.Context, request *csi.GetCapacityRequest) (*csi.GetCapacityResponse, error) {
 	log.Trace(">>>>> GetCapacity")
 	defer log.Trace("<<<<< GetCapacity")
@@ -1173,7 +1185,8 @@ func (driver *Driver) GetCapacity(ctx context.Context, request *csi.GetCapacityR
 //
 // A Controller Plugin MUST implement this RPC call. This RPC allows the CO to check the supported capabilities of controller service provided
 // by the Plugin.
-// nolint: dupl
+//
+//nolint:dupl,revive
 func (driver *Driver) ControllerGetCapabilities(ctx context.Context, request *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
 	log.Trace(">>>>> ControllerGetCapabilities")
 	defer log.Trace("<<<<< ControllerGetCapabilities")
@@ -1201,7 +1214,8 @@ func (driver *Driver) ControllerGetCapabilities(ctx context.Context, request *cs
 // A snapshot MAY be used as the source to provision a new volume. A CreateVolumeRequest message MAY specify an OPTIONAL source snapshot parameter.
 // Reverting a snapshot, where data in the original volume is erased and replaced with data in the snapshot, is an advanced functionality not every
 // storage system can support and therefore is currently out of scope.
-// nolint: dupl
+//
+//nolint:dupl,revive
 func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	log.Trace(">>>>> CreateSnapshot")
 	defer log.Trace("<<<<< CreateSnapshot")
@@ -1343,7 +1357,8 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 //
 // This operation MUST be idempotent. If a snapshot corresponding to the specified snapshot_id does not exist or the artifacts associated with
 // the snapshot do not exist anymore, the Plugin MUST reply 0 OK.
-// nolint: dupl
+//
+//nolint:dupl,revive
 func (driver *Driver) DeleteSnapshot(ctx context.Context, request *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	log.Trace(">>>>> DeleteSnapshot")
 	defer log.Trace("<<<<< DeleteSnapshot")
@@ -1501,7 +1516,7 @@ func (driver *Driver) ListSnapshots(ctx context.Context, request *csi.ListSnapsh
 //	The plugin does NOT have controller PUBLISH_UNPUBLISH_VOLUME capability, nor node STAGE_UNSTAGE_VOLUME capability, and
 //	NodeUnpublishVolume has completed successfully.
 //
-// nolint: dupl
+//nolint:dupl,revive
 func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
 	log.Trace(">>>>> ControllerExpandVolume: ", request, ": Volume ID: ", request.VolumeId)
 	defer log.Trace("<<<<< ControllerExpandVolume")
@@ -1638,6 +1653,8 @@ func updateVolumeContext(volumeContext map[string]string, volume *model.Volume) 
 }
 
 // Returns all snapshots for the given storage provider given the list request
+//
+//nolint:revive
 func getSnapshotsForStorageProvider(ctx context.Context, request *csi.ListSnapshotsRequest, storageProvider storageprovider.StorageProvider) ([]*model.Snapshot, error) {
 	log.Trace(">>>>> getSnapshotsForStorageProvider")
 	defer log.Trace("<<<<< getSnapshotsForStorageProvider")
