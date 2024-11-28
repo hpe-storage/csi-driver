@@ -1535,7 +1535,11 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 
 	// TODO: Add info to DB
 
+	//Handling NFS PVC request
 	if !strings.Contains(request.VolumeId, "pvc-") {
+		// Regular Nimble volumes will have the volume Id will be like this '06189263bcc823a018000000000000000000000087'
+		// But for NFS Nimble Volumes, the volume Id will be like this 634bdb9e-158a-4fb8-90fb-78eb1bad0bba
+		// This check is to prevent the processing of regular Nimble volumes
 		log.Tracef("Found a foreign UUID for the volume %s, check if it is Nimble Volume or not", request.VolumeId)
 		_, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
 		if err != nil {
@@ -1556,9 +1560,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 				log.Tracef("Found Nimble backend RWO Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
 				nfsVolumeID = existingVolume.Name
 			}
-			log.Infof("Checking the access mode of the NFS Volume %s", corrected_volumeId)
-			//if driver.flavor.IsNFSVolumeExpandable(corrected_volumeId) {
-			log.Infof("The access mode of the NFS volume %s is ReadWriteMany.", corrected_volumeId)
+
 			err = driver.flavor.ExpandNFSBackendVolume(nfsVolumeID, request.CapacityRange.GetRequiredBytes())
 			if err != nil {
 				log.Errorf("Failed to update the backend RWO volume of NFS volume %s: %s", corrected_volumeId, err.Error())
@@ -1570,11 +1572,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 				CapacityBytes:         request.CapacityRange.GetRequiredBytes(),
 				NodeExpansionRequired: false,
 			}, nil
-			/*} else {
-				return nil, status.Error(codes.Canceled, fmt.Sprintf("The NFS volume %s either does not have a ReadWriteMany access mode or has multiple access modes, and therefore this volume can't be expanded.", corrected_volumeId))
-			}*/
-		}
-		//log.Tracef("The Volume %s with ID %s a Nimble volume", nimbleVolume.Name, nimbleVolume.ID)
+		} // If this fails, then the request with foreign uid may belong to Nimlble.
 	}
 
 	// Get Volume
