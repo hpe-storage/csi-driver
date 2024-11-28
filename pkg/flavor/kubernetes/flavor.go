@@ -1,4 +1,4 @@
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019, 2024 Hewlett Packard Enterprise Development LP
 
 package kubernetes
 
@@ -685,6 +685,21 @@ func (flavor *Flavor) getPodByName(name string, namespace string) (*v1.Pod, erro
 	}
 	return pod, nil
 }
+
+// GetPVCByName to get the PVC details for given PVC name
+func (flavor *Flavor) GetPVCByName(name string, namespace string) (*v1.PersistentVolumeClaim , error) {
+	log.Tracef(">>>>> GetPVCByName, name: %s, namespace: %s", name, namespace)
+	defer log.Trace("<<<<< GetPVCByName")
+
+	pvc, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), name, meta_v1.GetOptions{})
+	if err != nil {
+		log.Errorf("Error retrieving the pvc %s/%s, err: %v", namespace, name, err.Error())
+		return nil, err
+	}
+	
+	return pvc, nil
+}
+
 
 // makeVolumeHandle returns csi-<sha256(podUID,volSourceSpecName)>
 // Original source location: kubernetes/pkg/volume/csi/csi_mounter.go
