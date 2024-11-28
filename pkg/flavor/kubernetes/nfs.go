@@ -1183,7 +1183,7 @@ func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int
 	}
 	patchBytes, err := json.Marshal(patchData)
 	if err != nil {
-		return fmt.Errorf("failed to marshal patch data: %v", err)
+		return fmt.Errorf("Failed to marshal expand volume patch data: %v", err)
 	}
 	// Send the patch request
 	response, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Patch(
@@ -1194,7 +1194,7 @@ func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int
 		meta_v1.PatchOptions{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to patch PVC: %v", err)
+		return fmt.Errorf("Failed to patch PVC %s: %v", rwoPVCName, err)
 	}
 	log.Trace("Response from the the patch request: ", response)
 	return nil
