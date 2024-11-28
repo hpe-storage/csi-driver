@@ -1,4 +1,4 @@
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019, 2024 Hewlett Packard Enterprise Development LP
 
 package vanilla
 
@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	storage_v1 "k8s.io/api/storage/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/version"
 )
 
@@ -147,4 +148,8 @@ func (flavor *Flavor) ListVolumeAttachments() (*storage_v1.VolumeAttachmentList,
 
 func (flavor *Flavor) CheckConnection() bool {
 	return false
+}
+
+func (flavor *Flavor) GetPVCByName(name string, namespace string) (*v1.PersistentVolumeClaim , error) {
+	return nil, nil
 }
