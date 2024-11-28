@@ -1550,29 +1550,29 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 				log.Tracef("This backend RWO volume is a Nimble Volume, %s", nfsVolumeID, "lets find the appropriate pv name")
 				existingVolume, err := driver.GetVolumeByID(nfsVolumeID, request.Secrets)
 				if err != nil {
-					log.Error("Failed to get volume with ID ", request.VolumeId)
+					log.Error("Failed to get Nimble volume with ID ", request.VolumeId)
 					return nil, err
 				}
 				log.Tracef("Found Nimble backend RWO Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
 				nfsVolumeID = existingVolume.Name
 			}
 			log.Infof("Checking the access mode of the NFS Volume %s", corrected_volumeId)
-			if driver.flavor.IsNFSVolumeExpandable(corrected_volumeId) {
-				log.Infof("The access mode of the NFS volume %s is ReadWriteMany.", corrected_volumeId)
-				err := driver.flavor.ExpandNFSBackendVolume(nfsVolumeID, request.CapacityRange.GetRequiredBytes())
-				if err != nil {
-					log.Errorf("Failed to update the backend RWO volume of NFS volume %s: %s", corrected_volumeId, err.Error())
-					return nil, err
-				}
-				log.Infof("The size of the backend RWO volume %s associated with the NFS volume %s has been updated", nfsVolumeID, corrected_volumeId)
-				//NFS client will take care of resizing
-				return &csi.ControllerExpandVolumeResponse{
-					CapacityBytes:         request.CapacityRange.GetRequiredBytes(),
-					NodeExpansionRequired: false,
-				}, nil
-			} else {
-				return nil, status.Error(codes.Canceled, fmt.Sprintf("The NFS volume %s either does not have a ReadWriteMany access mode or has multiple access modes, and therefore this volume can't be expanded.", corrected_volumeId))
+			//if driver.flavor.IsNFSVolumeExpandable(corrected_volumeId) {
+			log.Infof("The access mode of the NFS volume %s is ReadWriteMany.", corrected_volumeId)
+			err = driver.flavor.ExpandNFSBackendVolume(nfsVolumeID, request.CapacityRange.GetRequiredBytes())
+			if err != nil {
+				log.Errorf("Failed to update the backend RWO volume of NFS volume %s: %s", corrected_volumeId, err.Error())
+				return nil, err
 			}
+			log.Infof("The size of the backend RWO volume %s associated with the NFS volume %s has been updated", nfsVolumeID, corrected_volumeId)
+			//NFS client will take care of resizing
+			return &csi.ControllerExpandVolumeResponse{
+				CapacityBytes:         request.CapacityRange.GetRequiredBytes(),
+				NodeExpansionRequired: false,
+			}, nil
+			/*} else {
+				return nil, status.Error(codes.Canceled, fmt.Sprintf("The NFS volume %s either does not have a ReadWriteMany access mode or has multiple access modes, and therefore this volume can't be expanded.", corrected_volumeId))
+			}*/
 		}
 		//log.Tracef("The Volume %s with ID %s a Nimble volume", nimbleVolume.Name, nimbleVolume.ID)
 	}
