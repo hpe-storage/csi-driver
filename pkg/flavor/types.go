@@ -1,4 +1,4 @@
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019, 2024 Hewlett Packard Enterprise Development LP
 
 package flavor
 
@@ -7,6 +7,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	storage_v1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/version"
+	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -42,4 +43,5 @@ type Flavor interface {
 	ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error)
 	GetChapCredentials(volumeContext map[string]string) (*model.ChapInfo, error)
 	CheckConnection() bool
+	GetPVCByName(name string, namespace string) (*v1.PersistentVolumeClaim , error) 
 }

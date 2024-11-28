@@ -1,4 +1,4 @@
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019,2024 Hewlett Packard Enterprise Development LP
 // Copyright 2017 The Kubernetes Authors.
 
 package driver
@@ -26,6 +26,9 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/stringformat"
 	"github.com/hpe-storage/common-host-libs/util"
+	mountutil "k8s.io/mount-utils"
+	"k8s.io/utils/exec"
+
 	"k8s.io/kubernetes/pkg/volume"
 )
 
@@ -409,6 +412,8 @@ func (driver *Driver) stageVolume(
 		volumeID, stagingMountPoint, volAccessType.String(), volCap, log.MapScrubber(publishContext), volumeContext)
 	defer log.Trace("<<<<< stageVolume")
 
+	var IsVolumeClone bool
+	
 	// serialize stage requests
 	stageLock.Lock()
 	defer stageLock.Unlock()
@@ -498,7 +503,54 @@ func (driver *Driver) stageVolume(
 
 	// Store mount info in the staging device
 	stagingDevice.MountInfo = mountInfo
+	
+	// CON-3010
+	// Get the PVC details to identify the datasource of PVC
+	log.Infof("PVC Name %s", volumeContext[pvcName])
+	log.Infof("PVC Namespace %s", volumeContext[pvcNamespace])
+	
+	if volumeContext[pvcName] != "" && volumeContext[pvcNamespace] != "" {
+		pvc, err := driver.flavor.GetPVCByName( volumeContext[pvcName], volumeContext[pvcNamespace] )
+		if err != nil{
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting pvc data source for volume %v, %v", volumeID, err))
+		}
+		if pvc.Spec.DataSource != nil {
 
+			// If the DataSource is a VolumeSnapshot
+			if pvc.Spec.DataSource.Kind == "VolumeSnapshot" {
+				log.Infof("  Source Kind: VolumeSnapshot\n")
+				log.Infof("  VolumeSnapshot Name: %s\n", pvc.Spec.DataSource.Name)
+				//set to true as volume is created from volume snapshot
+				IsVolumeClone = true
+			}
+		}
+	}
+		
+	// Check whether volume is created from snapshot then only we need resize
+	if IsVolumeClone {
+		// Initialize resizeFs
+		r := mountutil.NewResizeFs(exec.New())
+
+		log.Infof("Verify whether resize required for device path %v ", device.AltFullPathName)
+		
+		// check whether we need resize for file system
+		needResize, err := r.NeedResize(device.AltFullPathName, stagingMountPoint)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "Could not determine if volume %q need to be resized: %v",  volumeID, err)
+		}
+		log.Infof("Need resize for filesystem is  %v", needResize)
+
+		// Need resize
+		if needResize {
+			log.Infof("Resize of target path %s is required ",  device.AltFullPathName)
+			if _, err := r.Resize(device.AltFullPathName, stagingMountPoint); err != nil {
+				return nil, status.Errorf(codes.Internal, "Could not resize volume %q:  %v", volumeID, err)
+			}
+			log.Infof("Resize of target path %s is successful",  device.AltFullPathName)
+		}
+	}
+	// CON-3010
+	
 	return stagingDevice, nil
 }
 
@@ -808,6 +860,7 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to create installation directory %v, %v", targetPath, err))
 		}
 	}
+
 
 	log.Infof("NodePublishVolume requested volume %s with access type %s, targetPath %s, capability %v, publishContext %v and volumeContext %v",
 		request.VolumeId, volAccessType, request.TargetPath, request.VolumeCapability, request.PublishContext, request.VolumeContext)
