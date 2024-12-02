@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Scalingo/go-etcd-lock/lock"
@@ -19,7 +20,6 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/hpe-storage/common-host-libs/chapi"
-	"github.com/hpe-storage/common-host-libs/concurrent"
 	"github.com/hpe-storage/common-host-libs/dbservice"
 	"github.com/hpe-storage/common-host-libs/dbservice/etcd"
 	log "github.com/hpe-storage/common-host-libs/logger"
@@ -59,10 +59,9 @@ type Driver struct {
 	volumeCapabilityAccessModes       []*csi.VolumeCapability_AccessMode
 	pluginVolumeExpansionCapabilities []*csi.PluginCapability_VolumeExpansion
 
-	requestCache      map[string]interface{}
-	requestCacheMutex *concurrent.MapMutex
-	DBService         dbservice.DBService
-	KubeletRootDir    string
+	requestCache   sync.Map
+	DBService      dbservice.DBService
+	KubeletRootDir string
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
@@ -515,26 +514,25 @@ func (driver *Driver) DeleteVolumeByName(name string, secrets map[string]string,
 	return nil
 }
 
-// HandleDuplicateRequest checks for the duplicate request in the cache map.
-// If yes, then returns ABORTED error, else inserts the entry into cache map and returns nil
+// HandleDuplicateRequest checks for the duplicate request in the sync cache map.
+// If yes, then returns ABORTED error, else inserts the entry into sync cache map and returns nil
 func (driver *Driver) HandleDuplicateRequest(key string) error {
 	log.Trace(">>>>> HandleDuplicateRequest, key: ", key)
 	defer log.Trace("<<<<< HandleDuplicateRequest")
 
 	// When no DB support, use local in-memory map
-	//	- The driver's in-memory map is used to cache the requests
+	//	- The driver's in-memory sync.Map is used to cache the requests
 	if driver.DBService == nil {
 
-		// Look for the key entry in the cache map
-		value := driver.GetRequest(key)
-		if value != nil {
+		// Look for the key entry in the sync cache map, we dont care about the previous value
+		// return ABORTED, if the key is found
+		_, exists := driver.requestCache.LoadOrStore(key, true)
+		if exists {
 			return status.Error(
 				codes.Aborted,
 				fmt.Sprintf("There is already an operation pending for the specified id %s", key),
 			)
 		}
-		// Insert the key entry to the cache map
-		driver.AddRequest(key, true)
 		return nil
 	}
 
@@ -566,63 +564,56 @@ func (driver *Driver) HandleDuplicateRequest(key string) error {
 			fmt.Sprintf("Error while acquiring DB lock on the key '%s', err: %s", key, err.Error()),
 		)
 	}
-	// Insert the DB lock entry to the cache map
+	// Insert the DB lock entry to the sync cache map
 	driver.AddRequest(key, lck)
 	return nil
 }
 
 /***************************** In-Memory Cache Map Operations *****************************/
-
 // GetRequest retrieves the value in the driver cache map. If not exists, returns nil
 func (driver *Driver) GetRequest(key string) interface{} {
 	log.Trace(">>>>> GetRequest, key: ", key)
 	defer log.Trace("<<<<< GetRequest")
 
-	// Get the mutex lock on the map for the key
-	driver.requestCacheMutex.Lock(key)
-	defer driver.requestCacheMutex.Unlock(key)
-
-	return driver.requestCache[key]
+	value, _ := driver.requestCache.Load(key)
+	return value
 }
 
-// AddRequest inserts the request entry into the driver cache map
+// AddRequest inserts the request entry into the driver sync cache map
 func (driver *Driver) AddRequest(key string, value interface{}) {
 	log.Tracef(">>>>> AddRequest, key: %s, value: %v", key, value)
 	defer log.Trace("<<<<< AddRequest")
 
-	// Get the mutex lock on the map for the key
-	driver.requestCacheMutex.Lock(key)
-	defer driver.requestCacheMutex.Unlock(key)
-
-	driver.requestCache[key] = value
-	log.Tracef("Print RequestCache: %v", driver.requestCache) // Debug
-	log.Tracef("Successfully inserted an entry with key %s to the cache map", key)
+	// Store the key:value in to the sync.Map(requestCache)
+	driver.requestCache.Store(key, value)
+	log.Tracef("Successfully inserted an entry with key %s to the sync cache map", key)
 }
 
-// ClearRequest removes the request entry from the driver cache map
+// ClearRequest removes the request entry from the driver sync cache map
 func (driver *Driver) ClearRequest(key string) {
 	log.Trace(">>>>> ClearRequest, key: ", key)
 	defer log.Trace("<<<<< ClearRequest")
 
-	// Get the mutex lock on the map for the key
-	driver.requestCacheMutex.Lock(key)
-	defer driver.requestCacheMutex.Unlock(key)
-
 	if driver.DBService != nil {
-		value := driver.requestCache[key]
-		if value != nil {
-			log.Tracef("About to release DB lock on the key '%s'", key)
-			// Release lock in the DB
-			if err := driver.DBService.ReleaseLock(value.(lock.Lock)); err != nil {
-				log.Errorf("Error while releasing DB lock on the key '%s', err: %s", key, err.Error())
-				// Note: Don't return error here as the lock will be released automatically once the ttl expires.
+		value, exists := driver.requestCache.LoadAndDelete(key)
+		if exists {
+			keyValue, valueOk := value.(lock.Lock)
+			if valueOk {
+				log.Tracef("About to release DB lock on the key '%s'", key)
+				// Release lock in the DB
+				if err := driver.DBService.ReleaseLock(keyValue); err != nil {
+					log.Errorf("Error while releasing DB lock on the key '%s', err: %s", key, err.Error())
+					// Note: Don't return error here as the lock will be released automatically once the ttl expires.
+				}
+			} else {
+				log.Errorf("Key value is not of correct type '%v'", key)
 			}
 		}
+	} else {
+		// Remove the entry from the sync cache map
+		driver.requestCache.Delete(key)
+		log.Tracef("Successfully removed an entry with key %s from the sync cache map", key)
 	}
-	// Remove the entry from the cache map
-	delete(driver.requestCache, key)
-	log.Tracef("Print RequestCache: %v", driver.requestCache) // Trace
-	log.Tracef("Successfully removed an entry with key %s from the cache map", key)
 }
 
 func getString(value interface{}) string {

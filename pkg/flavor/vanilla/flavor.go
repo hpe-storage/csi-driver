@@ -122,10 +122,12 @@ func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
 	return "", nil
 }
 
-func (flavor *Flavor) IsNFSVolumeExpandable(volumeId string) bool {
+//nolint:revive
+func (flavor *Flavor) IsNFSVolumeExpandable(volumeID string) bool {
 	return false
 }
 
+//nolint:revive
 func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int64) error {
 	return nil
 }
