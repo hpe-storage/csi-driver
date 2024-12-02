@@ -45,6 +45,7 @@ func (s *nonBlockingGRPCServer) Stop() {
 	s.server.Stop()
 }
 
+//nolint:govet //TODO: fix the non-constant format string being sent to log.Errorf
 func (s *nonBlockingGRPCServer) serve(endpoint string, ids csi.IdentityServer, cs csi.ControllerServer, ns csi.NodeServer) {
 
 	proto, addr, err := ParseEndpoint(endpoint)

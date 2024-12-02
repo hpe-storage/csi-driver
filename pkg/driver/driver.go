@@ -263,10 +263,9 @@ func (driver *Driver) AddNodeServiceCapabilities(capabilities []csi.NodeServiceC
 	for _, c := range capabilities {
 		if disableNodeGetVolumeStats && c.String() == "GET_VOLUME_STATS" {
 			continue
-		} else {
-			log.Infof("Enabling node service capability: %v", c.String())
-			nodeServiceCapabilities = append(nodeServiceCapabilities, NewNodeServiceCapability(c))
 		}
+		log.Infof("Enabling node service capability: %v", c.String())
+		nodeServiceCapabilities = append(nodeServiceCapabilities, NewNodeServiceCapability(c))
 	}
 
 	driver.nodeServiceCapabilities = nodeServiceCapabilities

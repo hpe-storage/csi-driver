@@ -58,7 +58,7 @@ const (
 
 var (
 	iscsiMutex           sync.Mutex
-	targetVendorPatterns = []string{"com.nimblestorage", "com.3pardata", "org.truenas.ctl", "org.freenas.ctl"}
+	targetVendorPatterns = []string{"com.nimblestorage", "com.3pardata", "org.truenas.ctl", "org.freenas.ctl", "com.hpe"}
 )
 
 //type of Scope (volume, group)
