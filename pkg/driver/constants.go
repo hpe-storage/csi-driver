@@ -1,4 +1,4 @@
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019,2024 Hewlett Packard Enterprise Development LP
 
 package driver
 
@@ -95,6 +95,10 @@ const (
 	hostEncryptionSecretNameKey      = "hostEncryptionSecretName"
 	hostEncryptionSecretNamespaceKey = "hostEncryptionSecretNamespace"
 	hostEncryptionPassphraseKey      = "hostEncryptionPassphrase"
+
+	//PVC attributes propogated to the CSI
+	pvcName = "csi.storage.k8s.io/pvc/name"
+	pvcNamespace = "csi.storage.k8s.io/pvc/namespace"
 
 	// POD attributes propogated to the CSI
 	csiEphemeralPodName      = "csi.storage.k8s.io/pod.name"
