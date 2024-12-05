@@ -53,11 +53,11 @@ func TestPluginSuite(t *testing.T) {
 	sanity.Test(t, config)
 }
 
-func createTarget(path string) (string, error) {
+func createTarget(_ string) (string, error) {
 	return "./csi-mnt-stage", nil
 }
 
-// nolint: deadcode
+//nolint:unused
 func realDriver(t *testing.T, endpoint string) *Driver {
 	driver, err := NewDriver("test-driver", "0.1", endpoint, flavor.Kubernetes, true, "", "", false, 0, false, 0)
 

@@ -160,6 +160,16 @@ func (driver *FakeDriver) MountNFSVolume(source string, targetPath string, mount
 	return nil
 }
 
+// IsExtFileSystemClean will check if the given ext file system on the device is clean
+func (driver *FakeDriver) IsExtFileSystemClean(volumeID string, device string) bool {
+	return false
+}
+
+// IsFileSystemCorrupted will check if the file system on the device is corrupted
+func (driver *FakeDriver) IsFileSystemCorrupted(volumeID string, device *model.Device, fsOpts *model.FilesystemOpts) bool {
+	return false
+}
+
 // IsBlockDevice will check if the given path is a block device
 func (driver *FakeDriver) IsBlockDevice(devicePath string) (bool, error) {
 	return false, nil
@@ -168,4 +178,14 @@ func (driver *FakeDriver) IsBlockDevice(devicePath string) (bool, error) {
 // GetBlockSizeBytes returns the size of the block device
 func (driver *FakeDriver) GetBlockSizeBytes(devicePath string) (int64, error) {
 	return -1, nil
+}
+
+// RepairFileSystem repairs the filesystem on the device
+func (driver *FakeDriver) RepairFileSystem(volumeID string, device *model.Device, fsOpts *model.FilesystemOpts) error {
+	return nil
+}
+
+// RepaitFsckFileSystem performs filesystem consistency check on the filesystem on the device
+func (driver *FakeDriver) RepairFsckFileSystem(volumeId string, device *model.Device) error {
+	return nil
 }
