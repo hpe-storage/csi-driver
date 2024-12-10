@@ -1152,27 +1152,6 @@ func (flavor *Flavor) getResourceQuantity(scParams map[string]string, paramKey s
 	return quantity, nil
 }
 
-func (flavor *Flavor) IsNFSVolumeExpandable(volumeId string) bool {
-	log.Tracef(">>>>>> IsNFSVolumeExpandable, volume:%s", volumeId)
-	defer log.Tracef("<<<<<<< IsNFSVolumeExpandable")
-
-	accessModes, err := flavor.GetAccessModesOfPV(volumeId)
-	if err != nil {
-		log.Errorf("Failed to get the access modes of the volume %s: %s", volumeId, err.Error())
-		return false
-	}
-
-	if len(accessModes) > 1 {
-		log.Errorf("Multiple access modes exist for the volume %s, hence this volume can't be expanded.", volumeId)
-		return false
-	}
-
-	if len(accessModes) == 1 && (accessModes[0] == core_v1.ReadWriteMany || accessModes[0] == core_v1.ReadWriteOnce) {
-		return true
-	}
-	return false
-}
-
 func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int64) error {
 	log.Tracef(">>>>> ExpandNFSBackendVolume: %s", nfsVolumeID)
 	defer log.Trace("<<<<< ExpandNFSBackendVolume")
@@ -1200,7 +1179,7 @@ func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int
 	}
 	patchBytes, err := json.Marshal(patchData)
 	if err != nil {
-		return fmt.Errorf("failed to marshal patch data: %v", err)
+		return fmt.Errorf("Failed to marshal expand volume patch data: %v", err)
 	}
 	// Send the patch request
 	response, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Patch(
@@ -1211,7 +1190,7 @@ func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int
 		meta_v1.PatchOptions{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to patch PVC: %v", err)
+		return fmt.Errorf("Failed to patch PVC %s: %v", rwoPVCName, err)
 	}
 	log.Trace("Response from the the patch request: ", response)
 	return nil
