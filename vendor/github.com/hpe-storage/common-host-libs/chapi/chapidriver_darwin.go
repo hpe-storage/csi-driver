@@ -146,3 +146,17 @@ func (driver *MacDriver) IsBlockDevice(devicePath string) (bool, error) {
 func (driver *MacDriver) GetBlockSizeBytes(devicePath string) (int64, error) {
 	return -1, fmt.Errorf("not implemented")
 }
+
+func (driver *MacDriver) IsExtFileSystemClean(volumeID string, device string) bool {
+	return false
+}
+
+func (driver *MacDriver) IsFileSystemCorrupted(volumeID string, device *model.Device, fsOpts *model.FilesystemOpts) bool {
+	return false
+}
+func (driver *MacDriver) RepairFileSystem(volumeID string, device *model.Device, fsOpts *model.FilesystemOpts) error {
+	return fmt.Errorf("not implemented")
+}
+func (driver *MacDriver) RepairFsckFileSystem(volumeId string, device *model.Device) error {
+	return fmt.Errorf("not implemented")
+}

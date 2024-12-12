@@ -25,13 +25,13 @@ type mLock struct {
 	count int
 }
 
-//MapMutex locks and blocks on specific keys
+// MapMutex locks and blocks on specific keys
 type MapMutex struct {
 	lockMap map[string]*mLock
 	bigLock *sync.Mutex
 }
 
-//NewMapMutex creates a new MapMutex
+// NewMapMutex creates a new MapMutex
 func NewMapMutex() *MapMutex {
 	return &MapMutex{
 		lockMap: make(map[string]*mLock),
@@ -39,7 +39,7 @@ func NewMapMutex() *MapMutex {
 	}
 }
 
-//Lock creates and locks or blocks on a lock
+// Lock creates and locks or blocks on a lock
 func (m *MapMutex) Lock(lockName string) {
 	log.Trace("Acquiring mutex lock for ", lockName)
 
