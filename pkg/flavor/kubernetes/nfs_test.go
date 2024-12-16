@@ -111,7 +111,7 @@ func TestGetNFSSpec(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, spec)
 	assert.Equal(t, defaultNFSImage, spec.image)
-		expectedDefaultCPU, _ := resource.ParseQuantity("1000m")
+	expectedDefaultCPU, _ := resource.ParseQuantity("1000m")
 	expectedDefaultMemory, _ := resource.ParseQuantity("2Gi")
 	assert.Equal(t, spec.resourceRequirements.Limits[v1.ResourceCPU], expectedDefaultCPU)
 	assert.Equal(t, spec.resourceRequirements.Limits[v1.ResourceMemory], expectedDefaultMemory)
