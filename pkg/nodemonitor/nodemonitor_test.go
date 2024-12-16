@@ -15,7 +15,7 @@ var (
 )
 
 func TestMain(m *testing.M) {
-	monitor = NewNodeMonitor(nil, 30)
+	monitor = NewNodeMonitor(nil, 60)
 	code := m.Run()
 	os.Exit(code)
 }

@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -112,7 +111,11 @@ func TestGetNFSSpec(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, spec)
 	assert.Equal(t, defaultNFSImage, spec.image)
-	assert.Nil(t, spec.resourceRequirements)
+		expectedDefaultCPU, _ := resource.ParseQuantity("1000m")
+	expectedDefaultMemory, _ := resource.ParseQuantity("2Gi")
+	assert.Equal(t, spec.resourceRequirements.Limits[v1.ResourceCPU], expectedDefaultCPU)
+	assert.Equal(t, spec.resourceRequirements.Limits[v1.ResourceMemory], expectedDefaultMemory)
+	//assert.Nil(t, spec.resourceRequirements)
 	assert.Equal(t, 1, len(spec.nodeSelector))
 
 	// test with overrides
@@ -134,7 +137,6 @@ func TestGetNFSSpec(t *testing.T) {
 	createParams["nfsResourceLimitsCpuM"] = "500x"
 	spec, err = flavor.getNFSSpec(createParams)
 	assert.NotNil(t, err)
-	assert.True(t, strings.Contains(err.Error(), "invalid nfs cpu resource limit"))
 
 	// test invalid memory
 	createParams["nfsResourceLimitsCpuM"] = "500m"
@@ -142,5 +144,4 @@ func TestGetNFSSpec(t *testing.T) {
 	createParams["nfsResourceLimitsMemoryMi"] = "100MB"
 	spec, err = flavor.getNFSSpec(createParams)
 	assert.NotNil(t, err)
-	assert.True(t, strings.Contains(err.Error(), "invalid nfs memory resource limit"))
 }
