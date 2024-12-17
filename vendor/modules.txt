@@ -153,7 +153,7 @@ github.com/json-iterator/go
 # github.com/kubernetes-csi/csi-lib-utils v0.11.0
 ## explicit; go 1.16
 github.com/kubernetes-csi/csi-lib-utils/protosanitizer
-# github.com/kubernetes-csi/csi-test v2.1.0+incompatible
+# github.com/kubernetes-csi/csi-test v2.2.0+incompatible
 ## explicit
 github.com/kubernetes-csi/csi-test/pkg/sanity
 github.com/kubernetes-csi/csi-test/utils

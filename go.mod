@@ -9,7 +9,7 @@ require (
 	github.com/hpe-storage/common-host-libs v0.0.0-20241202060843-ef2779598059
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20240118202512-5f62990a7c2d
 	github.com/kubernetes-csi/csi-lib-utils v0.11.0
-	github.com/kubernetes-csi/csi-test v2.1.0+incompatible
+	github.com/kubernetes-csi/csi-test v2.2.0+incompatible
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.1.0
 	github.com/spf13/cobra v1.6.0
 	github.com/stretchr/testify v1.8.1
