@@ -55,6 +55,7 @@ RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.ext4 \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.xfs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/mkfs.btrfs \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/dumpe2fs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/xfs_io \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/xfs_growfs \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/xfs_repair \
