@@ -1,4 +1,4 @@
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019,2025 Hewlett Packard Enterprise Development LP
 // Copyright 2017 The Kubernetes Authors.
 
 package driver
@@ -550,12 +550,13 @@ func (driver *Driver) createVolume(
 			}
 			log.Tracef("Found parent volume: %+v", existingParentVolume)
 
+			// CON-3010 - Commented the check for clone size to allow clone resize further
 			// The requested size is must be at least equal to the snapshot's parent volume size
-			if size != existingParentVolume.Size {
+			/*if size != existingParentVolume.Size {
 				return nil,
 					status.Error(codes.InvalidArgument,
 						fmt.Sprintf("Requested clone size %d is not equal to the parent volume size %d", size, existingParentVolume.Size))
-			}
+			}*/
 
 			// Create a clone from another volume
 			log.Infof("About to create a new clone '%s' of size %v from volume %s with options %+v", name, size, existingParentVolume.ID, createOptions)
