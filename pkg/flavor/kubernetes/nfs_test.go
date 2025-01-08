@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -144,4 +145,48 @@ func TestGetNFSSpec(t *testing.T) {
 	createParams["nfsResourceLimitsMemoryMi"] = "100MB"
 	spec, err = flavor.getNFSSpec(createParams)
 	assert.NotNil(t, err)
+	createParams["nfsResourceLimitsMemoryMi"] = "2Gi"
+	//setting nfsTolerationSeconds with non integer to check error condition
+	createParams["nfsTolerationSeconds"] = "100MB"
+	spec, err = flavor.getNFSSpec(createParams)
+	assert.NotNil(t, err)
+	assert.True(t, strings.Contains(err.Error(), "strconv.Atoi: parsing \"100MB\""))
+	createParams["nfsTolerationSeconds"] = "300"
+	spec, err = flavor.getNFSSpec(createParams)
+	assert.Nil(t, err)
+	assert.NotNil(t, spec)
+	// check the tolerationSeconds value
+	var num int64 = 300
+	assert.Equal(t, num, *spec.tolerationSeconds)
+}
+
+func TestMakeNFSDeployment(t *testing.T) {
+	var nfsSpec NFSSpec
+	nfsSpec.image = "hpestorage/my-nfs-image:my-tag"
+	nfsSpec.volumeClaim = ""
+	resourceLimits := make(v1.ResourceList)
+	cpuQuantity, _ := resource.ParseQuantity(defaultRLimitCPU)
+	resourceLimits[v1.ResourceCPU] = cpuQuantity
+	memoryLimitsQuantity, _ := resource.ParseQuantity(defaultRLimitMemory)
+	resourceLimits[v1.ResourceMemory] = memoryLimitsQuantity
+	resourceRequests := make(v1.ResourceList)
+	cpuRequestsQuantity, _ := resource.ParseQuantity(defaultRRequestCPU)
+	memoryRequestsQuantity, _ := resource.ParseQuantity(defaultRRequestMemory)
+	resourceRequests[v1.ResourceMemory] = memoryRequestsQuantity
+	resourceRequests[v1.ResourceCPU] = cpuRequestsQuantity
+	nfsSpec.resourceRequirements = &v1.ResourceRequirements{
+		Limits:   resourceLimits,
+		Requests: resourceRequests,
+	}
+	nfsSpec.labelKey = defaultPodLabelKey
+	nfsSpec.labelValue = defaultPodLabelValue
+	nfsSpec.sourceNamespace = defaultNFSNamespace
+	nfsSpec.sourceVolumeClaim = nfsSpec.volumeClaim
+	dep := flavor.makeNFSDeployment("hpe-nfs-b50dea26-e6d5-4ab4-868e-033256aa1acd-649f89c89b-48t4k", &nfsSpec, defaultNFSNamespace)
+	var num int64 = 30
+	assert.Equal(t, *dep.Spec.Template.Spec.Tolerations[0].TolerationSeconds, num)
+	num = 300
+	nfsSpec.tolerationSeconds = &num
+	dep = flavor.makeNFSDeployment("hpe-nfs-b50dea26-e6d5-4ab4-868e-033256aa1acd-649f89c89b-48t4k", &nfsSpec, defaultNFSNamespace)
+	assert.Equal(t, *dep.Spec.Template.Spec.Tolerations[0].TolerationSeconds, num)
 }

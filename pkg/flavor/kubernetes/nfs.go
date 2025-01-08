@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +66,8 @@ const (
 	nfsProvisionedFromKey        = "provisioned-from"
 	nfsForeignStorageClassKey    = "nfsForeignStorageClass"
 	nfsResourcesKey              = "nfsResources"
+	nfsTolerationSecScKey        = "nfsTolerationSeconds"
+	defaultNfsTolerationSeconds  = 30
 )
 
 // NFSSpec for creating NFS resources
@@ -77,6 +80,7 @@ type NFSSpec struct {
 	labelValue           string
 	sourceNamespace      string
 	sourceVolumeClaim    string
+	tolerationSeconds    *int64
 }
 
 // CreateNFSVolume creates nfs volume abstracting underlying nfs pvc, deployment and service
@@ -552,6 +556,15 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	if pvc, ok := scParams[nfsSourcePVCNameKey]; ok {
 		nfsSpec.sourceVolumeClaim = pvc
 	}
+	if tolerationSeconds, ok := scParams[nfsTolerationSecScKey]; ok {
+		if num, err := strconv.Atoi(tolerationSeconds); err == nil {
+			num64 := int64(num)
+			nfsSpec.tolerationSeconds = &num64
+		} else {
+			err = fmt.Errorf("getNFSSpec: Unable to convert nfsTolerationSeconds, error: %s", err)
+			return nil, err
+		}
+	}
 
 	return &nfsSpec, nil
 }
@@ -856,7 +869,10 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		nfsProvisionedFromKey: nfsSpec.sourceNamespace,
 	}
 
-	var seconds int64 = 30
+	var seconds int64 = defaultNfsTolerationSeconds
+	if nfsSpec.tolerationSeconds != nil {
+		seconds = *nfsSpec.tolerationSeconds
+	}
 
 	tolerationsNotReady := core_v1.Toleration{
 		Key:               "node.kubernetes.io/not-ready",
