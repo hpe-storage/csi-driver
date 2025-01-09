@@ -97,8 +97,8 @@ const (
 	hostEncryptionPassphraseKey      = "hostEncryptionPassphrase"
 
 	//PVC attributes propogated to the CSI
-	pvcName = "csi.storage.k8s.io/pvc/name"
-	pvcNamespace = "csi.storage.k8s.io/pvc/namespace"
+	pvcNameAttribute = "csi.storage.k8s.io/pvc/name"
+	pvcNamespaceAttribute = "csi.storage.k8s.io/pvc/namespace"
 
 	// POD attributes propogated to the CSI
 	csiEphemeralPodName      = "csi.storage.k8s.io/pod.name"

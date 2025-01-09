@@ -1,4 +1,4 @@
-// Copyright 2019,2024 Hewlett Packard Enterprise Development LP
+// Copyright 2019,2025 Hewlett Packard Enterprise Development LP
 // Copyright 2017 The Kubernetes Authors.
 
 package driver
@@ -509,11 +509,10 @@ func (driver *Driver) stageVolume(
 	
 	// CON-3010
 	// Get the PVC details to identify the datasource of PVC
-	log.Infof("PVC Name %s", volumeContext[pvcName])
-	log.Infof("PVC Namespace %s", volumeContext[pvcNamespace])
+	log.Infof("PVC Name %s and PVC Namespace %s", volumeContext[pvcNameAttribute], volumeContext[pvcNamespaceAttribute])
 	
-	if volumeContext[pvcName] != "" && volumeContext[pvcNamespace] != "" {
-		pvc, err := driver.flavor.GetPVCByName( volumeContext[pvcName], volumeContext[pvcNamespace] )
+	if volumeContext[pvcNameAttribute] != "" && volumeContext[pvcNamespaceAttribute] != "" {
+		pvc, err := driver.flavor.GetPVCByName( volumeContext[pvcNameAttribute], volumeContext[pvcNamespaceAttribute] )
 		if err != nil{
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting pvc data source for volume %v, %v", volumeID, err))
 		}
@@ -539,15 +538,14 @@ func (driver *Driver) stageVolume(
 		// check whether we need resize for file system
 		needResize, err := r.NeedResize(device.AltFullPathName, stagingMountPoint)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Could not determine if volume %q need to be resized: %v",  volumeID, err)
+			return nil, status.Errorf(codes.Internal, "Could not determine if volume %q need to be resized, error: %v",  volumeID, err)
 		}
-		log.Infof("Need resize for filesystem is  %v", needResize)
+		log.Infof("Need resize for filesystem: %v", needResize)
 
-		// Need resize
 		if needResize {
 			log.Infof("Resize of target path %s is required ",  device.AltFullPathName)
 			if _, err := r.Resize(device.AltFullPathName, stagingMountPoint); err != nil {
-				return nil, status.Errorf(codes.Internal, "Could not resize volume %q:  %v", volumeID, err)
+				return nil, status.Errorf(codes.Internal, "Could not resize volume %q, error :  %v", volumeID, err)
 			}
 			log.Infof("Resize of target path %s is successful",  device.AltFullPathName)
 		}
