@@ -550,13 +550,13 @@ func (driver *Driver) createVolume(
 			}
 			log.Tracef("Found parent volume: %+v", existingParentVolume)
 
-			// CON-3010 - Commented the check for clone size to allow clone resize further
-			// The requested size is must be at least equal to the snapshot's parent volume size
-			/*if size != existingParentVolume.Size {
+			// CON-3010 If requested size for clone volume is less than parent volume size 
+			// then report error
+			if size < existingParentVolume.Size {
 				return nil,
-					status.Error(codes.InvalidArgument,
-						fmt.Sprintf("Requested clone size %d is not equal to the parent volume size %d", size, existingParentVolume.Size))
-			}*/
+					status.Error(codes.Internal,
+						fmt.Sprintf("Requested clone size %d is less than the parent volume size %d", size, existingParentVolume.Size))
+			}
 
 			// Create a clone from another volume
 			log.Infof("About to create a new clone '%s' of size %v from volume %s with options %+v", name, size, existingParentVolume.ID, createOptions)
