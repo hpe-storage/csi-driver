@@ -517,7 +517,7 @@ func (driver *Driver) stageVolume(
 
 			// If the DataSource is a VolumeSnapshot
 			if pvc.Spec.DataSource.Kind == "VolumeSnapshot" {
-				log.Infof("  Source Kind: VolumeSnapshot\n VolumeSnapshot Name: %s\n", pvc.Spec.DataSource.Name)
+				log.Infof("  Source Kind: VolumeSnapshot \n VolumeSnapshot Name: %s ", pvc.Spec.DataSource.Name)
 				//set to true as volume is created from volume snapshot
 				IsVolumeClone = true
 			}

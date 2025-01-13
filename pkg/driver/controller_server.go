@@ -554,7 +554,7 @@ func (driver *Driver) createVolume(
 			// then report error
 			if size < existingParentVolume.Size {
 				return nil,
-					status.Error(codes.Internal,
+					status.Error(codes.InvalidArgument,
 						fmt.Sprintf("Requested clone size %d is less than the parent volume size %d", size, existingParentVolume.Size))
 			}
 
