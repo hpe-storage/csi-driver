@@ -509,8 +509,6 @@ func (driver *Driver) stageVolume(
 	
 	// CON-3010
 	// Get the PVC details to identify the datasource of PVC
-	log.Infof("PVC Name %s and PVC Namespace %s", volumeContext[pvcNameAttribute], volumeContext[pvcNamespaceAttribute])
-	
 	if volumeContext[pvcNameAttribute] != "" && volumeContext[pvcNamespaceAttribute] != "" {
 		pvc, err := driver.flavor.GetPVCByName( volumeContext[pvcNameAttribute], volumeContext[pvcNamespaceAttribute] )
 		if err != nil{
@@ -520,7 +518,7 @@ func (driver *Driver) stageVolume(
 
 			// If the DataSource is a VolumeSnapshot
 			if pvc.Spec.DataSource.Kind == "VolumeSnapshot" {
-				log.Infof("  Source Kind: VolumeSnapshot \n VolumeSnapshot Name: %s ", pvc.Spec.DataSource.Name)
+				log.Infof(" Datasource of volume %v is VolumeSnapshot and VolumeSnapshot Name: %s ", volumeID, pvc.Spec.DataSource.Name)
 				//set to true as volume is created from volume snapshot
 				IsVolumeClone = true
 			}
