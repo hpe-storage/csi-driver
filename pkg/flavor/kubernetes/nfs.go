@@ -452,10 +452,10 @@ func (flavor *Flavor) getNFSHostDomain() (string, error) {
 	// obtain an array of  {hostname, domainname}
 	hostNameAndDomain, err := flavor.chapiDriver.GetHostNameAndDomain()
 	if err != nil {
-		return "", fmt.Errorf("Failed to obtain host name and domain to provision NFS volume, %s", err.Error())
+		return "", fmt.Errorf("failed to obtain host name and domain to provision NFS volume, %s", err.Error())
 	}
 	if len(hostNameAndDomain) != 2 || hostNameAndDomain[1] == "unknown" {
-		return "", fmt.Errorf("Unable to obtain valid host domain name to provision NFS volume")
+		return "", fmt.Errorf("unable to obtain valid host domain name to provision NFS volume")
 	}
 	log.Tracef("Host domain name obtained as %s", hostNameAndDomain[1])
 	return strings.TrimSuffix(hostNameAndDomain[1], "."), nil
@@ -1162,29 +1162,29 @@ func (flavor *Flavor) getResourceQuantity(scParams map[string]string, paramKey s
 	quantity, err := resource.ParseQuantity(quantityVal)
 
 	if err != nil {
-		return quantity, fmt.Errorf("Invalid '%s' value of '%s' provided in Deployment, %s", paramKey, quantityVal, err.Error())
+		return quantity, fmt.Errorf("invalid '%s' value of '%s' provided in deployment, %s", paramKey, quantityVal, err.Error())
 	}
 
 	return quantity, nil
 }
 
 func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int64) error {
-	log.Tracef(">>>>> ExpandNFSBackendVolume: %s", nfsVolumeID)
+	log.Tracef(">>>>> ExpandNFSBackendVolume: %s, newCapacity: %d", nfsVolumeID, newCapacity)
 	defer log.Trace("<<<<< ExpandNFSBackendVolume")
 
 	rwoPVCName, err := flavor.GetVolumePropertyOfPV("csi.storage.k8s.io/pvc/name", nfsVolumeID)
 	if err != nil {
 		log.Errorf("Failed to get the name of the claim name of the PV %s", nfsVolumeID)
-		return fmt.Errorf("Unable to find the claim name for the backend RWO volume %s", nfsVolumeID)
+		return fmt.Errorf("unable to find the claim name for the backend RWO volume %s", nfsVolumeID)
 	}
 	log.Infof("PVC name of the backend RWO volume %s is: %s", nfsVolumeID, rwoPVCName)
 
 	pvcNamespace, err := flavor.GetVolumePropertyOfPV("csi.storage.k8s.io/pvc/namespace", nfsVolumeID)
 	if err != nil {
 		log.Errorf("Failed to get the namespace of the volume claim %s", rwoPVCName)
-		return fmt.Errorf("Unable to find the namespace of the backend RWO volume claim %s", rwoPVCName)
+		return fmt.Errorf("unable to find the namespace of the backend RWO volume claim %s", rwoPVCName)
 	}
-	log.Infof("PVC namesapce of the backend RWO volume %s is: %s", nfsVolumeID, pvcNamespace)
+	log.Infof("PVC namespace of the backend RWO volume %s is: %s", nfsVolumeID, pvcNamespace)
 
 	patchData := []map[string]interface{}{
 		{
@@ -1195,7 +1195,7 @@ func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int
 	}
 	patchBytes, err := json.Marshal(patchData)
 	if err != nil {
-		return fmt.Errorf("Failed to marshal expand volume patch data: %v", err)
+		return fmt.Errorf("failed to marshal expand volume patch data: %v", err)
 	}
 	// Send the patch request
 	response, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(pvcNamespace).Patch(
@@ -1206,8 +1206,8 @@ func (flavor *Flavor) ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int
 		meta_v1.PatchOptions{},
 	)
 	if err != nil {
-		return fmt.Errorf("Failed to patch PVC %s: %v", rwoPVCName, err)
+		return fmt.Errorf("failed to patch PVC %s: %v", rwoPVCName, err)
 	}
-	log.Trace("Response from the the patch request: ", response)
+	log.Trace("Response from the patch request: ", response)
 	return nil
 }
