@@ -2,7 +2,7 @@
 package driver
 
 import (
-	//	"os"
+	"os"
 	"strconv"
 	"sync"
 	"testing"
@@ -13,12 +13,12 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/hpe-storage/common-host-libs/chapi"
-	//	log "github.com/hpe-storage/common-host-libs/logger"
+	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/storageprovider"
 	"github.com/hpe-storage/common-host-libs/storageprovider/fake"
 	"github.com/hpe-storage/csi-driver/pkg/flavor"
 	"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
-	// "github.com/kubernetes-csi/csi-test/pkg/sanity"
+	"github.com/kubernetes-csi/csi-test/pkg/sanity"
 )
 
 const (
@@ -28,40 +28,39 @@ const (
 	testCount  int    = 500
 )
 
-/*
-	func TestPluginSuite(t *testing.T) {
-		endpoint := "unix://" + testsocket
-		if err := os.Remove(testsocket); err != nil && !os.IsNotExist(err) {
-			t.Fatalf("failed to remove unix domain socket file %s, error: %s", testsocket, err)
-		}
-
-		log.InitLogging("csi-test.log", &log.LogParams{Level: "trace"}, false)
-
-		// driver := realDriver(t, endpoint)
-		// secretsFile := "csi-secrets.yaml"
-		driver := fakeDriver(endpoint)
-		secretsFile := "fake-csi-secrets.yaml"
-		driver.grpc = NewNonBlockingGRPCServer()
-		// start node, controller and identity servers on same endpoint for tests
-		go driver.grpc.Start(driver.endpoint, driver, driver, driver)
-		defer driver.Stop(true)
-
-		stagingPath := "./csi-mnt"
-		targetPath := "./csi-mnt-stage"
-		os.RemoveAll(stagingPath)
-		os.RemoveAll(targetPath)
-
-		config := &sanity.Config{
-			StagingPath:     stagingPath,
-			TargetPath:      targetPath,
-			Address:         endpoint,
-			SecretsFile:     secretsFile,
-			CreateTargetDir: createTarget,
-		}
-
-		sanity.Test(t, config)
+func TestPluginSuite(t *testing.T) {
+	endpoint := "unix://" + testsocket
+	if err := os.Remove(testsocket); err != nil && !os.IsNotExist(err) {
+		t.Fatalf("failed to remove unix domain socket file %s, error: %s", testsocket, err)
 	}
-*/
+
+	log.InitLogging("csi-test.log", &log.LogParams{Level: "trace"}, false)
+
+	//driver := realDriver(t, endpoint)
+	//secretsFile := "csi-secrets.yaml"
+	driver := fakeDriver(endpoint)
+	secretsFile := "fake-csi-secrets.yaml"
+	driver.grpc = NewNonBlockingGRPCServer()
+	// start node, controller and identity servers on same endpoint for tests
+	go driver.grpc.Start(driver.endpoint, driver, driver, driver)
+	defer driver.Stop(true)
+
+	stagingPath := "./csi-mnt"
+	targetPath := "./csi-mnt-stage"
+	os.RemoveAll(stagingPath)
+	os.RemoveAll(targetPath)
+
+	config := &sanity.Config{
+		StagingPath:     stagingPath,
+		TargetPath:      targetPath,
+		Address:         endpoint,
+		SecretsFile:     secretsFile,
+		CreateTargetDir: createTarget,
+	}
+
+	sanity.Test(t, config)
+}
+
 func createTarget(_ string) (string, error) {
 	return "./csi-mnt-stage", nil
 }
