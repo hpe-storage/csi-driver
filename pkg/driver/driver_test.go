@@ -11,13 +11,13 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/util/rand"
 
-	"github.com/container-storage-interface/spec/lib/go/csi"
-	"github.com/hpe-storage/common-host-libs/chapi"
+	//"github.com/container-storage-interface/spec/lib/go/csi"
+	//"github.com/hpe-storage/common-host-libs/chapi"
 	//	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/storageprovider"
-	"github.com/hpe-storage/common-host-libs/storageprovider/fake"
-	"github.com/hpe-storage/csi-driver/pkg/flavor"
-	"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
+	//"github.com/hpe-storage/common-host-libs/storageprovider/fake"
+	//"github.com/hpe-storage/csi-driver/pkg/flavor"
+	//"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
 	// "github.com/kubernetes-csi/csi-test/pkg/sanity"
 )
 
@@ -61,12 +61,11 @@ const (
 
 		sanity.Test(t, config)
 	}
-*/
+
 func createTarget(_ string) (string, error) {
 	return "./csi-mnt-stage", nil
 }
 
-//nolint:unused
 func realDriver(t *testing.T, endpoint string) *Driver {
 	driver, err := NewDriver("test-driver", "0.1", endpoint, flavor.Kubernetes, true, "", "", false, 0, false, 0)
 
@@ -124,6 +123,7 @@ func fakeDriver(endpoint string) *Driver {
 
 	return driver
 }
+*/
 
 func TestGenerateStorageProviderCacheKey(t *testing.T) {
 	driver := &Driver{
