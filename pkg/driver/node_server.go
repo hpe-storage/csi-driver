@@ -2062,9 +2062,6 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	}
 
 	topo := &csi.Topology{Segments: accessableTopologySegments}
-	// if len(accessableTopologySegments) == 0 {
-	// 	topo = nil
-	// }
 
 	log.Infof("node %s topo: %+v", nodeInfo.Name, topo)
 	// Get max volume per node from environment variable
