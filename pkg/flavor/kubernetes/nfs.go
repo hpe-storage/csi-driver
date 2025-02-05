@@ -1,4 +1,4 @@
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019, 2025 Hewlett Packard Enterprise Development LP
 
 package kubernetes
 
@@ -80,7 +80,7 @@ type NFSSpec struct {
 }
 
 // CreateNFSVolume creates nfs volume abstracting underlying nfs pvc, deployment and service
-func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
+func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, err error) {
 	log.Tracef(">>>>> CreateNFSVolume with %s", pvName)
 	defer log.Tracef("<<<<< CreateNFSVolume")
 
@@ -98,33 +98,33 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	if err != nil {
 		_, err = flavor.createNFSNamespace(nfsResourceNamespace)
 		if err != nil {
-			return nil, false, err
+			return nil, err
 		}
 	}
 
 	// obtain NFS resource parameters
 	nfsSpec, err := flavor.getNFSSpec(parameters)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	// get pvc from request
 	claim, err := flavor.getClaimFromClaimName(pvName)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	// clone pvc and modify to RWO mode
 	claimClone, err := flavor.cloneClaim(claim, nfsResourceNamespace, parameters)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	// create pvc
 	newClaim, err := flavor.createNFSPVC(claimClone, nfsResourceNamespace)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
-		return nil, true, err
+		return nil, err
 	}
 
 	// update newly created nfs claim in nfs spec
@@ -134,18 +134,18 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	err = flavor.createServiceAccount(nfsResourceNamespace)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
-		return nil, true, err
+		return nil, err
 	}
 
 	nfsHostDomain, err := flavor.getNFSHostDomain()
 	if err != nil {
-		return nil, true, err
+		return nil, err
 	}
 	// create nfs configmap
 	err = flavor.createNFSConfigMap(nfsResourceNamespace, nfsHostDomain)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
-		return nil, true, err
+		return nil, err
 	}
 
 	// create deployment with name hpe-nfs-<originalclaim-uid>
@@ -153,7 +153,7 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	err = flavor.createNFSDeployment(deploymentName, nfsSpec, nfsResourceNamespace)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
-		return nil, true, err
+		return nil, err
 	}
 
 	// create service with name hpe-nfs-svc-<originalclaim-uid>
@@ -161,14 +161,14 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	err = flavor.createNFSService(serviceName, nfsResourceNamespace)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
-		return nil, true, err
+		return nil, err
 	}
 
 	// get underlying NFS volume properties and copy onto original volume
 	volumeContext := make(map[string]string)
 	pv, err := flavor.getPvFromName(fmt.Sprintf("%s%s", pvcPrefix, newClaim.ObjectMeta.UID))
 	if err != nil {
-		return nil, true, err
+		return nil, err
 	}
 
 	if pv.Spec.PersistentVolumeSource.CSI != nil {
@@ -201,7 +201,7 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 		CapacityBytes: reqVolSize,
 		VolumeContext: volumeContext,
 		ContentSource: volumeContentSource,
-	}, false, nil
+	}, nil
 }
 
 func (flavor *Flavor) createServiceAccount(nfsNamespace string) error {
@@ -269,16 +269,6 @@ EXPORT
 	}
 
 	log.Debugf("configmap %s successfully created in namespace %s", nfsConfigMap, nfsNamespace)
-	return nil
-}
-
-func (flavor *Flavor) RollbackNFSResources(nfsResourceName string, nfsNamespace string) error {
-	log.Tracef(">>>>> RollbackNFSResources with name %s namespace %s", nfsResourceName, nfsNamespace)
-	defer log.Tracef("<<<<< RollbackNFSResources")
-	err := flavor.deleteNFSResources(nfsResourceName, nfsNamespace)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019, 2025 Hewlett Packard Enterprise Development LP
 
 package vanilla
 
@@ -88,13 +88,8 @@ func (flavor *Flavor) IsPodExists(uid string) (bool, error) {
 }
 
 //nolint:revive
-func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
-	return nil, false, fmt.Errorf("NFS provisioned volume is not supported for non-k8s environments")
-}
-
-//nolint:revive
-func (flavor *Flavor) RollbackNFSResources(nfsResourceName, nfsNamespace string) error {
-	return nil
+func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, err error) {
+	return nil, fmt.Errorf("NFS provisioned volume is not supported for non-k8s environments")
 }
 
 //nolint:revive
