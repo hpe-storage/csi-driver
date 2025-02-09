@@ -907,6 +907,44 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		LabelSelector:     &podLabelSelector,
 	}
 
+	startupProbe := &core_v1.Probe{
+		ProbeHandler: core_v1.ProbeHandler{
+			Exec: &core_v1.ExecAction{
+				Command: []string{"/bin/sh", "-c", "/nfsHealthCheck.sh", "1", name, nfsNamespace},
+			},
+		},
+		InitialDelaySeconds: 10,
+		PeriodSeconds:       5,
+		TimeoutSeconds:      2,
+	}
+
+	readinessProbe := &core_v1.Probe{
+		ProbeHandler: core_v1.ProbeHandler{
+			Exec: &core_v1.ExecAction{
+				Command: []string{"/bin/sh", "-c", "/nfsHealthCheck.sh", "2", name, nfsNamespace},
+			},
+		},
+		InitialDelaySeconds: 10,
+		PeriodSeconds:       5,
+		TimeoutSeconds:      2,
+	}
+
+	livenessProbe := &core_v1.Probe{
+		ProbeHandler: core_v1.ProbeHandler{
+			Exec: &core_v1.ExecAction{
+				Command: []string{"/bin/sh", "-c", "/nfsHealthCheck.sh", "3", name, nfsNamespace},
+			},
+		},
+		InitialDelaySeconds: 10,
+		PeriodSeconds:       5,
+		TimeoutSeconds:      2,
+	}
+
+	containers := []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)}
+	containers[0].StartupProbe = startupProbe
+	containers[0].ReadinessProbe = readinessProbe
+	containers[0].LivenessProbe = livenessProbe
+
 	podSpec := core_v1.PodTemplateSpec{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:        name,
@@ -915,7 +953,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		},
 		Spec: core_v1.PodSpec{
 			ServiceAccountName:        nfsServiceAccount,
-			Containers:                []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)},
+			Containers:                containers,
 			RestartPolicy:             core_v1.RestartPolicyAlways,
 			Volumes:                   volumes,
 			HostIPC:                   false,
