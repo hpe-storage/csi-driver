@@ -910,7 +910,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	startupProbe := &core_v1.Probe{
 		ProbeHandler: core_v1.ProbeHandler{
 			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "-c", "/nfsHealthCheck.sh", "1", name, nfsNamespace},
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "1", name, nfsNamespace},
 			},
 		},
 		InitialDelaySeconds: 10,
@@ -921,7 +921,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	readinessProbe := &core_v1.Probe{
 		ProbeHandler: core_v1.ProbeHandler{
 			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "-c", "/nfsHealthCheck.sh", "2", name, nfsNamespace},
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "2", name, nfsNamespace},
 			},
 		},
 		InitialDelaySeconds: 10,
@@ -932,12 +932,12 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	livenessProbe := &core_v1.Probe{
 		ProbeHandler: core_v1.ProbeHandler{
 			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "-c", "/nfsHealthCheck.sh", "3", name, nfsNamespace},
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "3", name, nfsNamespace},
 			},
 		},
 		InitialDelaySeconds: 10,
 		PeriodSeconds:       5,
-		TimeoutSeconds:      2,
+		TimeoutSeconds:      4,
 	}
 
 	containers := []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)}
