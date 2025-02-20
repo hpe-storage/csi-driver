@@ -416,7 +416,7 @@ func (driver *Driver) stageVolume(
 	defer log.Trace("<<<<< stageVolume")
 
 	var IsVolumeClone bool
-	
+
 	// serialize stage requests
 	stageLock.Lock()
 	defer stageLock.Unlock()
@@ -506,12 +506,12 @@ func (driver *Driver) stageVolume(
 
 	// Store mount info in the staging device
 	stagingDevice.MountInfo = mountInfo
-	
+
 	// CON-3010
 	// Get the PVC details to identify the datasource of PVC
 	if volumeContext[pvcNameAttribute] != "" && volumeContext[pvcNamespaceAttribute] != "" {
-		pvc, err := driver.flavor.GetPVCByName( volumeContext[pvcNameAttribute], volumeContext[pvcNamespaceAttribute] )
-		if err != nil{
+		pvc, err := driver.flavor.GetPVCByName(volumeContext[pvcNameAttribute], volumeContext[pvcNamespaceAttribute])
+		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting pvc data source for volume %v, %v", volumeID, err))
 		}
 		if pvc.Spec.DataSource != nil {
@@ -524,31 +524,31 @@ func (driver *Driver) stageVolume(
 			}
 		}
 	}
-		
+
 	// Check whether volume is created from snapshot then only we need resize
 	if IsVolumeClone {
 		// Initialize resizeFs
 		r := mountutil.NewResizeFs(exec.New())
 
 		log.Infof("Verify whether resize required for device path %v ", device.AltFullPathName)
-		
+
 		// check whether we need resize for file system
 		needResize, err := r.NeedResize(device.AltFullPathName, stagingMountPoint)
 		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Could not determine if volume %q need to be resized, error: %v",  volumeID, err)
+			return nil, status.Errorf(codes.Internal, "Could not determine if volume %q need to be resized, error: %v", volumeID, err)
 		}
 		log.Infof("Need resize for filesystem: %v", needResize)
 
 		if needResize {
-			log.Infof("Resize of target path %s is required ",  device.AltFullPathName)
+			log.Infof("Resize of target path %s is required ", device.AltFullPathName)
 			if _, err := r.Resize(device.AltFullPathName, stagingMountPoint); err != nil {
 				return nil, status.Errorf(codes.Internal, "Could not resize volume %q, error :  %v", volumeID, err)
 			}
-			log.Infof("Resize of target path %s is successful",  device.AltFullPathName)
+			log.Infof("Resize of target path %s is successful", device.AltFullPathName)
 		}
 	}
 	// CON-3010
-	
+
 	return stagingDevice, nil
 }
 
@@ -862,7 +862,6 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Unable to create installation directory %v, %v", targetPath, err))
 		}
 	}
-
 
 	log.Infof("NodePublishVolume requested volume %s with access type %s, targetPath %s, capability %v, publishContext %v and volumeContext %v",
 		request.VolumeId, volAccessType, request.TargetPath, request.VolumeCapability, request.PublishContext, request.VolumeContext)
@@ -2063,9 +2062,6 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 	}
 
 	topo := &csi.Topology{Segments: accessableTopologySegments}
-	if len(accessableTopologySegments) == 0 {
-		topo = nil
-	}
 
 	log.Infof("node %s topo: %+v", nodeInfo.Name, topo)
 	// Get max volume per node from environment variable
