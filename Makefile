@@ -1,7 +1,7 @@
 NAME = csi-driver
 COVER_PROFILE := $(NAME).cov
 
-CI_MINIMUM_TEST_COVERAGE := 8
+CI_MINIMUM_TEST_COVERAGE := 29
 TEST_MODULES := ./...
 
 GO      := go
