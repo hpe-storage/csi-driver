@@ -17,7 +17,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	apps_v1 "k8s.io/api/apps/v1"
+	auth_v1 "k8s.io/api/authorization/v1"
 	core_v1 "k8s.io/api/core/v1"
+	rbac_v1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -152,6 +154,17 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 		return nil, true, err
 	}
 
+	//check whether the service account can update and list the deployments
+	allowed := flavor.canRollOutDeployment(nfsServiceAccount, nfsResourceNamespace)
+	if !allowed {
+		log.Tracef("create a role and role binding for the service account %s", nfsServiceAccount)
+		err = flavor.createRoleAndRoleBinding(nfsServiceAccount, nfsResourceNamespace)
+		if err != nil {
+			log.Errorf("Error occured while creating the role and rolebinding for the ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+			return nil, true, fmt.Errorf("Error occured while creating the role and rolebinding for the ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+		}
+	}
+
 	// create deployment with name hpe-nfs-<originalclaim-uid>
 	deploymentName := fmt.Sprintf("%s%s", nfsPrefix, claim.ObjectMeta.UID)
 	err = flavor.createNFSDeployment(deploymentName, nfsSpec, nfsResourceNamespace)
@@ -218,6 +231,83 @@ func (flavor *Flavor) createServiceAccount(nfsNamespace string) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (flavor *Flavor) canRollOutDeployment(nfsServiceAccount, nfsNamespace string) bool {
+	log.Tracef(">>>>> Service Account %s canRollOutDeployment with namespace %s", nfsServiceAccount, nfsNamespace)
+	defer log.Tracef("<<<<< canRollOutDeployment")
+	sar := &auth_v1.SubjectAccessReview{
+		Spec: auth_v1.SubjectAccessReviewSpec{
+			User: fmt.Sprintf("system:serviceaccount:%s:%s", nfsNamespace, nfsServiceAccount),
+			ResourceAttributes: &auth_v1.ResourceAttributes{
+				Namespace: nfsNamespace,
+				Verb:      "update",
+				Group:     "apps",
+				Resource:  "deployments",
+			},
+		},
+	}
+
+	// Perform SubjectAccessReview
+	response, err := flavor.kubeClient.AuthorizationV1().SubjectAccessReviews().Create(context.TODO(), sar, meta_v1.CreateOptions{})
+	if err != nil {
+		return false
+	}
+	return response.Status.Allowed
+}
+
+func (flavor *Flavor) createRoleAndRoleBinding(nfsServiceAccount, nfsNamespace string) error {
+	log.Tracef(">>>>> createRoleAndRoleBinding for ServiceAccount %s under namespace %s", nfsServiceAccount, nfsNamespace)
+	defer log.Tracef("<<<<< createRoleAndRoleBinding")
+
+	roleName := nfsServiceAccount + "-deployment-rollout"
+	role := &rbac_v1.Role{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name:      roleName,
+			Namespace: nfsNamespace,
+		},
+		Rules: []rbac_v1.PolicyRule{
+			{
+				APIGroups: []string{"apps"},
+				Resources: []string{"deployments"},
+				Verbs:     []string{"update", "patch"},
+			},
+		},
+	}
+
+	_, err := flavor.kubeClient.RbacV1().Roles(nfsNamespace).Create(context.TODO(), role, meta_v1.CreateOptions{})
+	if err != nil {
+		log.Errorf("Error occured while creating the role for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+		return err
+	}
+
+	roleBindingName := nfsServiceAccount + "deployment-rollout-binding"
+	log.Infof("Role %s for the the ServiceAccount %s created successfully", roleName, nfsServiceAccount)
+	roleBinding := &rbac_v1.RoleBinding{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name:      roleBindingName,
+			Namespace: nfsNamespace,
+		},
+		Subjects: []rbac_v1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      nfsServiceAccount,
+				Namespace: nfsNamespace,
+			},
+		},
+		RoleRef: rbac_v1.RoleRef{
+			Kind:     "Role",
+			Name:     roleName,
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+	}
+	_, err = flavor.kubeClient.RbacV1().RoleBindings(nfsNamespace).Create(context.TODO(), roleBinding, meta_v1.CreateOptions{})
+	if err != nil {
+		log.Errorf("Error occured while creating the role binding for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+		return err
+	}
+	fmt.Println(" RoleBinding '%s for the ServiceAccount %s created successfully.", roleBindingName, nfsServiceAccount)
 	return nil
 }
 
