@@ -17,7 +17,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	apps_v1 "k8s.io/api/apps/v1"
-	auth_v1 "k8s.io/api/authorization/v1"
 	core_v1 "k8s.io/api/core/v1"
 	rbac_v1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -251,14 +250,17 @@ func (flavor *Flavor) createRoleAndRoleBinding(nfsServiceAccount, nfsNamespace s
 
 	_, err := flavor.kubeClient.RbacV1().Roles(nfsNamespace).Create(context.Background(), role, meta_v1.CreateOptions{})
 	if err != nil {
-		if !errors.IsAlreadyExists(err) {
+		if errors.IsAlreadyExists(err) {
+			log.Infof("Role %s already exists.", roleName)
+		} else {
 			log.Errorf("Error occured while creating the role for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
 			return err
 		}
+	} else {
+		log.Infof("Role %s for the the ServiceAccount %s created successfully", roleName, nfsServiceAccount)
 	}
 
 	roleBindingName := nfsServiceAccount + "deployment-rollout-binding"
-	log.Infof("Role %s for the the ServiceAccount %s created successfully", roleName, nfsServiceAccount)
 	roleBinding := &rbac_v1.RoleBinding{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:      roleBindingName,
@@ -279,7 +281,10 @@ func (flavor *Flavor) createRoleAndRoleBinding(nfsServiceAccount, nfsNamespace s
 	}
 	_, err = flavor.kubeClient.RbacV1().RoleBindings(nfsNamespace).Create(context.Background(), roleBinding, meta_v1.CreateOptions{})
 	if err != nil {
-		if !errors.IsAlreadyExists(err) {
+		if errors.IsAlreadyExists(err) {
+			log.Infof("RoleBinding %s already exists.", roleBinding)
+			return nil
+		} else {
 			log.Errorf("Error occured while creating the role binding for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
 			return err
 		}
