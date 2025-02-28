@@ -154,15 +154,11 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 		return nil, true, err
 	}
 
-	//check whether the service account can update and list the deployments
-	allowed := flavor.canRollOutDeployment(nfsServiceAccount, nfsResourceNamespace)
-	if !allowed {
-		log.Tracef("create a role and role binding for the service account %s", nfsServiceAccount)
-		err = flavor.createRoleAndRoleBinding(nfsServiceAccount, nfsResourceNamespace)
-		if err != nil {
-			log.Errorf("Error occured while creating the role and rolebinding for the ServiceAccount %s:%s", nfsServiceAccount, err.Error())
-			return nil, true, fmt.Errorf("Error occured while creating the role and rolebinding for the ServiceAccount %s:%s", nfsServiceAccount, err.Error())
-		}
+	log.Tracef("Create a role and role binding for the service account %s", nfsServiceAccount)
+	err = flavor.createRoleAndRoleBinding(nfsServiceAccount, nfsResourceNamespace)
+	if err != nil {
+		log.Errorf("Error occured while creating the role and rolebinding for the ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+		return nil, true, fmt.Errorf("Error occured while creating the role and rolebinding for the ServiceAccount %s:%s", nfsServiceAccount, err.Error())
 	}
 
 	// create deployment with name hpe-nfs-<originalclaim-uid>
@@ -234,29 +230,6 @@ func (flavor *Flavor) createServiceAccount(nfsNamespace string) error {
 	return nil
 }
 
-func (flavor *Flavor) canRollOutDeployment(nfsServiceAccount, nfsNamespace string) bool {
-	log.Tracef(">>>>> Service Account %s canRollOutDeployment with namespace %s", nfsServiceAccount, nfsNamespace)
-	defer log.Tracef("<<<<< canRollOutDeployment")
-	sar := &auth_v1.SubjectAccessReview{
-		Spec: auth_v1.SubjectAccessReviewSpec{
-			User: fmt.Sprintf("system:serviceaccount:%s:%s", nfsNamespace, nfsServiceAccount),
-			ResourceAttributes: &auth_v1.ResourceAttributes{
-				Namespace: nfsNamespace,
-				Verb:      "update",
-				Group:     "apps",
-				Resource:  "deployments",
-			},
-		},
-	}
-
-	// Perform SubjectAccessReview
-	response, err := flavor.kubeClient.AuthorizationV1().SubjectAccessReviews().Create(context.TODO(), sar, meta_v1.CreateOptions{})
-	if err != nil {
-		return false
-	}
-	return response.Status.Allowed
-}
-
 func (flavor *Flavor) createRoleAndRoleBinding(nfsServiceAccount, nfsNamespace string) error {
 	log.Tracef(">>>>> createRoleAndRoleBinding for ServiceAccount %s under namespace %s", nfsServiceAccount, nfsNamespace)
 	defer log.Tracef("<<<<< createRoleAndRoleBinding")
@@ -271,15 +244,17 @@ func (flavor *Flavor) createRoleAndRoleBinding(nfsServiceAccount, nfsNamespace s
 			{
 				APIGroups: []string{"apps"},
 				Resources: []string{"deployments"},
-				Verbs:     []string{"update", "patch"},
+				Verbs:     []string{"update", "patch", "list", "get"},
 			},
 		},
 	}
 
-	_, err := flavor.kubeClient.RbacV1().Roles(nfsNamespace).Create(context.TODO(), role, meta_v1.CreateOptions{})
+	_, err := flavor.kubeClient.RbacV1().Roles(nfsNamespace).Create(context.Background(), role, meta_v1.CreateOptions{})
 	if err != nil {
-		log.Errorf("Error occured while creating the role for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
-		return err
+		if !errors.IsAlreadyExists(err) {
+			log.Errorf("Error occured while creating the role for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+			return err
+		}
 	}
 
 	roleBindingName := nfsServiceAccount + "deployment-rollout-binding"
@@ -302,12 +277,14 @@ func (flavor *Flavor) createRoleAndRoleBinding(nfsServiceAccount, nfsNamespace s
 			APIGroup: "rbac.authorization.k8s.io",
 		},
 	}
-	_, err = flavor.kubeClient.RbacV1().RoleBindings(nfsNamespace).Create(context.TODO(), roleBinding, meta_v1.CreateOptions{})
+	_, err = flavor.kubeClient.RbacV1().RoleBindings(nfsNamespace).Create(context.Background(), roleBinding, meta_v1.CreateOptions{})
 	if err != nil {
-		log.Errorf("Error occured while creating the role binding for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
-		return err
+		if !errors.IsAlreadyExists(err) {
+			log.Errorf("Error occured while creating the role binding for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+			return err
+		}
 	}
-	fmt.Println(" RoleBinding '%s for the ServiceAccount %s created successfully.", roleBindingName, nfsServiceAccount)
+	log.Infof(" RoleBinding '%s for the ServiceAccount %s created successfully.", roleBindingName, nfsServiceAccount)
 	return nil
 }
 
