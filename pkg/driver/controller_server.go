@@ -6,6 +6,7 @@ package driver
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -252,6 +253,42 @@ func (driver *Driver) CreateVolume(ctx context.Context, request *csi.CreateVolum
 	}, nil
 }
 
+// Function to parse a single mount option string into a struct
+func parseMountOption(input string) model.MountOption {
+	// Log the input string
+	log.Tracef("Here is the string %s", input)
+
+	// Remove unnecessary escape characters
+	input = strings.ReplaceAll(input, `\"`, `"`) // Fix: Remove escaped quotes
+
+	// Regex to extract key-value pairs
+	re := regexp.MustCompile(`(\w+)=\s*"?([^"\s]+)"?`)
+
+	// Initialize an empty struct
+	mountOpt := model.MountOption{}
+
+	// Find all key-value matches
+	matches := re.FindAllStringSubmatch(input, -1)
+
+	// Populate struct fields
+	for _, match := range matches {
+		key, value := match[1], match[2]
+		switch key {
+		case "userSquashing":
+			mountOpt.UserSquashing = value
+		case "nfsVersion":
+			mountOpt.NfsVersion = value
+		case "readOnly":
+			mountOpt.ReadOnly = (value == "true") // Convert to bool
+		}
+	}
+
+	// Log the parsed struct
+	log.Tracef("Parsed Struct: %v", mountOpt)
+
+	return mountOpt
+}
+
 //nolint:gocyclo,govet //TODO: fix the non-constant format string being sent to log.Errorf
 func (driver *Driver) createVolume(
 	name string,
@@ -279,6 +316,14 @@ func (driver *Driver) createVolume(
 		log.Errorf("Failed to validate and retrieve volume access type, err: %v", err.Error())
 		return nil, status.Error(codes.InvalidArgument,
 			fmt.Sprintf("Failed to validate and retrieve volume access type, %v", err.Error()))
+	}
+
+	var mountOptions []model.MountOption
+	for _, volumeCapability := range volumeCapabilities {
+		mountFlags := volumeCapability.GetMount().GetMountFlags()
+		for _, mountFlag := range mountFlags {
+			mountOptions = append(mountOptions, parseMountOption(mountFlag))
+		}
 	}
 
 	// The volume access type in the request will be either 'Block' or 'Mount'
@@ -422,7 +467,16 @@ func (driver *Driver) createVolume(
 	//
 	// I don't think the spec considers the possiblity of reusing names across multiple groups.
 	// We should ask a question on the email group.
-	existingVolume, err := storageProvider.GetVolumeByName(name)
+	accessProtocol := ""
+	var existingVolume *model.Volume = nil
+	err = nil
+	if _, ok := createParameters[accessProtocolKey]; ok {
+		accessProtocol = createParameters[accessProtocolKey]
+	}
+
+	if accessProtocol != nfsFileSystem {
+		existingVolume, err = storageProvider.GetVolumeByName(name)
+	}
 	if err != nil {
 		log.Error("err: ", err.Error())
 		return nil, status.Error(codes.Unavailable, fmt.Sprintf("Failed to check if volume %s exists. %s", name, err.Error()))
@@ -550,7 +604,7 @@ func (driver *Driver) createVolume(
 			}
 			log.Tracef("Found parent volume: %+v", existingParentVolume)
 
-			// CON-3010 If requested size for clone volume is less than parent volume size 
+			// CON-3010 If requested size for clone volume is less than parent volume size
 			// then report error
 			if size < existingParentVolume.Size {
 				return nil,
@@ -580,6 +634,9 @@ func (driver *Driver) createVolume(
 	}
 
 	// Create new volume
+	if mountOptions != nil && len(mountOptions) > 0 {
+		createOptions["mountOptions"] = mountOptions
+	}
 	log.Infof("About to create a new volume '%s' with size %d and options %+v", name, size, createOptions)
 	volume, err := storageProvider.CreateVolume(name, description, size, createOptions)
 	if err != nil {
