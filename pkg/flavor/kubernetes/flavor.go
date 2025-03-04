@@ -864,11 +864,11 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 
 	podList, err := flavor.kubeClient.CoreV1().Pods(meta_v1.NamespaceAll).List(context.Background(), listOptions)
 	if err != nil {
-		log.Errorf("unable to list nfs pods for monitoring: %s", err.Error())
+		log.Errorf("Unable to enumerate Pods for monitoring: %s", err.Error())
 		return err
 	}
 	if podList == nil || len(podList.Items) == 0 {
-		log.Tracef("cannot find any nfs pod with label %s=%s", podLabelkey, podLabelvalue)
+		log.Tracef("Cannot find any Pods with label %s=%s", podLabelkey, podLabelvalue)
 		return nil
 	}
 
@@ -879,7 +879,7 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 		} else if pod.ObjectMeta.DeletionTimestamp != nil {
 			node, err := flavor.GetNodeByName(pod.Spec.NodeName)
 			if err != nil {
-				log.Warnf("unable to get node for monitoring pod %s: %s", pod.ObjectMeta.Name, err.Error())
+				log.Warnf("Unable to get Node for monitoring Pod %s: %s", pod.ObjectMeta.Name, err.Error())
 				// move on with other pods
 				continue
 			}
@@ -898,20 +898,20 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 			continue
 		}
 		// delete volume attachments if the node is down for this pod
-		log.Infof("Force deleting volume attachment for pod %s as it is in unknown state.", pod.ObjectMeta.Name)
+		log.Infof("Force deleting VolumeAttachment for Pod %s as it is in unknown state.", pod.ObjectMeta.Name)
 		err := flavor.cleanupVolumeAttachmentsByPod(&pod)
 		if err != nil {
-			log.Errorf("Error cleaning up volume attachments for pod %s: %s", pod.ObjectMeta.Name, err.Error())
+			log.Errorf("Error cleaning up VolumeAttachments for Pod %s: %s", pod.ObjectMeta.Name, err.Error())
 			// move on with other pods
 			continue
 		}
 
 		// force delete the pod
-		log.Infof("Force deleting pod %s as it's in unknown state.", pod.ObjectMeta.Name)
+		log.Infof("Force deleting Pod %s as it's in unknown state.", pod.ObjectMeta.Name)
 		err = flavor.DeletePod(pod.Name, pod.ObjectMeta.Namespace, true)
 		if err != nil {
 			if !errors.IsNotFound(err) {
-				log.Errorf("Error deleting pod %s: %s", pod.Name, err.Error())
+				log.Errorf("Error deleting Pod %s: %s", pod.Name, err.Error())
 			}
 		}
 	}
@@ -919,7 +919,7 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 }
 
 func (flavor *Flavor) cleanupVolumeAttachmentsByPod(pod *v1.Pod) error {
-	log.Tracef(">>>>> cleanupVolumeAttachmentsByPod for pod %s", pod.Name)
+	log.Tracef(">>>>> cleanupVolumeAttachmentsByPod for Pod %s", pod.Name)
 	defer log.Tracef("<<<<< cleanupVolumeAttachmentsByPod")
 
 	// Get all volume attachments
@@ -933,7 +933,7 @@ func (flavor *Flavor) cleanupVolumeAttachmentsByPod(pod *v1.Pod) error {
 			//check if this va refers to PV which is attached to this pod on same node
 			isAttached, err := flavor.isVolumeAttachedToPod(pod, &va)
 			if err != nil {
-				log.Warnf("unable to determine if va %s belongs to pod %s", va.Name, pod.ObjectMeta.Name)
+				log.Warnf("Unable to determine if VolumeAttachment %s belongs to Pod %s", va.Name, pod.ObjectMeta.Name)
 				continue
 			}
 			if isAttached {
@@ -941,7 +941,7 @@ func (flavor *Flavor) cleanupVolumeAttachmentsByPod(pod *v1.Pod) error {
 				if err != nil {
 					return err
 				}
-				log.Infof("Deleted volume attachment: %s", va.Name)
+				log.Infof("Deleted VolumeAttachment: %s", va.Name)
 			}
 		}
 	}
@@ -950,7 +950,7 @@ func (flavor *Flavor) cleanupVolumeAttachmentsByPod(pod *v1.Pod) error {
 
 // check if the volume attachment refers to PV claimed by the pod on same node
 func (flavor *Flavor) isVolumeAttachedToPod(pod *v1.Pod, va *storage_v1.VolumeAttachment) (bool, error) {
-	log.Tracef(">>>>> isVolumeAttachedToPod with pod %s, va %s", pod.ObjectMeta.Name, va.Name)
+	log.Tracef(">>>>> isVolumeAttachedToPod with Pod %s, va %s", pod.ObjectMeta.Name, va.Name)
 	defer log.Tracef("<<<<< isVolumeAttachedToPod")
 
 	// check only va's attached to node where pod belongs to
@@ -965,7 +965,7 @@ func (flavor *Flavor) isVolumeAttachedToPod(pod *v1.Pod, va *storage_v1.VolumeAt
 				return false, err
 			}
 			if claim != nil && claim.ObjectMeta.Name == vol.VolumeSource.PersistentVolumeClaim.ClaimName {
-				log.Tracef("volume %s of volumeattachment %s is attached to pod %s", *va.Spec.Source.PersistentVolumeName, va.Name, pod.ObjectMeta.Name)
+				log.Tracef("PersistentVolume %s of VolumeAttachment %s is attached to Pod %s", *va.Spec.Source.PersistentVolumeName, va.Name, pod.ObjectMeta.Name)
 				return true, nil
 			}
 		}
