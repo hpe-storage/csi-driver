@@ -38,6 +38,11 @@ var (
 	ephemeralPublishLock   sync.Mutex
 	ephemeralUnpublishLock sync.Mutex
 )
+
+const (
+	fileHostIPKey = "hostIP"
+)
+
 var isWatcherEnabled = false
 
 // Helper utility to construct default mountpoint path
@@ -219,6 +224,11 @@ func (driver *Driver) nodeStageVolume(
 	// Check if volume is requested with NFS resources and intercept here
 	if driver.IsNFSResourceRequest(volumeContext) {
 		log.Infof("NodeStageVolume requested with NFS resources, returning success")
+		return nil
+	}
+
+	if driver.IsFileRequest(volumeContext) {
+		log.Infof("NodeStageVolume requested with file resources, returning success")
 		return nil
 	}
 
@@ -872,6 +882,35 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 		return driver.flavor.HandleNFSNodePublish(request)
 	}
 
+	// Check if volume is requested with File resources and intercept here
+	if driver.IsFileRequest(request.VolumeContext) {
+		log.Infof("NodePublish requested with file resources for %s", request.VolumeId)
+		existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get volume %s, err: %s", request.VolumeId, err.Error())
+		}
+		if existingVolume.Config != nil {
+			hostIPVal, ok := existingVolume.Config[fileHostIPKey]
+			if ok && hostIPVal != nil {
+				hostIP, ok := hostIPVal.(string)
+				if ok && hostIP != "" && isValidIP(hostIP) {
+					log.Infof("Adding hostIP %s to volume context for volume %s", hostIP, request.VolumeId)
+					request.VolumeContext[fileHostIPKey] = hostIP
+				} else {
+					log.Errorf("failed to get hostIP for volume %s", request.VolumeId)
+					return nil, fmt.Errorf("failed to get hostIP for volume %s", request.VolumeId)
+				}
+			} else {
+				log.Errorf("hostIP key not found or value is nil in config for volume %s", request.VolumeId)
+				return nil, fmt.Errorf("hostIP key not found or value is nil in config for volume %s", request.VolumeId)
+			}
+		} else {
+			log.Errorf("config is nil for volume %s", request.VolumeId)
+			return nil, fmt.Errorf("config is nil for volume %s", request.VolumeId)
+		}
+
+		return driver.flavor.HandleFileNodePublish(request)
+	}
 	// If ephemeral volume request, then create new volume, add ACL and NodeStage/NodePublish
 	if ephemeral {
 		// Handle inline ephemeral volume request

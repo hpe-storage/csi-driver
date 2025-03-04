@@ -5,9 +5,9 @@ package flavor
 import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/hpe-storage/common-host-libs/model"
+	v1 "k8s.io/api/core/v1"
 	storage_v1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/version"
-	v1 "k8s.io/api/core/v1"
 )
 
 const (
@@ -44,5 +44,6 @@ type Flavor interface {
 	ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error)
 	GetChapCredentials(volumeContext map[string]string) (*model.ChapInfo, error)
 	CheckConnection() bool
-	GetPVCByName(name string, namespace string) (*v1.PersistentVolumeClaim , error) 
+	GetPVCByName(name string, namespace string) (*v1.PersistentVolumeClaim, error)
+	HandleFileNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
 }
