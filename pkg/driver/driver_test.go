@@ -86,8 +86,9 @@ func fakeDriver(endpoint string) *Driver {
 	}
 
 	credential := &storageprovider.Credentials{
-		Username: "fake",
-		Backend:  "fake",
+		Username:    "fake",
+		Backend:     "fake",
+		ServiceName: "fake",
 	}
 	cacheKey := driver.GenerateStorageProviderCacheKey(credential)
 	driver.storageProviders[cacheKey] = fake.NewFakeStorageProvider()
@@ -131,29 +132,34 @@ func TestGenerateStorageProviderCacheKey(t *testing.T) {
 	}
 
 	cred1 := &storageprovider.Credentials{
-		Username: "admin",
-		Password: "password",
-		Backend:  "1.1.1.1",
+		Username:    "admin",
+		Password:    "password",
+		Backend:     "1.1.1.1",
+		ServiceName: "fake",
 	}
 	cred2 := &storageprovider.Credentials{
-		Username: "user",
-		Password: "password",
-		Backend:  "1.1.1.1",
+		Username:    "user",
+		Password:    "password",
+		Backend:     "1.1.1.1",
+		ServiceName: "fake",
 	}
 	cred3 := &storageprovider.Credentials{
-		Username: "test",
-		Password: "password",
-		Backend:  "1.1.1.1",
+		Username:    "test",
+		Password:    "password",
+		Backend:     "1.1.1.1",
+		ServiceName: "fake",
 	}
 	cred4 := &storageprovider.Credentials{
-		Username: "test",
-		Password: "password",
-		Backend:  "2.2.2.2",
+		Username:    "test",
+		Password:    "password",
+		Backend:     "2.2.2.2",
+		ServiceName: "fake",
 	}
 	cred5 := &storageprovider.Credentials{
-		Username: "user",
-		Password: "password",
-		Backend:  "2.2.2.2",
+		Username:    "user",
+		Password:    "password",
+		Backend:     "2.2.2.2",
+		ServiceName: "fake",
 	}
 
 	type args struct {
@@ -166,12 +172,12 @@ func TestGenerateStorageProviderCacheKey(t *testing.T) {
 		expected string
 		fails    bool
 	}{
-		{"Test for user1", args{cred1}, "6903fab9e2797c294e1c4a0b87a5f296acb887f946d471ee90d0f6caeecd42ea", false},
-		{"Test for user1", args{cred1}, "6903fab9e2797c294e1c4a0b87a5f296acb887f946d471ee90d0f6caeecd42", true},
-		{"Test for user2", args{cred2}, "7768c1adea41b7cacff35a4648d98a47372c1b14c7843712b5414092290dd26b", false},
-		{"Test for user3", args{cred3}, "eebff4d52bb48b871bf5b63b15d3deee6efb9997a067a4aac39ff0601cb41c39", false},
-		{"Test for user4", args{cred4}, "cc3302d1062f0561eddba8f91606dab0688ac676ffc8fefcc0c827b206803b81", false},
-		{"Test for user5", args{cred5}, "03fa2eb6d209f927fa680ec64275a8242c74a82d3d44aea7610fc5358732b6b5", false},
+		{"Test for user1", args{cred1}, "10ea735ee58e2a9ce159ee7d5e9439c05da47b2f91c85d4dcb5152c3295390ba", false},
+		{"Test for user1", args{cred1}, "10ea735ee58e2a9ce159ee7d5e9439c05da47b2f91c85d4dcb5152c3295390ba", true},
+		{"Test for user2", args{cred2}, "4d1207ac0389f6b9d593e3d8bdbf610e5441ca9679d85380cea9a9ea31bb2292", false},
+		{"Test for user3", args{cred3}, "5729f10afcd4e1868f2f1351861012354c9989eefd971c489f44f7c7583be4b8", false},
+		{"Test for user4", args{cred4}, "99cc4ecbf4fbe1ae762f6971752663e41a2701bc1cb3d4159a389e6ad799c984", false},
+		{"Test for user5", args{cred5}, "9b882f7526e28c59e9507b07543fcad084d52597935d92e4815d3d086237a0a4", false},
 	}
 
 	for _, tt := range tests {

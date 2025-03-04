@@ -389,7 +389,7 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 
 // GenerateStorageProviderCacheKey generates unique hash for the credential pair {Backend, Username}
 func (driver *Driver) GenerateStorageProviderCacheKey(credentials *storageprovider.Credentials) string {
-	result := sha256.Sum256([]byte(fmt.Sprintf("%s%s", credentials.Backend, credentials.Username)))
+	result := sha256.Sum256([]byte(fmt.Sprintf("%s%s%s", credentials.ServiceName, credentials.Backend, credentials.Username)))
 	return fmt.Sprintf("%x", result)
 }
 
@@ -830,6 +830,11 @@ func (driver *Driver) ScrubEphemeralPods(podsDirPath string) error {
 		}
 	}
 	return nil
+}
+
+func (driver *Driver) IsFileRequest(parameters map[string]string) bool {
+	accessProtocol, ok := parameters[accessProtocolKey]
+	return ok && accessProtocol == nfsFileSystem
 }
 
 /******************************************************************************************/

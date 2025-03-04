@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -117,4 +118,11 @@ func removeDataFile(dirPath string, fileName string) error {
 	defer log.Trace("<<<<< removeDataFile")
 	filePath := path.Join(dirPath, fileName)
 	return util.FileDelete(filePath)
+}
+
+// isValidIP checks whether the provided string is a valid IP address.
+// It returns true if the input is non-empty and can be parsed as an IP address,
+// otherwise it returns false.
+func isValidIP(ip string) bool {
+	return ip != "" && net.ParseIP(ip) != nil
 }

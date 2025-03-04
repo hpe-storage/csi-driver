@@ -304,9 +304,13 @@ func (driver *Driver) createVolume(
 			filesystem = defaultFileSystem
 			log.Trace("Using default filesystem type: ", filesystem)
 		}
-		if driver.IsSupportedMultiNodeAccessMode(volumeCapabilities) && !driver.IsNFSResourceRequest(createParameters) {
-			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("StorageClass parameter %s=%s is missing for creation of volumes with multi-node access", nfsResourcesKey, trueKey))
+		if driver.IsSupportedMultiNodeAccessMode(volumeCapabilities) && !(driver.IsNFSResourceRequest(createParameters) || driver.IsFileRequest(createParameters)) {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("StorageClass parameter %s=%s is missing for creation of volumes with multi-node access for NFS or  StorageClass parameter %s=%s is missing for creation of volumes with multi-node access File", nfsResourcesKey, trueKey, accessProtocolKey, nfsFileSystem))
 		}
+	}
+
+	if volAccessType == model.BlockType && driver.IsFileRequest(createParameters) {
+		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("volume mode can't be block for File"))
 	}
 
 	// Verify if NFS based provisioning is requested
@@ -815,6 +819,27 @@ func (driver *Driver) controllerPublishVolume(
 		}, nil
 	}
 
+	if driver.IsFileRequest(volumeContext) {
+		// Get storageProvider using secrets
+		storageProvider, err := driver.GetStorageProvider(secrets)
+		if err != nil {
+			log.Error("err: ", err.Error())
+			return nil, status.Error(codes.Unavailable,
+				fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
+		}
+		_, err = storageProvider.PublishVolume(volumeID, nodeID, volumeContext[accessProtocolKey])
+		if err != nil {
+			log.Errorf("Failed to publish volume %s, err: %s", volumeID, err.Error())
+			return nil, status.Error(codes.Internal,
+				fmt.Sprintf("Failed to add file share settings access for volume %s for node %s via File CSP, err: %s", volumeID, nodeID, err.Error()))
+		}
+		log.Info("ControllerPublish requested with file resources, returning success")
+		return map[string]string{
+			readOnlyKey:        strconv.FormatBool(readOnlyAccessMode),
+			nfsMountOptionsKey: volumeContext[nfsMountOptionsKey],
+		}, nil
+	}
+
 	// Get Volume using secrets
 	volume, err := driver.GetVolumeByID(volumeID, secrets)
 	if err != nil {
@@ -1030,6 +1055,11 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 		}
 		log.Errorf("Failed to get volume %s, err: %s", volumeID, err.Error())
 		return err
+	}
+
+	if existingVolume.AccessProtocol == nfsFileSystem {
+		log.Info("ControllerUnpublish requested for File with multi-node access-mode, returning success")
+		return nil
 	}
 
 	// pass the nodeID to the container storage provider and do not do a look up of the node object as
@@ -1555,53 +1585,51 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 
 	// TODO: Add info to DB
 
+	// Get Volume
+	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+	if err != nil && strings.Contains(request.VolumeId, "pvc-") {
+		log.Error("Failed to get volume with ID ", request.VolumeId)
+		return nil, err
+	}
+	if existingVolume != nil {
+		log.Tracef("Found Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
+	}
+
 	//Handling NFS PVC request
-	if !strings.Contains(request.VolumeId, "pvc-") {
+	if !strings.Contains(request.VolumeId, "pvc-") && err != nil {
 		// Regular Nimble volumes will have the volume Id will be like this '06189263bcc823a018000000000000000000000087'
 		// But for NFS Nimble Volumes, the volume Id will be like this 634bdb9e-158a-4fb8-90fb-78eb1bad0bba
 		// This check is to prevent the processing of regular Nimble volumes
 		log.Tracef("Found a foreign UUID for the volume %s, check if it is Nimble Volume or not", request.VolumeId)
-		_, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+		nfsVolumeID, err := driver.flavor.GetNFSVolumeID(request.VolumeId)
 		if err != nil {
-			log.Tracef("Failed to get volume with ID %s. Check whether it is NFS volume or not", request.VolumeId)
-			nfsVolumeID, err := driver.flavor.GetNFSVolumeID(request.VolumeId)
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get the volume details for the foreign UUID %s: %s", request.VolumeId, err.Error()))
+		}
+		corrected_volumeId := "pvc-" + request.VolumeId
+		log.Infof("Found the RWO volume %s associated with the NFS volume %s", nfsVolumeID, corrected_volumeId)
+		if !strings.Contains(nfsVolumeID, "pvc-") {
+			log.Tracef("This backend RWO volume is a Nimble Volume, %s, lets find the appropriate pv name", nfsVolumeID)
+			existingVolume, err := driver.GetVolumeByID(nfsVolumeID, request.Secrets)
 			if err != nil {
-				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to get the volume details for the foreign UUID %s: %s", request.VolumeId, err.Error()))
-			}
-			corrected_volumeId := "pvc-" + request.VolumeId
-			log.Infof("Found the RWO volume %s associated with the NFS volume %s", nfsVolumeID, corrected_volumeId)
-			if !strings.Contains(nfsVolumeID, "pvc-") {
-				log.Tracef("This backend RWO volume is a Nimble Volume, %s, lets find the appropriate pv name", nfsVolumeID)
-				existingVolume, err := driver.GetVolumeByID(nfsVolumeID, request.Secrets)
-				if err != nil {
-					log.Error("Failed to get Nimble volume with ID ", request.VolumeId)
-					return nil, err
-				}
-				log.Tracef("Found Nimble backend RWO Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
-				nfsVolumeID = existingVolume.Name
-			}
-
-			err = driver.flavor.ExpandNFSBackendVolume(nfsVolumeID, request.CapacityRange.GetRequiredBytes())
-			if err != nil {
-				log.Errorf("Failed to update the backend RWO volume of NFS volume %s: %s", corrected_volumeId, err.Error())
+				log.Error("Failed to get Nimble volume with ID ", request.VolumeId)
 				return nil, err
 			}
-			log.Infof("The size of the backend RWO volume %s associated with the NFS volume %s has been updated", nfsVolumeID, corrected_volumeId)
-			//NFS client will take care of resizing
-			return &csi.ControllerExpandVolumeResponse{
-				CapacityBytes:         request.CapacityRange.GetRequiredBytes(),
-				NodeExpansionRequired: false,
-			}, nil
-		} // If this fails, then the request with foreign uid may belong to Nimlble.
-	}
+			log.Tracef("Found Nimble backend RWO Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
+			nfsVolumeID = existingVolume.Name
+		}
 
-	// Get Volume
-	existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
-	if err != nil {
-		log.Error("Failed to get volume with ID ", request.VolumeId)
-		return nil, err
+		err = driver.flavor.ExpandNFSBackendVolume(nfsVolumeID, request.CapacityRange.GetRequiredBytes())
+		if err != nil {
+			log.Errorf("Failed to update the backend RWO volume of NFS volume %s: %s", corrected_volumeId, err.Error())
+			return nil, err
+		}
+		log.Infof("The size of the backend RWO volume %s associated with the NFS volume %s has been updated", nfsVolumeID, corrected_volumeId)
+		//NFS client will take care of resizing
+		return &csi.ControllerExpandVolumeResponse{
+			CapacityBytes:         request.CapacityRange.GetRequiredBytes(),
+			NodeExpansionRequired: false,
+		}, nil
 	}
-	log.Tracef("Found Volume %s with ID %s", existingVolume.Name, existingVolume.ID)
 
 	// Set node expansion required to 'true' for mount type as fs resize is always required in that case
 	nodeExpansionRequired := true
@@ -1615,6 +1643,9 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 		}
 	}
 
+	if existingVolume.AccessProtocol == nfsFileSystem {
+		nodeExpansionRequired = false
+	}
 	if existingVolume.Size == request.CapacityRange.GetLimitBytes() || existingVolume.Size == request.CapacityRange.GetRequiredBytes() {
 		// volume is already at requested size, so no action required.
 		log.Tracef("volume %s is already at requested size, so no action required", request.VolumeId)
