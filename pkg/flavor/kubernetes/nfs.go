@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 	apps_v1 "k8s.io/api/apps/v1"
 	core_v1 "k8s.io/api/core/v1"
+	rbac_v1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -152,6 +153,13 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 		return nil, true, err
 	}
 
+	log.Tracef("Create a role and role binding for the service account %s", nfsServiceAccount)
+	err = flavor.createRoleAndRoleBinding(nfsServiceAccount, nfsResourceNamespace)
+	if err != nil {
+		log.Errorf("Error occured while creating the role and rolebinding for the ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+		return nil, true, fmt.Errorf("Error occured while creating the role and rolebinding for the ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+	}
+
 	// create deployment with name hpe-nfs-<originalclaim-uid>
 	deploymentName := fmt.Sprintf("%s%s", nfsPrefix, claim.ObjectMeta.UID)
 	err = flavor.createNFSDeployment(deploymentName, nfsSpec, nfsResourceNamespace)
@@ -218,6 +226,70 @@ func (flavor *Flavor) createServiceAccount(nfsNamespace string) error {
 			return err
 		}
 	}
+	return nil
+}
+
+func (flavor *Flavor) createRoleAndRoleBinding(nfsServiceAccount, nfsNamespace string) error {
+	log.Tracef(">>>>> createRoleAndRoleBinding for ServiceAccount %s under namespace %s", nfsServiceAccount, nfsNamespace)
+	defer log.Tracef("<<<<< createRoleAndRoleBinding")
+
+	roleName := nfsServiceAccount + "-deployment-rollout"
+	role := &rbac_v1.Role{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name:      roleName,
+			Namespace: nfsNamespace,
+		},
+		Rules: []rbac_v1.PolicyRule{
+			{
+				APIGroups: []string{"apps"},
+				Resources: []string{"deployments"},
+				Verbs:     []string{"update", "patch", "list", "get"},
+			},
+		},
+	}
+
+	_, err := flavor.kubeClient.RbacV1().Roles(nfsNamespace).Create(context.Background(), role, meta_v1.CreateOptions{})
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			log.Infof("Role %s already exists.", roleName)
+		} else {
+			log.Errorf("Error occured while creating the role for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+			return err
+		}
+	} else {
+		log.Infof("Role %s for the the ServiceAccount %s created successfully", roleName, nfsServiceAccount)
+	}
+
+	roleBindingName := nfsServiceAccount + "deployment-rollout-binding"
+	roleBinding := &rbac_v1.RoleBinding{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name:      roleBindingName,
+			Namespace: nfsNamespace,
+		},
+		Subjects: []rbac_v1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      nfsServiceAccount,
+				Namespace: nfsNamespace,
+			},
+		},
+		RoleRef: rbac_v1.RoleRef{
+			Kind:     "Role",
+			Name:     roleName,
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+	}
+	_, err = flavor.kubeClient.RbacV1().RoleBindings(nfsNamespace).Create(context.Background(), roleBinding, meta_v1.CreateOptions{})
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			log.Infof("RoleBinding %s already exists.", roleBinding)
+			return nil
+		} else {
+			log.Errorf("Error occured while creating the role binding for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+			return err
+		}
+	}
+	log.Infof(" RoleBinding '%s for the ServiceAccount %s created successfully.", roleBindingName, nfsServiceAccount)
 	return nil
 }
 
@@ -907,6 +979,44 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		LabelSelector:     &podLabelSelector,
 	}
 
+	startupProbe := &core_v1.Probe{
+		ProbeHandler: core_v1.ProbeHandler{
+			Exec: &core_v1.ExecAction{
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "1", name, nfsNamespace},
+			},
+		},
+		InitialDelaySeconds: 10,
+		PeriodSeconds:       5,
+		TimeoutSeconds:      2,
+	}
+
+	readinessProbe := &core_v1.Probe{
+		ProbeHandler: core_v1.ProbeHandler{
+			Exec: &core_v1.ExecAction{
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "2", name, nfsNamespace},
+			},
+		},
+		InitialDelaySeconds: 10,
+		PeriodSeconds:       5,
+		TimeoutSeconds:      2,
+	}
+
+	livenessProbe := &core_v1.Probe{
+		ProbeHandler: core_v1.ProbeHandler{
+			Exec: &core_v1.ExecAction{
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "3", name, nfsNamespace},
+			},
+		},
+		InitialDelaySeconds: 10,
+		PeriodSeconds:       5,
+		TimeoutSeconds:      4,
+	}
+
+	containers := []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)}
+	containers[0].StartupProbe = startupProbe
+	containers[0].ReadinessProbe = readinessProbe
+	containers[0].LivenessProbe = livenessProbe
+
 	podSpec := core_v1.PodTemplateSpec{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:        name,
@@ -915,7 +1025,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		},
 		Spec: core_v1.PodSpec{
 			ServiceAccountName:        nfsServiceAccount,
-			Containers:                []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)},
+			Containers:                containers,
 			RestartPolicy:             core_v1.RestartPolicyAlways,
 			Volumes:                   volumes,
 			HostIPC:                   false,
