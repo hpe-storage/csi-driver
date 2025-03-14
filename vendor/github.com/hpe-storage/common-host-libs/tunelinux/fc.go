@@ -200,18 +200,6 @@ func GetFcRecommendations() (settings []*Recommendation, err error) {
 	log.Trace("GetFcRecommendations called")
 	var recommendations []*Recommendation
 
-	var isVM bool
-	// identify if running as a virtual machine
-	isVM, err = linux.IsVirtualMachine()
-	if err != nil {
-		log.Error("unable to determine if system is running as a virtual machine ", err.Error())
-		return nil, err
-	}
-	if isVM {
-		log.Error("system is running as a virtual machine. Skipping FC recommendations")
-		return nil, err
-	}
-
 	// identify adapter type
 	_, module, err := getFcAdapterType()
 	if err != nil {

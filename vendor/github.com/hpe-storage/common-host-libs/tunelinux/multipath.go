@@ -182,40 +182,11 @@ func getMultipathDeviceScopeRecommendations(deviceBlock string) (settings []Devi
 	return deviceRecommendations, nil
 }
 
-// IsMultipathRequired returns if multipath needs to be enabled on the system
-func IsMultipathRequired() (required bool, err error) {
-	var isVM bool
-	var multipathRequired = true
-	// identify if running as a virtual machine and guest iscsi is enabled
-	isVM, err = linux.IsVirtualMachine()
-	if err != nil {
-		log.Error("unable to determine if system is running as a virtual machine ", err.Error())
-		return false, err
-	}
-	if isVM && !IsIscsiEnabled() {
-		log.Error("system is running as a virtual machine and guest iSCSI is not enabled. Skipping multipath recommendations")
-		multipathRequired = false
-	}
-	return multipathRequired, nil
-}
-
 // GetMultipathRecommendations obtain various recommendations for multipath settings on host
 func GetMultipathRecommendations() (settings []DeviceRecommendation, err error) {
 	log.Trace("GetMultipathRecommendations called")
 	var deviceRecommendations []DeviceRecommendation
 
-	var isMultipathRequired bool
-
-	// check if multipath is required in the first place on the system
-	isMultipathRequired, err = IsMultipathRequired()
-	if err != nil {
-		log.Error("unable to determine if multipath is required ", err.Error())
-		return nil, err
-	}
-	if !isMultipathRequired {
-		log.Info("multipath is not required on the system, skipping get multipath recommendations")
-		return nil, nil
-	}
 	// load config settings
 	err = loadTemplateSettings()
 	if err != nil {
