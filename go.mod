@@ -8,7 +8,7 @@ require (
 	github.com/Scalingo/go-etcd-lock v3.0.1+incompatible
 	github.com/container-storage-interface/spec v1.7.0
 	github.com/golang/protobuf v1.5.4
-	github.com/hpe-storage/common-host-libs v0.0.0-20250314084008-293de14a5a79
+	github.com/hpe-storage/common-host-libs v0.0.0-20250314182729-baa69ca334d9
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20240118202512-5f62990a7c2d
 	github.com/kubernetes-csi/csi-lib-utils v0.11.0
 	github.com/kubernetes-csi/csi-test v2.2.0+incompatible
@@ -16,7 +16,7 @@ require (
 	github.com/spf13/cobra v1.6.0
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/mod v0.17.0
-	golang.org/x/net v0.25.0
+	golang.org/x/net v0.36.0
 	google.golang.org/grpc v1.56.3
 	k8s.io/api v0.29.0
 	k8s.io/apimachinery v0.29.0
