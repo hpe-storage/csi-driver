@@ -861,27 +861,29 @@ func (driver *Driver) controllerPublishVolume(
 		return nil, status.Error(codes.Unavailable,
 			fmt.Sprintf("Error retrieving the node info for ID %s from the CSP, err: %s", node.UUID, err.Error()))
 	}
+
+        // Configure access protocol defaulting to iSCSI when unspecified
+        var requestedAccessProtocol = volumeContext[accessProtocolKey]
+        if requestedAccessProtocol == "" {
+                if len(node.Iqns) != 0 {
+                        requestedAccessProtocol = iscsi
+                } else {
+                        requestedAccessProtocol = fc
+                }
+                log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
+        }
+
 	if existingNode != nil {
 		log.Tracef("CSP has already been notified about the node with ID %s and UUID %s", existingNode.ID, existingNode.UUID)
 	} else {
 		// If node does not already exists, then set context here
 		log.Tracef("Notifying CSP about Node with ID %s and UUID %s", node.ID, node.UUID)
+		node.AccessProtocol = requestedAccessProtocol
 		if err = storageProvider.SetNodeContext(node); err != nil {
 			log.Error("err: ", err.Error())
 			return nil, status.Error(codes.Unavailable,
 				fmt.Sprintf("Failed to provide node %s to CSP err: %s", node.ID, err.Error()))
 		}
-	}
-
-	// Configure access protocol defaulting to iSCSI when unspecified
-	var requestedAccessProtocol = volumeContext[accessProtocolKey]
-	if requestedAccessProtocol == "" {
-		if len(node.Iqns) != 0 {
-			requestedAccessProtocol = iscsi
-		} else {
-			requestedAccessProtocol = fc
-		}
-		log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
 	}
 
 	// Add ACL to the volume based on the requested Node
