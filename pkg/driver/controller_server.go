@@ -1,4 +1,4 @@
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019, 2025 Hewlett Packard Enterprise Development LP
 // Copyright 2017 The Kubernetes Authors.
 
 package driver
@@ -316,33 +316,12 @@ func (driver *Driver) createVolume(
 			return nil, status.Error(codes.InvalidArgument, "NFS volume provisioning is not supported with block access type")
 		}
 
-		volume, rollback, err := driver.flavor.CreateNFSVolume(name, size, createParameters, volumeContentSource)
+		volume, err := driver.flavor.CreateNFSVolume(name, size, createParameters, volumeContentSource)
 		if err == nil {
 			// Return multi-node volume
 			return volume, nil
 		}
-
-		rollbackStatus := "success"
-		if rollback {
-			// get nfs namespace for cleanup
-			nfsNamespace := defaultNFSNamespace
-			if namespace, ok := createParameters[nfsNamespaceKey]; ok {
-				if createParameters[nfsNamespaceKey] == nfsSourceNamespaceKey {
-					nfsNamespace = createParameters[nfsSourceNamespaceKey]
-				} else {
-					nfsNamespace = namespace
-				}
-			}
-
-			nfsResourceName := fmt.Sprintf("%s-%s", "hpe-nfs", strings.TrimPrefix(name, "pvc-"))
-			// attempt to teardown all nfs resources
-			err2 := driver.flavor.RollbackNFSResources(nfsResourceName, nfsNamespace)
-			if err2 != nil {
-				log.Errorf("failed to rollback NFS resources for %s, err %s", name, err2.Error())
-				rollbackStatus = err2.Error()
-			}
-		}
-		errStr := fmt.Sprintf("Failed to create NFS provisioned volume %s, err %s, rollback status: %s", name, err.Error(), rollbackStatus)
+		errStr := fmt.Sprintf("Failed to create NFS provisioned volume %s, err %s ", name, err.Error())
 		log.Errorf(errStr)
 		return nil, status.Error(codes.Internal, errStr)
 	}
