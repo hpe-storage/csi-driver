@@ -37,38 +37,42 @@ const (
 	defaultRLimitMemory   = "2Gi"
 	defaultRRequestMemory = "512Mi"
 
-	creationInterval             = 60 // 300s with sleep interval of 5s
-	creationDelay                = 5 * time.Second
-	defaultExportPath            = "/export"
-	nfsResourceLimitsCPUKey      = "nfsResourceLimitsCpuM"
-	nfsResourceRequestsCPUKey    = "nfsResourceRequestsCpuM"
-	nfsResourceLimitsMemoryKey   = "nfsResourceLimitsMemoryMi"
-	nfsResourceRequestsMemoryKey = "nfsResourceRequestsMemoryMi"
-	nfsMountOptionsKey           = "nfsMountOptions"
-	nfsResourceLabelKey          = "nfsResourceLabel"
-	nfsNodeSelectorKey           = "csi.hpe.com/hpe-nfs"
-	nfsNodeSelectorDefaultValue  = "true"
-	nfsNodeSelectorParamKey      = "nfsNodeSelector"
-	nfsParentVolumeIDKey         = "nfs-parent-volume-id"
-	nfsNamespaceKey              = "nfsNamespace"
-	nfsSourceNamespaceKey        = "csi.storage.k8s.io/pvc/namespace"
-	nfsSourcePVCNameKey          = "csi.storage.k8s.io/pvc/name"
-	nfsProvisionerImageKey       = "nfsProvisionerImage"
-	pvcKind                      = "PersistentVolumeClaim"
-	nfsConfigFile                = "ganesha.conf"
-	nfsConfigMap                 = "hpe-nfs-config"
-	nfsServiceAccount            = "hpe-csi-nfs-sa"
-	defaultPodLabelKey           = "monitored-by"
-	defaultPodLabelValue         = "hpe-csi"
-	nfsAffinityLabelKey          = "spread-by"
-	nfsAffinityLabelValue        = "hpe-nfs"
-	nfsDedicatedTolerationKey    = "csi.hpe.com/hpe-nfs"
-	nfsProvisionedByKey          = "provisioned-by"
-	nfsProvisionedFromKey        = "provisioned-from"
-	nfsForeignStorageClassKey    = "nfsForeignStorageClass"
-	nfsResourcesKey              = "nfsResources"
-	nfsTolerationSecScKey        = "nfsTolerationSeconds"
-	defaultNfsTolerationSeconds  = 30
+	creationInterval               = 60 // 300s with sleep interval of 5s
+	creationDelay                  = 5 * time.Second
+	defaultExportPath              = "/export"
+	nfsResourceLimitsCPUKey        = "nfsResourceLimitsCpuM"
+	nfsResourceRequestsCPUKey      = "nfsResourceRequestsCpuM"
+	nfsResourceLimitsMemoryKey     = "nfsResourceLimitsMemoryMi"
+	nfsResourceRequestsMemoryKey   = "nfsResourceRequestsMemoryMi"
+	nfsMountOptionsKey             = "nfsMountOptions"
+	nfsResourceLabelKey            = "nfsResourceLabel"
+	nfsNodeSelectorKey             = "csi.hpe.com/hpe-nfs"
+	nfsNodeSelectorDefaultValue    = "true"
+	nfsNodeSelectorParamKey        = "nfsNodeSelector"
+	nfsParentVolumeIDKey           = "nfs-parent-volume-id"
+	nfsNamespaceKey                = "nfsNamespace"
+	nfsSourceNamespaceKey          = "csi.storage.k8s.io/pvc/namespace"
+	nfsSourcePVCNameKey            = "csi.storage.k8s.io/pvc/name"
+	nfsProvisionerImageKey         = "nfsProvisionerImage"
+	pvcKind                        = "PersistentVolumeClaim"
+	nfsConfigFile                  = "ganesha.conf"
+	nfsConfigMap                   = "hpe-nfs-config"
+	nfsServiceAccount              = "hpe-csi-nfs-sa"
+	defaultPodLabelKey             = "monitored-by"
+	defaultPodLabelValue           = "hpe-csi"
+	nfsAffinityLabelKey            = "spread-by"
+	nfsAffinityLabelValue          = "hpe-nfs"
+	nfsDedicatedTolerationKey      = "csi.hpe.com/hpe-nfs"
+	nfsProvisionedByKey            = "provisioned-by"
+	nfsProvisionedFromKey          = "provisioned-from"
+	nfsForeignStorageClassKey      = "nfsForeignStorageClass"
+	nfsResourcesKey                = "nfsResources"
+	nfsTolerationSecScKey          = "nfsTolerationSeconds"
+	defaultNfsTolerationSeconds    = 30
+	nfsProbeInitialDelaySeconds    = 10
+	nfsProbePeriodSeconds	       = 5
+	nfsProbeTimeoutSeconds         = 2
+	nfsLivenessProbeTimeoutSeconds = 4
 )
 
 // NFSSpec for creating NFS resources
@@ -156,8 +160,8 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	log.Tracef("Create a role and role binding for the service account %s", nfsServiceAccount)
 	err = flavor.createRoleAndRoleBinding(nfsServiceAccount, nfsResourceNamespace)
 	if err != nil {
-		log.Errorf("Error occured while creating the role and rolebinding for the ServiceAccount %s:%s", nfsServiceAccount, err.Error())
-		return nil, true, fmt.Errorf("Error occured while creating the role and rolebinding for the ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+		log.Errorf("error occured while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
+		return nil, true, fmt.Errorf("error occured while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
 	}
 
 	// create deployment with name hpe-nfs-<originalclaim-uid>
@@ -985,9 +989,9 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "1", name, nfsNamespace},
 			},
 		},
-		InitialDelaySeconds: 10,
-		PeriodSeconds:       5,
-		TimeoutSeconds:      2,
+		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
+		PeriodSeconds:       nfsProbePeriodSeconds,
+		TimeoutSeconds:      nfsProbeTimeoutSeconds,
 	}
 
 	readinessProbe := &core_v1.Probe{
@@ -996,9 +1000,9 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "2", name, nfsNamespace},
 			},
 		},
-		InitialDelaySeconds: 10,
-		PeriodSeconds:       5,
-		TimeoutSeconds:      2,
+		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
+		PeriodSeconds:       nfsProbePeriodSeconds,
+		TimeoutSeconds:      nfsProbeTimeoutSeconds,
 	}
 
 	livenessProbe := &core_v1.Probe{
@@ -1007,9 +1011,9 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "3", name, nfsNamespace},
 			},
 		},
-		InitialDelaySeconds: 10,
-		PeriodSeconds:       5,
-		TimeoutSeconds:      4,
+		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
+		PeriodSeconds:       nfsProbePeriodSeconds,
+		TimeoutSeconds:      nfsLivenessProbeTimeoutSeconds,
 	}
 
 	containers := []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)}
