@@ -858,19 +858,20 @@ func (driver *Driver) controllerPublishVolume(
 	existingNode, err := storageProvider.GetNodeContext(node.UUID)
 	if err != nil {
 		log.Errorf("Error retrieving the node info from the CSP. err: %s", err.Error())
-		return nil, status.Error(codes.Unavailable,
-			fmt.Sprintf("Error retrieving the node info for ID %s from the CSP, err: %s", node.UUID, err.Error()))
+		return nil, status.Error(codes.Unavailable, 
+		fmt.Sprintf("Error retrieving the node info for ID %s from the CSP, err: %s", node.UUID, err.Error()))
 	}
 
-        // Configure access protocol defaulting to iSCSI when unspecified
+	// Configure access protocol defaulting to iSCSI when unspecified
         var requestedAccessProtocol = volumeContext[accessProtocolKey]
         if requestedAccessProtocol == "" {
-                if len(node.Iqns) != 0 {
-                        requestedAccessProtocol = iscsi
-                } else {
-                        requestedAccessProtocol = fc
-                }
+                // by default when no protocol specified make iscsi as default
+                requestedAccessProtocol = iscsi
                 log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
+        } else if requestedAccessProtocol == "iscsi" {
+                requestedAccessProtocol = iscsi
+        } else if requestedAccessProtocol == "fc" {
+                requestedAccessProtocol = fc
         }
 
 	if existingNode != nil {
@@ -878,6 +879,7 @@ func (driver *Driver) controllerPublishVolume(
 	} else {
 		// If node does not already exists, then set context here
 		log.Tracef("Notifying CSP about Node with ID %s and UUID %s", node.ID, node.UUID)
+		log.Tracef("AccessProtocol set is %s", requestedAccessProtocol)
 		node.AccessProtocol = requestedAccessProtocol
 		if err = storageProvider.SetNodeContext(node); err != nil {
 			log.Error("err: ", err.Error())
