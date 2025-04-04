@@ -10,8 +10,8 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	storage_v1 "k8s.io/api/storage/v1"
 	v1 "k8s.io/api/core/v1"
+	storage_v1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/version"
 )
 
@@ -150,6 +150,7 @@ func (flavor *Flavor) CheckConnection() bool {
 	return false
 }
 
-func (flavor *Flavor) GetPVCByName(name string, namespace string) (*v1.PersistentVolumeClaim , error) {
+//nolint:revive
+func (flavor *Flavor) GetPVCByName(name string, namespace string) (*v1.PersistentVolumeClaim, error) {
 	return nil, nil
 }
