@@ -70,9 +70,11 @@ const (
 	nfsTolerationSecScKey          = "nfsTolerationSeconds"
 	defaultNfsTolerationSeconds    = 30
 	nfsProbeInitialDelaySeconds    = 10
-	nfsProbePeriodSeconds	       = 5
+	nfsProbePeriodSeconds          = 5
 	nfsProbeTimeoutSeconds         = 2
 	nfsLivenessProbeTimeoutSeconds = 4
+	nfsRoleBindingSuffix           = "-deployment-rollout-binding"
+	nfsRoleSuffix                  = "-deployment-rollout-role"
 )
 
 // NFSSpec for creating NFS resources
@@ -157,8 +159,8 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 		return nil, true, err
 	}
 
-	log.Tracef("Create a role and role binding for the service account %s", nfsServiceAccount)
-	err = flavor.createRoleAndRoleBinding(nfsServiceAccount, nfsResourceNamespace)
+	log.Tracef("Create a role and role binding for the pv %s and service account %s", pvName, nfsServiceAccount)
+	err = flavor.createRoleAndRoleBinding(pvName, nfsServiceAccount, nfsResourceNamespace)
 	if err != nil {
 		log.Errorf("error occured while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
 		return nil, true, fmt.Errorf("error occured while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
@@ -233,11 +235,12 @@ func (flavor *Flavor) createServiceAccount(nfsNamespace string) error {
 	return nil
 }
 
-func (flavor *Flavor) createRoleAndRoleBinding(nfsServiceAccount, nfsNamespace string) error {
-	log.Tracef(">>>>> createRoleAndRoleBinding for ServiceAccount %s under namespace %s", nfsServiceAccount, nfsNamespace)
+func (flavor *Flavor) createRoleAndRoleBinding(pvName, nfsServiceAccount, nfsNamespace string) error {
+	log.Tracef(">>>>> createRoleAndRoleBinding for PV %s and ServiceAccount %s under namespace %s", pvName, nfsServiceAccount, nfsNamespace)
 	defer log.Tracef("<<<<< createRoleAndRoleBinding")
 
-	roleName := nfsServiceAccount + "-deployment-rollout"
+	pvName = strings.TrimPrefix(pvName, "pvc-")
+	roleName := nfsPrefix + pvName + nfsRoleSuffix
 	role := &rbac_v1.Role{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:      roleName,
@@ -264,7 +267,7 @@ func (flavor *Flavor) createRoleAndRoleBinding(nfsServiceAccount, nfsNamespace s
 		log.Infof("Role %s for the the ServiceAccount %s created successfully", roleName, nfsServiceAccount)
 	}
 
-	roleBindingName := nfsServiceAccount + "deployment-rollout-binding"
+	roleBindingName := nfsPrefix + pvName + nfsRoleBindingSuffix
 	roleBinding := &rbac_v1.RoleBinding{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:      roleBindingName,
@@ -355,7 +358,7 @@ EXPORT
 func (flavor *Flavor) RollbackNFSResources(nfsResourceName string, nfsNamespace string) error {
 	log.Tracef(">>>>> RollbackNFSResources with name %s namespace %s", nfsResourceName, nfsNamespace)
 	defer log.Tracef("<<<<< RollbackNFSResources")
-	err := flavor.deleteNFSResources(nfsResourceName, nfsNamespace)
+	err := flavor.deleteNFSResources("", nfsResourceName, nfsNamespace)
 	if err != nil {
 		return err
 	}
@@ -375,7 +378,7 @@ func (flavor *Flavor) DeleteNFSVolume(volumeID string) error {
 	if err != nil {
 		return err
 	}
-	err = flavor.deleteNFSResources(nfsResourceName, nfsNamespace)
+	err = flavor.deleteNFSResources(volumeID, nfsResourceName, nfsNamespace)
 	if err != nil {
 		return err
 	}
@@ -383,7 +386,7 @@ func (flavor *Flavor) DeleteNFSVolume(volumeID string) error {
 	return err
 }
 
-func (flavor *Flavor) deleteNFSResources(nfsResourceName, nfsNamespace string) (err error) {
+func (flavor *Flavor) deleteNFSResources(volumeID, nfsResourceName, nfsNamespace string) (err error) {
 	// delete deployment deployment/hpe-nfs-<originalclaim-uid>
 	err = flavor.deleteNFSDeployment(nfsResourceName, nfsNamespace)
 	if err != nil {
@@ -402,7 +405,43 @@ func (flavor *Flavor) deleteNFSResources(nfsResourceName, nfsNamespace string) (
 	if err != nil {
 		log.Errorf("unable to delete nfs service %s as part of cleanup, err %s", nfsResourceName, err.Error())
 	}
+
+	roleName := nfsPrefix + volumeID + nfsRoleSuffix
+	err = flavor.deleteNFSRole(volumeID, roleName, nfsNamespace)
+	if err != nil {
+		log.Errorf("unable to delete role %s as part of cleanup, err %s", roleName, err.Error())
+	}
+
+	roleBindingName := nfsPrefix + volumeID + nfsRoleBindingSuffix
+	err = flavor.deleteNFSRoleBinding(volumeID, roleBindingName, nfsNamespace)
+	if err != nil {
+		log.Errorf("unable to delete role binding %s as part of cleanup, err %s", roleBindingName, err.Error())
+	}
 	return err
+}
+
+func (flavor *Flavor) deleteNFSRole(volumeID, roleName, nfsNamespace string) error {
+	log.Tracef(">>>>> deleteNFSRole for the volume %s", volumeID)
+	defer log.Tracef("<<<<< deleteNFSRole")
+	err := flavor.kubeClient.RbacV1().Roles(nfsNamespace).Delete(context.Background(), roleName, meta_v1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		log.Errorf("failed to delete the role %s for volume %s, err %+v", roleName, volumeID, err)
+		return err
+	}
+	log.Infof("Triggered deletion of role %s", roleName)
+	return nil
+}
+
+func (flavor *Flavor) deleteNFSRoleBinding(volumeID, roleBindingName, nfsNamespace string) error {
+	log.Tracef(">>>>> deleteNFSRoleBinding for the volume %s", volumeID)
+	defer log.Tracef("<<<<< deleteNFSRoleBinding")
+	err := flavor.kubeClient.RbacV1().RoleBindings(nfsNamespace).Delete(context.Background(), roleBindingName, meta_v1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		log.Errorf("failed to delete the role binding %s for volume %s, err %+v", roleBindingName, volumeID, err)
+		return err
+	}
+	log.Infof("Triggered deletion of role binding %s", roleBindingName)
+	return nil
 }
 
 func (flavor *Flavor) getNFSResourceNameByVolumeID(volumeID string) (string, error) {
