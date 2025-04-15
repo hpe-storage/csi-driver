@@ -1,8 +1,14 @@
 # throw away builder image
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.5-1732804088  AS build
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.5-1741850090 AS build
+
+# pick golang build version from https://go.dev/dl
+ENV BUILDGO=1.24.1
 
 # install prereqs
-RUN dnf install -y make wget golang
+RUN dnf install -y make wget
+RUN wget -O /tmp/go.tar.gz https://go.dev/dl/go$BUILDGO.linux-amd64.tar.gz && \
+    tar xzv -C/ -f /tmp/go.tar.gz
+ENV PATH=/go/bin:$PATH
 
 # build driver
 WORKDIR /usr/src/hpe-csi-driver
@@ -17,7 +23,7 @@ ARG TARGETPLATFORM
 RUN make ARCH=$TARGETARCH compile # $TARGETPLATFORM
 
 # image build
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.5-1731593028
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.5-1741850109
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD cmd/csi-driver/AlmaLinux-Base.repo /etc/yum.repos.d/
@@ -32,7 +38,7 @@ RUN ln -s /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11
 LABEL name="HPE CSI Driver for Kubernetes" \
     maintainer="HPE Storage" \
     vendor="HPE" \
-    version="2.5.2-beta" \
+    version="2.5.2" \
     summary="HPE CSI Driver for Kubernetes" \
     description="The HPE CSI Driver for Kubernetes enables container orchestrators, such as Kubernetes and OpenShift, to manage the life-cycle of persistent storage." \
     io.k8s.display-name="HPE CSI Driver for Kubernetes" \
@@ -68,7 +74,6 @@ RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/multipathd \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/umount \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/ip \
-    && ln -s /chroot/chroot-host-wrapper.sh /chroot/dmidecode \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/dnsdomainname \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/sg_inq \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/find
