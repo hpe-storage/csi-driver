@@ -75,6 +75,9 @@ const (
 	nfsLivenessProbeTimeoutSeconds = 4
 	nfsRoleBindingSuffix           = "-deployment-rollout-binding"
 	nfsRoleSuffix                  = "-deployment-rollout-role"
+	READINESS                      = "READINESS"
+	STARTUP                        = "STARTUP"
+	LIVENESS                       = "LIVENESS"
 )
 
 // NFSSpec for creating NFS resources
@@ -1025,7 +1028,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	startupProbe := &core_v1.Probe{
 		ProbeHandler: core_v1.ProbeHandler{
 			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "1", name, nfsNamespace},
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", STARTUP, name, nfsNamespace},
 			},
 		},
 		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
@@ -1036,7 +1039,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	readinessProbe := &core_v1.Probe{
 		ProbeHandler: core_v1.ProbeHandler{
 			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "2", name, nfsNamespace},
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", READINESS, name, nfsNamespace},
 			},
 		},
 		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
@@ -1047,7 +1050,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	livenessProbe := &core_v1.Probe{
 		ProbeHandler: core_v1.ProbeHandler{
 			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", "3", name, nfsNamespace},
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", LIVENESS, name, nfsNamespace},
 			},
 		},
 		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
