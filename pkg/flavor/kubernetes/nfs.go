@@ -69,9 +69,10 @@ const (
 	nfsResourcesKey                = "nfsResources"
 	nfsTolerationSecScKey          = "nfsTolerationSeconds"
 	defaultNfsTolerationSeconds    = 30
-	nfsProbeInitialDelaySeconds    = 3
-	nfsProbePeriodSeconds          = 30
-	nfsProbeTimeoutSeconds         = 2
+	nfsProbeInitialDelaySeconds    = 0
+	nfsProbePeriodSeconds          = 10
+	nfsProbeTimeoutSeconds         = 5
+	nfsLivenessProbePeriodSeconds  = 30
 	nfsLivenessProbeTimeoutSeconds = 90
 	nfsProbeReadinessKey           = "READINESS"
 	nfsProbeStartupKey             = "STARTUP"
@@ -1054,7 +1055,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 			},
 		},
 		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
-		PeriodSeconds:       nfsProbePeriodSeconds,
+		PeriodSeconds:       nfsLivenessProbePeriodSeconds,
 		TimeoutSeconds:      nfsLivenessProbeTimeoutSeconds,
 	}
 
