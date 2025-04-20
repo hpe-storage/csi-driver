@@ -69,15 +69,16 @@ const (
 	nfsResourcesKey                = "nfsResources"
 	nfsTolerationSecScKey          = "nfsTolerationSeconds"
 	defaultNfsTolerationSeconds    = 30
-	nfsProbeInitialDelaySeconds    = 10
-	nfsProbePeriodSeconds          = 5
-	nfsProbeTimeoutSeconds         = 2
-	nfsLivenessProbeTimeoutSeconds = 4
+	nfsProbeInitialDelaySeconds    = 0
+	nfsProbePeriodSeconds          = 10
+	nfsProbeTimeoutSeconds         = 5
+	nfsLivenessProbePeriodSeconds  = 30
+	nfsLivenessProbeTimeoutSeconds = 90
+	nfsProbeReadinessKey           = "READINESS"
+	nfsProbeStartupKey             = "STARTUP"
+	nfsProbeLivenessKey            = "LIVENESS"
 	nfsRoleBindingSuffix           = "-deployment-rollout-binding"
 	nfsRoleSuffix                  = "-deployment-rollout-role"
-	READINESS                      = "READINESS"
-	STARTUP                        = "STARTUP"
-	LIVENESS                       = "LIVENESS"
 )
 
 // NFSSpec for creating NFS resources
@@ -1028,7 +1029,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	startupProbe := &core_v1.Probe{
 		ProbeHandler: core_v1.ProbeHandler{
 			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", STARTUP, name, nfsNamespace},
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeStartupKey},
 			},
 		},
 		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
@@ -1039,7 +1040,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	readinessProbe := &core_v1.Probe{
 		ProbeHandler: core_v1.ProbeHandler{
 			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", READINESS, name, nfsNamespace},
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeReadinessKey},
 			},
 		},
 		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
@@ -1050,11 +1051,11 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	livenessProbe := &core_v1.Probe{
 		ProbeHandler: core_v1.ProbeHandler{
 			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", LIVENESS, name, nfsNamespace},
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeLivenessKey},
 			},
 		},
 		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
-		PeriodSeconds:       nfsProbePeriodSeconds,
+		PeriodSeconds:       nfsLivenessProbePeriodSeconds,
 		TimeoutSeconds:      nfsLivenessProbeTimeoutSeconds,
 	}
 
