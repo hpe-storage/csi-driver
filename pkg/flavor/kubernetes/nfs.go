@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 	apps_v1 "k8s.io/api/apps/v1"
 	core_v1 "k8s.io/api/core/v1"
+	rbac_v1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,38 +37,48 @@ const (
 	defaultRLimitMemory   = "2Gi"
 	defaultRRequestMemory = "512Mi"
 
-	creationInterval             = 60 // 300s with sleep interval of 5s
-	creationDelay                = 5 * time.Second
-	defaultExportPath            = "/export"
-	nfsResourceLimitsCPUKey      = "nfsResourceLimitsCpuM"
-	nfsResourceRequestsCPUKey    = "nfsResourceRequestsCpuM"
-	nfsResourceLimitsMemoryKey   = "nfsResourceLimitsMemoryMi"
-	nfsResourceRequestsMemoryKey = "nfsResourceRequestsMemoryMi"
-	nfsMountOptionsKey           = "nfsMountOptions"
-	nfsResourceLabelKey          = "nfsResourceLabel"
-	nfsNodeSelectorKey           = "csi.hpe.com/hpe-nfs"
-	nfsNodeSelectorDefaultValue  = "true"
-	nfsNodeSelectorParamKey      = "nfsNodeSelector"
-	nfsParentVolumeIDKey         = "nfs-parent-volume-id"
-	nfsNamespaceKey              = "nfsNamespace"
-	nfsSourceNamespaceKey        = "csi.storage.k8s.io/pvc/namespace"
-	nfsSourcePVCNameKey          = "csi.storage.k8s.io/pvc/name"
-	nfsProvisionerImageKey       = "nfsProvisionerImage"
-	pvcKind                      = "PersistentVolumeClaim"
-	nfsConfigFile                = "ganesha.conf"
-	nfsConfigMap                 = "hpe-nfs-config"
-	nfsServiceAccount            = "hpe-csi-nfs-sa"
-	defaultPodLabelKey           = "monitored-by"
-	defaultPodLabelValue         = "hpe-csi"
-	nfsAffinityLabelKey          = "spread-by"
-	nfsAffinityLabelValue        = "hpe-nfs"
-	nfsDedicatedTolerationKey    = "csi.hpe.com/hpe-nfs"
-	nfsProvisionedByKey          = "provisioned-by"
-	nfsProvisionedFromKey        = "provisioned-from"
-	nfsForeignStorageClassKey    = "nfsForeignStorageClass"
-	nfsResourcesKey              = "nfsResources"
-	nfsTolerationSecScKey        = "nfsTolerationSeconds"
-	defaultNfsTolerationSeconds  = 30
+	creationInterval               = 60 // 300s with sleep interval of 5s
+	creationDelay                  = 5 * time.Second
+	defaultExportPath              = "/export"
+	nfsResourceLimitsCPUKey        = "nfsResourceLimitsCpuM"
+	nfsResourceRequestsCPUKey      = "nfsResourceRequestsCpuM"
+	nfsResourceLimitsMemoryKey     = "nfsResourceLimitsMemoryMi"
+	nfsResourceRequestsMemoryKey   = "nfsResourceRequestsMemoryMi"
+	nfsMountOptionsKey             = "nfsMountOptions"
+	nfsResourceLabelKey            = "nfsResourceLabel"
+	nfsNodeSelectorKey             = "csi.hpe.com/hpe-nfs"
+	nfsNodeSelectorDefaultValue    = "true"
+	nfsNodeSelectorParamKey        = "nfsNodeSelector"
+	nfsParentVolumeIDKey           = "nfs-parent-volume-id"
+	nfsNamespaceKey                = "nfsNamespace"
+	nfsSourceNamespaceKey          = "csi.storage.k8s.io/pvc/namespace"
+	nfsSourcePVCNameKey            = "csi.storage.k8s.io/pvc/name"
+	nfsProvisionerImageKey         = "nfsProvisionerImage"
+	pvcKind                        = "PersistentVolumeClaim"
+	nfsConfigFile                  = "ganesha.conf"
+	nfsConfigMap                   = "hpe-nfs-config"
+	nfsServiceAccount              = "hpe-csi-nfs-sa"
+	defaultPodLabelKey             = "monitored-by"
+	defaultPodLabelValue           = "hpe-csi"
+	nfsAffinityLabelKey            = "spread-by"
+	nfsAffinityLabelValue          = "hpe-nfs"
+	nfsDedicatedTolerationKey      = "csi.hpe.com/hpe-nfs"
+	nfsProvisionedByKey            = "provisioned-by"
+	nfsProvisionedFromKey          = "provisioned-from"
+	nfsForeignStorageClassKey      = "nfsForeignStorageClass"
+	nfsResourcesKey                = "nfsResources"
+	nfsTolerationSecScKey          = "nfsTolerationSeconds"
+	defaultNfsTolerationSeconds    = 30
+	nfsProbeInitialDelaySeconds    = 0
+	nfsProbePeriodSeconds          = 10
+	nfsProbeTimeoutSeconds         = 5
+	nfsLivenessProbePeriodSeconds  = 30
+	nfsLivenessProbeTimeoutSeconds = 90
+	nfsProbeReadinessKey           = "READINESS"
+	nfsProbeStartupKey             = "STARTUP"
+	nfsProbeLivenessKey            = "LIVENESS"
+	nfsRoleBindingSuffix           = "-deployment-rollout-binding"
+	nfsRoleSuffix                  = "-deployment-rollout-role"
 )
 
 // NFSSpec for creating NFS resources
@@ -152,6 +163,13 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 		return nil, true, err
 	}
 
+	log.Tracef("Create a role and role binding for the pv %s and service account %s", pvName, nfsServiceAccount)
+	err = flavor.createRoleAndRoleBinding(pvName, nfsServiceAccount, nfsResourceNamespace)
+	if err != nil {
+		log.Errorf("error occured while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
+		return nil, true, fmt.Errorf("error occured while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
+	}
+
 	// create deployment with name hpe-nfs-<originalclaim-uid>
 	deploymentName := fmt.Sprintf("%s%s", nfsPrefix, claim.ObjectMeta.UID)
 	err = flavor.createNFSDeployment(deploymentName, nfsSpec, nfsResourceNamespace)
@@ -221,6 +239,71 @@ func (flavor *Flavor) createServiceAccount(nfsNamespace string) error {
 	return nil
 }
 
+func (flavor *Flavor) createRoleAndRoleBinding(pvName, nfsServiceAccount, nfsNamespace string) error {
+	log.Tracef(">>>>> createRoleAndRoleBinding for PV %s and ServiceAccount %s under namespace %s", pvName, nfsServiceAccount, nfsNamespace)
+	defer log.Tracef("<<<<< createRoleAndRoleBinding")
+
+	pvName = strings.TrimPrefix(pvName, "pvc-")
+	roleName := nfsPrefix + pvName + nfsRoleSuffix
+	role := &rbac_v1.Role{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name:      roleName,
+			Namespace: nfsNamespace,
+		},
+		Rules: []rbac_v1.PolicyRule{
+			{
+				APIGroups: []string{"apps"},
+				Resources: []string{"deployments"},
+				Verbs:     []string{"update", "patch", "list", "get"},
+			},
+		},
+	}
+
+	_, err := flavor.kubeClient.RbacV1().Roles(nfsNamespace).Create(context.Background(), role, meta_v1.CreateOptions{})
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			log.Infof("Role %s already exists.", roleName)
+		} else {
+			log.Errorf("Error occured while creating the role for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+			return err
+		}
+	} else {
+		log.Infof("Role %s for the the ServiceAccount %s created successfully", roleName, nfsServiceAccount)
+	}
+
+	roleBindingName := nfsPrefix + pvName + nfsRoleBindingSuffix
+	roleBinding := &rbac_v1.RoleBinding{
+		ObjectMeta: meta_v1.ObjectMeta{
+			Name:      roleBindingName,
+			Namespace: nfsNamespace,
+		},
+		Subjects: []rbac_v1.Subject{
+			{
+				Kind:      "ServiceAccount",
+				Name:      nfsServiceAccount,
+				Namespace: nfsNamespace,
+			},
+		},
+		RoleRef: rbac_v1.RoleRef{
+			Kind:     "Role",
+			Name:     roleName,
+			APIGroup: "rbac.authorization.k8s.io",
+		},
+	}
+	_, err = flavor.kubeClient.RbacV1().RoleBindings(nfsNamespace).Create(context.Background(), roleBinding, meta_v1.CreateOptions{})
+	if err != nil {
+		if errors.IsAlreadyExists(err) {
+			log.Infof("RoleBinding %s already exists.", roleBinding)
+			return nil
+		} else {
+			log.Errorf("Error occured while creating the role binding for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+			return err
+		}
+	}
+	log.Infof(" RoleBinding '%s for the ServiceAccount %s created successfully.", roleBindingName, nfsServiceAccount)
+	return nil
+}
+
 func (flavor *Flavor) createNFSConfigMap(nfsNamespace, hostDomain string) error {
 	log.Tracef(">>>>> createNFSConfigMap with namespace %s, domain %s", nfsNamespace, hostDomain)
 	defer log.Tracef("<<<<< createNFSConfigMap")
@@ -279,7 +362,7 @@ EXPORT
 func (flavor *Flavor) RollbackNFSResources(nfsResourceName string, nfsNamespace string) error {
 	log.Tracef(">>>>> RollbackNFSResources with name %s namespace %s", nfsResourceName, nfsNamespace)
 	defer log.Tracef("<<<<< RollbackNFSResources")
-	err := flavor.deleteNFSResources(nfsResourceName, nfsNamespace)
+	err := flavor.deleteNFSResources("", nfsResourceName, nfsNamespace)
 	if err != nil {
 		return err
 	}
@@ -299,7 +382,7 @@ func (flavor *Flavor) DeleteNFSVolume(volumeID string) error {
 	if err != nil {
 		return err
 	}
-	err = flavor.deleteNFSResources(nfsResourceName, nfsNamespace)
+	err = flavor.deleteNFSResources(volumeID, nfsResourceName, nfsNamespace)
 	if err != nil {
 		return err
 	}
@@ -307,7 +390,7 @@ func (flavor *Flavor) DeleteNFSVolume(volumeID string) error {
 	return err
 }
 
-func (flavor *Flavor) deleteNFSResources(nfsResourceName, nfsNamespace string) (err error) {
+func (flavor *Flavor) deleteNFSResources(volumeID, nfsResourceName, nfsNamespace string) (err error) {
 	// delete deployment deployment/hpe-nfs-<originalclaim-uid>
 	err = flavor.deleteNFSDeployment(nfsResourceName, nfsNamespace)
 	if err != nil {
@@ -326,7 +409,43 @@ func (flavor *Flavor) deleteNFSResources(nfsResourceName, nfsNamespace string) (
 	if err != nil {
 		log.Errorf("unable to delete nfs service %s as part of cleanup, err %s", nfsResourceName, err.Error())
 	}
+
+	roleName := nfsPrefix + volumeID + nfsRoleSuffix
+	err = flavor.deleteNFSRole(volumeID, roleName, nfsNamespace)
+	if err != nil {
+		log.Errorf("unable to delete role %s as part of cleanup, err %s", roleName, err.Error())
+	}
+
+	roleBindingName := nfsPrefix + volumeID + nfsRoleBindingSuffix
+	err = flavor.deleteNFSRoleBinding(volumeID, roleBindingName, nfsNamespace)
+	if err != nil {
+		log.Errorf("unable to delete role binding %s as part of cleanup, err %s", roleBindingName, err.Error())
+	}
 	return err
+}
+
+func (flavor *Flavor) deleteNFSRole(volumeID, roleName, nfsNamespace string) error {
+	log.Tracef(">>>>> deleteNFSRole for the volume %s", volumeID)
+	defer log.Tracef("<<<<< deleteNFSRole")
+	err := flavor.kubeClient.RbacV1().Roles(nfsNamespace).Delete(context.Background(), roleName, meta_v1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		log.Errorf("failed to delete the role %s for volume %s, err %+v", roleName, volumeID, err)
+		return err
+	}
+	log.Infof("Triggered deletion of role %s", roleName)
+	return nil
+}
+
+func (flavor *Flavor) deleteNFSRoleBinding(volumeID, roleBindingName, nfsNamespace string) error {
+	log.Tracef(">>>>> deleteNFSRoleBinding for the volume %s", volumeID)
+	defer log.Tracef("<<<<< deleteNFSRoleBinding")
+	err := flavor.kubeClient.RbacV1().RoleBindings(nfsNamespace).Delete(context.Background(), roleBindingName, meta_v1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		log.Errorf("failed to delete the role binding %s for volume %s, err %+v", roleBindingName, volumeID, err)
+		return err
+	}
+	log.Infof("Triggered deletion of role binding %s", roleBindingName)
+	return nil
 }
 
 func (flavor *Flavor) getNFSResourceNameByVolumeID(volumeID string) (string, error) {
@@ -907,6 +1026,44 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		LabelSelector:     &podLabelSelector,
 	}
 
+	startupProbe := &core_v1.Probe{
+		ProbeHandler: core_v1.ProbeHandler{
+			Exec: &core_v1.ExecAction{
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeStartupKey},
+			},
+		},
+		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
+		PeriodSeconds:       nfsProbePeriodSeconds,
+		TimeoutSeconds:      nfsProbeTimeoutSeconds,
+	}
+
+	readinessProbe := &core_v1.Probe{
+		ProbeHandler: core_v1.ProbeHandler{
+			Exec: &core_v1.ExecAction{
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeReadinessKey},
+			},
+		},
+		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
+		PeriodSeconds:       nfsProbePeriodSeconds,
+		TimeoutSeconds:      nfsProbeTimeoutSeconds,
+	}
+
+	livenessProbe := &core_v1.Probe{
+		ProbeHandler: core_v1.ProbeHandler{
+			Exec: &core_v1.ExecAction{
+				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeLivenessKey},
+			},
+		},
+		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
+		PeriodSeconds:       nfsLivenessProbePeriodSeconds,
+		TimeoutSeconds:      nfsLivenessProbeTimeoutSeconds,
+	}
+
+	containers := []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)}
+	containers[0].StartupProbe = startupProbe
+	containers[0].ReadinessProbe = readinessProbe
+	containers[0].LivenessProbe = livenessProbe
+
 	podSpec := core_v1.PodTemplateSpec{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:        name,
@@ -915,7 +1072,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		},
 		Spec: core_v1.PodSpec{
 			ServiceAccountName:        nfsServiceAccount,
-			Containers:                []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)},
+			Containers:                containers,
 			RestartPolicy:             core_v1.RestartPolicyAlways,
 			Volumes:                   volumes,
 			HostIPC:                   false,
