@@ -46,7 +46,7 @@ func (flavor *Flavor) HandleFileNodePublish(req *csi.NodePublishVolumeRequest) (
 	exportPath, existExportPath = req.VolumeContext[fileMountPathKey]
 	if !existHostIP || !existExportPath {
 		errStr := fmt.Sprintf("failed to create file provisioned volume with hostip: %s, and mount path: %s, host ip or mount path should not be empty ", clusterIP, exportPath)
-		log.Errorf(errStr)
+		log.Errorln(errStr)
 		return nil, status.Error(codes.Internal, errStr)
 	}
 	source := fmt.Sprintf("%s:%s", clusterIP, exportPath)

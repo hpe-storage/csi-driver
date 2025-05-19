@@ -166,8 +166,8 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	log.Tracef("Create a role and role binding for the pv %s and service account %s", pvName, nfsServiceAccount)
 	err = flavor.createRoleAndRoleBinding(pvName, nfsServiceAccount, nfsResourceNamespace)
 	if err != nil {
-		log.Errorf("error occured while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
-		return nil, true, fmt.Errorf("error occured while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
+		log.Errorf("error occurred while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
+		return nil, true, fmt.Errorf("error occurred while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
 	}
 
 	// create deployment with name hpe-nfs-<originalclaim-uid>
@@ -264,7 +264,7 @@ func (flavor *Flavor) createRoleAndRoleBinding(pvName, nfsServiceAccount, nfsNam
 		if errors.IsAlreadyExists(err) {
 			log.Infof("Role %s already exists.", roleName)
 		} else {
-			log.Errorf("Error occured while creating the role for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+			log.Errorf("Error occurred while creating the role for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
 			return err
 		}
 	} else {
@@ -295,10 +295,9 @@ func (flavor *Flavor) createRoleAndRoleBinding(pvName, nfsServiceAccount, nfsNam
 		if errors.IsAlreadyExists(err) {
 			log.Infof("RoleBinding %s already exists.", roleBinding)
 			return nil
-		} else {
-			log.Errorf("Error occured while creating the role binding for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
-			return err
 		}
+		log.Errorf("Error occurred while creating the role binding for ServiceAccount %s:%s", nfsServiceAccount, err.Error())
+		return err
 	}
 	log.Infof(" RoleBinding '%s for the ServiceAccount %s created successfully.", roleBindingName, nfsServiceAccount)
 	return nil

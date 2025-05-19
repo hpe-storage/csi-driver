@@ -54,6 +54,8 @@ const (
 	PingTimeout             = 5 * time.Second
 	DefaultIscsiPort        = 3260
 	iscsiSessionDir         = "/sys/class/iscsi_session"
+	iscsiSessionNotFound    = "No matching sessions found"
+	iscsiNodeNotFound       = "No records found"
 )
 
 var (
@@ -906,13 +908,19 @@ func iscsiLogoutOfTarget(target *model.IscsiTarget) (err error) {
 	iscsiMutex.Lock()
 	defer iscsiMutex.Unlock()
 
-	if target == nil || target.Name == "" {
+	if target == nil || target.Name == "" || target.Address == "" {
 		return fmt.Errorf("Empty target name provided to logout")
 	}
-	args := []string{"--mode", "node", "-u", "-T", target.Name}
+	args := []string{"--mode", "node", "-p", target.Address, "-u", "-T", target.Name}
 	out, _, err := util.ExecCommandOutput(iscsicmd, args)
 	if err != nil {
-		return fmt.Errorf("logout failed for %s. Error : %s", target.Name, err.Error())
+		if strings.Contains(err.Error(), iscsiSessionNotFound) {
+			log.Infof("session not found for %s at %s", target.Name, target.Address)
+			return nil
+		} else {
+			return fmt.Errorf("logout failed for %s. Error : %s", target.Name, err.Error())
+		}
+
 	}
 	for _, line := range strings.Split(out, "\n") {
 		if strings.HasSuffix(line, successfulDot) == true {
@@ -929,13 +937,18 @@ func iscsiDeleteNode(target *model.IscsiTarget) (err error) {
 	iscsiMutex.Lock()
 	defer iscsiMutex.Unlock()
 
-	if target == nil || target.Name == "" {
+	if target == nil || target.Name == "" || target.Address == "" {
 		return fmt.Errorf("Empty target to delete Node")
 	}
-	args := []string{"--mode", "node", "-o", "delete", "-T", target.Name}
+	args := []string{"--mode", "node", "-p", target.Address, "-o", "delete", "-T", target.Name}
 	_, _, err = util.ExecCommandOutput(iscsicmd, args)
 	if err != nil {
-		return fmt.Errorf("delete failed for %s. Error %s", target.Name, err.Error())
+		if strings.Contains(err.Error(), iscsiNodeNotFound) {
+			log.Infof("node not found for target %s at %s", target.Name, target.Address)
+			return nil
+		} else {
+			return fmt.Errorf("delete failed for %s. Error %s", target.Name, err.Error())
+		}
 	}
 
 	return nil

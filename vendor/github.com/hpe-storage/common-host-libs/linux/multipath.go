@@ -20,6 +20,7 @@ var (
 	orphanPathRegexp     = regexp.MustCompile(getOrphanPathsPattern())
 	multipathMutex       sync.Mutex
 	DeviceVendorPatterns = []string{"Nimble", "3PARdata", "TrueNAS", "FreeNAS"}
+	multipathDeviceBusy  = "Device or resource busy"
 )
 
 const (
@@ -228,8 +229,12 @@ func cleanupDeviceAndSlaves(dev *model.Device) (err error) {
 	// remove dm device
 	removeErr := multipathRemoveDmDevice(dev)
 	if removeErr != nil {
-		log.Error(removeErr.Error())
-		// proceed with the rest of the path cleanup nevertheless, as mpath might get deleted asynchronously
+		// if the device is busy, the retry should trigger here.
+		if strings.Contains(removeErr.Error(), multipathDeviceBusy) {
+			return fmt.Errorf("multipath device busy: %s", removeErr.Error())
+		} else {
+			log.Error(removeErr.Error())
+		}
 	}
 
 	var isGst = true
