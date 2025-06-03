@@ -15,6 +15,12 @@ const (
 	FsOwnerOpt = "fsOwner"
 )
 
+// constants for background operation status
+const (
+	BackgroundOperationStatusKey       = "background_operation_status"
+	BackgroundOperationStatusCompleted = "Completed"
+)
+
 // type of Scope (volume, group)
 type targetScope int
 
