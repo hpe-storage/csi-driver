@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/net/context"
@@ -18,6 +19,23 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/storageprovider"
 	"github.com/hpe-storage/common-host-libs/util"
+)
+
+const (
+	cloneStatusKey              = "cloneStatus"
+	pendingKey                  = "Pending"
+	completedKey                = "Completed"
+	failedOrCancelledKey        = "FailedOrCancelled"
+	remoteCopyGroupKey          = "remote_copy_group"
+	replicationDevicesKey       = "replication_devices"
+	volumeExistInPrimarySiteKey = "volume_exist_in_primary_site"
+	cloneNotRequestedKey        = "CloneNotRequested"
+	activeKey                   = "Active"
+	cloneOfKey                  = "clone_of"
+	virtualCopyOfKey            = "virtual_copy_of"
+	importVolAsCloneKey         = "import_vol_as_clone"
+	importVolumeNameKey         = "import_volume_name"
+	maxAttempts                 = 15
 )
 
 // Retrieves volume access type: 'block' or 'filesystem'
@@ -527,8 +545,25 @@ func (driver *Driver) createVolume(
 				log.Tracef("Clone creation failed, err: %s", err.Error())
 				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
 			}
+			_, err = waitForCloneCompletion(storageProvider, volume.ID)
+			if err != nil {
+				log.Errorf("Failed to wait for clone completion, err: %s", err.Error())
+				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to wait for clone completion for volume %s, %s", name, err.Error()))
+			}
 			// update volume context with cloned volume parameters
 			updateVolumeContext(respVolContext, volume)
+
+			if isRcgRequested(createOptions) {
+				log.Infof("About to create a new volume '%s' with size %d and options %+v", name, size, createOptions)
+				removeCloneReferenceFromCreateOptions(createOptions)
+				volume, err := storageProvider.CreateVolume(name, description, size, createOptions)
+				if err != nil {
+					log.Trace("Volume creation failed, err: " + err.Error())
+					return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create volume %s, %s", name, err.Error()))
+				}
+				// update volume context with volume parameters
+				updateVolumeContext(respVolContext, volume)
+			}
 			// Return newly cloned volume (clone from snapshot)
 			return &csi.Volume{
 				VolumeId:           volume.ID,
@@ -569,8 +604,25 @@ func (driver *Driver) createVolume(
 				log.Tracef("Clone creation failed, err: %s", err.Error())
 				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
 			}
+			_, err = waitForCloneCompletion(storageProvider, volume.ID)
+			if err != nil {
+				log.Errorf("Failed to wait for clone completion, err: %s", err.Error())
+				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to wait for clone completion for volume %s, %s", name, err.Error()))
+			}
 			// update volume context with cloned volume parameters
 			updateVolumeContext(respVolContext, volume)
+
+			if isRcgRequested(createOptions) {
+				log.Infof("Rcg requested, about to create a new volume '%s' with size %d and options %+v", name, size, createOptions)
+				removeCloneReferenceFromCreateOptions(createOptions)
+				volume, err := storageProvider.CreateVolume(name, description, size, createOptions)
+				if err != nil {
+					log.Trace("Volume creation failed, err: " + err.Error())
+					return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create volume %s, %s", name, err.Error()))
+				}
+				// update volume context with volume parameters
+				updateVolumeContext(respVolContext, volume)
+			}
 			// Return newly cloned volume (clone from volume)
 			return &csi.Volume{
 				VolumeId:           volume.ID,
@@ -1778,4 +1830,130 @@ func (driver *Driver) validateHostEncryptionParameters(createParameters map[stri
 	}
 
 	return falseKey, nil
+}
+
+// waitForCloneCompletion polls the status of a clone task for the specified volume using the provided storageProvider.
+// It repeatedly checks the clone task status until it is completed, failed, cancelled,active or a maximum number of attempts is reached.
+// The function returns true if the clone task completes successfully, false if it is not requested, fails, or is cancelled,
+// and an error if there is a failure in retrieving the status or if the task does not complete within the allowed attempts.
+//
+// Parameters:
+//   - storageProvider: The storage provider interface used to query the clone task status.
+//   - volumeID: The identifier of the volume for which the clone task status is being checked.
+//
+// Returns:
+//   - bool: Indicates whether the clone task completed successfully.
+//   - error: An error if the status retrieval fails, the task fails/cancels, or the maximum attempts are exceeded.
+
+func waitForCloneCompletion(storageProvider storageprovider.StorageProvider, volumeID string) (bool, error) {
+	attempts := 0
+	for {
+		status, err := getCloneTaskStatus(storageProvider, volumeID)
+		attempts++
+		if err != nil {
+			log.Errorf("Attempt %d: error getting clone task status: %v", attempts, err)
+			return false, err
+		}
+		log.Infof("Attempt %d: clone task status: %s", attempts, status)
+		if status == cloneNotRequestedKey {
+			log.Infof("Clone task not requested for volume %s, returning false", volumeID)
+			return false, nil
+		}
+		if status == completedKey {
+			log.Infof("Clone task completed successfully for volume %s", volumeID)
+			return true, nil
+		}
+		if status == failedOrCancelledKey {
+			return false, fmt.Errorf("clone task failed for volume %s", volumeID)
+		}
+		if status != pendingKey && status != activeKey {
+			return false, fmt.Errorf("unexpected clone task status '%s' for volume %s", status, volumeID)
+		}
+		if attempts >= maxAttempts {
+			break
+		}
+		time.Sleep(10 * time.Second)
+	}
+	return false, fmt.Errorf("clone task did not complete after %d attempts for volume %s", maxAttempts, volumeID)
+}
+
+// getCloneTaskStatus retrieves the status of a clone task for a given volume ID using the provided storage provider.
+// It returns the current status as a string and an error if the status could not be determined.
+// Possible returned statuses include pending, active, completed, failed/cancelled, or not requested.
+// If the clone task was not initiated, it returns a specific "not requested" status.
+// If the status value is not a string or is unknown, an error is returned.
+func getCloneTaskStatus(storageProvider storageprovider.StorageProvider, id string) (string, error) {
+	log.Trace(">>>>> getCloneTaskStatus")
+	defer log.Trace("<<<<< getCloneTaskStatus")
+
+	vol, err := storageProvider.GetVolume(id)
+	if err != nil {
+		log.Error("Failed to get clone task status for volume ", id, ": ", err.Error())
+		return "", status.Error(codes.Internal, fmt.Sprintf("Failed to get clone task status for volume %s: %s", id, err.Error()))
+	}
+
+	val, ok := vol.Config[cloneStatusKey]
+	if !ok || val == nil || val == "" {
+		log.Errorf("clone was not initiated for volume %s", id)
+		return cloneNotRequestedKey, nil
+	}
+	statusStr, isString := val.(string)
+	if !isString {
+		log.Errorf("clone_task_status value is not a string for volume %s", id)
+		return "", status.Error(codes.Internal, fmt.Sprintf("clone_task_status value is not a string for volume %s", id))
+	}
+
+	switch statusStr {
+	case pendingKey, activeKey:
+		return statusStr, nil // Caller should retry
+	case completedKey, failedOrCancelledKey:
+		return statusStr, nil // Caller should NOT retry
+	default:
+		log.Errorf("Unknown clone_task_status '%s' for volume %s", statusStr, id)
+		return "", status.Error(codes.Internal, fmt.Sprintf("Unknown clone_task_status '%s' for volume %s", statusStr, id))
+	}
+}
+
+// isRcgRequested checks if both the remote copy group and replication devices options
+// are present and non-empty in the provided createOptions map. It returns true if both
+// conditions are met, indicating that a remote copy group is requested.
+func isRcgRequested(createOptions map[string]interface{}) bool {
+	remoteCopyGroupVal, rcgOk := createOptions[remoteCopyGroupKey]
+	replicationDevicesVal, rdOk := createOptions[replicationDevicesKey]
+
+	if rcgOk && remoteCopyGroupVal != "" && rdOk && replicationDevicesVal != "" {
+		return true
+	}
+	return false
+}
+
+// removeCloneReferenceFromCreateOptions removes specific clone-related keys from the provided
+// createOptions map, ensuring that any references to cloning or importing volumes are deleted.
+// After removing these keys, it sets the volumeExistInPrimarySiteKey to true in the map.
+// This function is typically used to sanitize the createOptions before proceeding with
+// volume creation operations that should not retain clone references.
+//
+// The following keys are removed if present:
+//   - cloneOfKey
+//   - virtualCopyOfKey
+//   - importVolAsCloneKey
+//   - importVolumeNameKey
+//
+// Parameters:
+//   - createOptions: map[string]interface{} - The map of options to be sanitized.
+//
+// Side Effects:
+//   - Modifies the createOptions map in place by removing certain keys and setting a flag.
+func removeCloneReferenceFromCreateOptions(createOptions map[string]interface{}) {
+	// Remove the clone reference from the create options to avoid confusion on csp side
+	keys := []string{cloneOfKey, virtualCopyOfKey, importVolAsCloneKey, importVolumeNameKey}
+	for _, key := range keys {
+		if _, exists := createOptions[key]; exists {
+			log.Tracef("Removing key '%s' from createOptions", key)
+			delete(createOptions, key)
+		} else {
+			log.Tracef("Key '%s' not present in createOptions, nothing to remove", key)
+		}
+	}
+	createOptions[volumeExistInPrimarySiteKey] = true
 }
