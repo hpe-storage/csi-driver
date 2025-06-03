@@ -20,6 +20,11 @@ import (
 	"github.com/hpe-storage/common-host-libs/util"
 )
 
+const (
+	BackgroundOperationStatusKey     = "background_operation_status"
+	BackgroundOperationStatusSuccess = "Completed"
+)
+
 // Retrieves volume access type: 'block' or 'filesystem'
 func (driver *Driver) getVolumeAccessType(volCap *csi.VolumeCapability) (model.VolumeAccessType, error) {
 
@@ -448,6 +453,23 @@ func (driver *Driver) createVolume(
 				fmt.Sprintf("Volume %s with size %v already exists but different size %v being requested.",
 					name, existingVolume.Size, size))
 		}
+		isbackgroudOperationDone, err := checkBackgroundOperationStatus(existingVolume)
+		if err != nil {
+			log.Errorf("Background operation for volume %s is not completed: %s", existingVolume.Name, err.Error())
+			return nil, status.Error(codes.Aborted, fmt.Sprintf("Volume background operation is not completed: %s", err.Error()))
+		}
+		// applicable only if the existing volume is in the background operation state
+		if isbackgroudOperationDone {
+			updateVolumeContext(respVolContext, existingVolume)
+			log.Tracef("Returning the volume '%s' with size %d after successful completion of background operation", existingVolume.Name, existingVolume.Size)
+			return &csi.Volume{
+				VolumeId:           existingVolume.ID,
+				CapacityBytes:      existingVolume.Size,
+				VolumeContext:      respVolContext,
+				ContentSource:      volumeContentSource,
+				AccessibleTopology: accessibilityRequirements.GetRequisite(),
+			}, nil
+		}
 		// update volume context with volume parameters
 		updateVolumeContext(respVolContext, existingVolume)
 		// Return existing volume with volume context info
@@ -527,6 +549,11 @@ func (driver *Driver) createVolume(
 				log.Tracef("Clone creation failed, err: %s", err.Error())
 				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
 			}
+			_, err = checkBackgroundOperationStatus(volume)
+			if err != nil {
+				log.Errorf("Background operation for volume %s is not completed: %s", volume.Name, err.Error())
+				return nil, status.Error(codes.Aborted, fmt.Sprintf("Volume background operation is not completed: %s", err.Error()))
+			}
 			// update volume context with cloned volume parameters
 			updateVolumeContext(respVolContext, volume)
 			// Return newly cloned volume (clone from snapshot)
@@ -568,6 +595,11 @@ func (driver *Driver) createVolume(
 			if err != nil {
 				log.Tracef("Clone creation failed, err: %s", err.Error())
 				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
+			}
+			_, err = checkBackgroundOperationStatus(volume)
+			if err != nil {
+				log.Errorf("Background operation for volume %s is not completed: %s", volume.Name, err.Error())
+				return nil, status.Error(codes.Aborted, fmt.Sprintf("Volume background operation is not completed: %s", err.Error()))
 			}
 			// update volume context with cloned volume parameters
 			updateVolumeContext(respVolContext, volume)
@@ -1778,4 +1810,35 @@ func (driver *Driver) validateHostEncryptionParameters(createParameters map[stri
 	}
 
 	return falseKey, nil
+}
+
+// checkBackgroundOperationStatus checks the status of a background operation for the given volume.
+// It inspects the volume's configuration for a specific status key. If the key is present and its value
+// indicates a successful background operation, it returns (true, nil). If the key is present but the
+// operation is still in progress or failed, it returns (false, error) with an appropriate message.
+// If the configuration or key is missing, or the value is empty, it assumes no background operation is in progress
+// and returns (false, nil).
+//
+// Parameters:
+//   - volume: Pointer to the Volume object whose background operation status is to be checked.
+//
+// Returns:
+//   - bool: true if the background operation completed successfully, false otherwise.
+//   - error: An error if a background operation is in progress or failed, nil otherwise.
+func checkBackgroundOperationStatus(volume *model.Volume) (bool, error) {
+	if volume.Config == nil {
+		// If the volume config is nil, assume no background operation is in progress
+		return false, nil
+	}
+	if val, ok := volume.Config[BackgroundOperationStatusKey]; ok {
+		if status, ok := val.(string); ok && status != "" {
+			log.Infof("Background operation status for volume %s: %s", volume.ID, status)
+			if status == BackgroundOperationStatusSuccess {
+				return true, nil
+			} else {
+				return false, fmt.Errorf("background operation for volume %s is not completed, current status is :%s", volume.ID, status)
+			}
+		}
+	}
+	return false, nil
 }
