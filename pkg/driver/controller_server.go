@@ -906,10 +906,15 @@ func (driver *Driver) controllerPublishVolume(
 		log.Tracef("Notifying CSP about Node with ID %s and UUID %s", node.ID, node.UUID)
 		log.Tracef("AccessProtocol set is %s", requestedAccessProtocol)
 		node.AccessProtocol = requestedAccessProtocol
-		if err = storageProvider.SetNodeContext(node); err != nil {
-			log.Error("err: ", err.Error())
-			return nil, status.Error(codes.Unavailable,
+		err = storageProvider.SetNodeContext(node)
+		if err != nil {
+			if strings.Contains(err.Error(), "dial tcp") || strings.Contains(err.Error(), "i/o timeout") {
+				log.Errorf("Error connecting to the CSP. err: %s", err.Error())
+			}else{
+				log.Error("err: ", err.Error())
+				return nil, status.Error(codes.Unavailable,
 				fmt.Sprintf("Failed to provide node %s to CSP err: %s", node.ID, err.Error()))
+			}
 		}
 	}
 
