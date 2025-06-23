@@ -908,7 +908,7 @@ func (driver *Driver) controllerPublishVolume(
 		node.AccessProtocol = requestedAccessProtocol
 		err = storageProvider.SetNodeContext(node)
 		// Check for error while setting node context. If the error message contains "dial tcp" or "i/o timeout",
-		// these are considered connection errors (e.g., CSP is unreachable or network timeout).
+		// these are considered connection errors (e.g., Array is unreachable or network timeout).
 		// Such errors are skipped to allow volume publishing to proceed in disaster recovery scenarios,
 		// where the primary array may be down and the secondary array is used for publishing volumes.
 		// Other errors are treated as fatal and will prevent publishing.
