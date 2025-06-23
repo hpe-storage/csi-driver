@@ -907,13 +907,18 @@ func (driver *Driver) controllerPublishVolume(
 		log.Tracef("AccessProtocol set is %s", requestedAccessProtocol)
 		node.AccessProtocol = requestedAccessProtocol
 		err = storageProvider.SetNodeContext(node)
+		// Check for error while setting node context. If the error message contains "dial tcp" or "i/o timeout",
+		// these are considered connection errors (e.g., CSP is unreachable or network timeout).
+		// Such errors are skipped to allow volume publishing to proceed in disaster recovery scenarios,
+		// where the primary array may be down and the secondary array is used for publishing volumes.
+		// Other errors are treated as fatal and will prevent publishing.
 		if err != nil {
 			if strings.Contains(err.Error(), "dial tcp") || strings.Contains(err.Error(), "i/o timeout") {
 				log.Errorf("Error connecting to the CSP. err: %s", err.Error())
 			}else{
 				log.Error("err: ", err.Error())
 				return nil, status.Error(codes.Unavailable,
-				fmt.Sprintf("Failed to provide node %s to CSP err: %s", node.ID, err.Error()))
+					fmt.Sprintf("Failed to provide node %s to CSP err: %s", node.ID, err.Error()))
 			}
 		}
 	}
