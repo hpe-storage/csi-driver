@@ -118,6 +118,10 @@ func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) 
 	return "", nil
 }
 
+func GetVolumeById(volumeId string) (*v1.PersistentVolume, error) {
+	return nil, nil
+}
+
 //nolint:revive
 func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
 	return "", nil

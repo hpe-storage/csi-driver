@@ -2030,6 +2030,17 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 			// This behaviour is peculiar to only k8s 1.19
 			stagedDevice, err = readStagedDeviceInfo(request.GetStagingTargetPath())
 			if err != nil {
+				//Check if it is a NFS client pod
+				log.Tracef("Staging device info not found, check if it is a NFS client pod.")
+				pv, err := driver.flavor.GetVolumeById(request.VolumeId)
+				if err != nil {
+					log.Errorf("Error occured while getting the persistent volume: %s", err.Error())
+				} else {
+					if driver.IsNFSResourceRequest(pv.Spec.CSI.VolumeAttributes) {
+						log.Warnf("The HPE CSI driver cannot handle filesystem resizing in the NFS client pod. Please restart the pod to reflect the updated size.")
+						return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("The HPE CSI driver cannot handle filesystem resizing in the NFS client pod. Please restart the pod to reflect the updated size."))
+					}
+				}
 				return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Cannot get staging device info from volume path %s, staged location %s, Error : %s", request.GetVolumePath(), request.GetStagingTargetPath(), err.Error()))
 			}
 		}
