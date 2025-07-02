@@ -118,7 +118,7 @@ func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) 
 	return "", nil
 }
 
-func GetVolumeById(volumeId string) (*v1.PersistentVolume, error) {
+func (flavor *Flavor) GetVolumeById(volumeId string) (*v1.PersistentVolume, error) {
 	return nil, nil
 }
 
