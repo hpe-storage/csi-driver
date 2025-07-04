@@ -2009,7 +2009,7 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 	} else {
 		if driver.IsNFSResourceRequest(pv.Spec.CSI.VolumeAttributes) {
 			log.Infof("NodeExpandVolume requested with NFS resources, returning success")
-			return nil, nil
+			return &csi.NodeExpandVolumeResponse{}, nil
 		}
 	}
 
