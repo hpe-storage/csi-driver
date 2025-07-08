@@ -778,7 +778,6 @@ func (flavor *Flavor) GetVolumeById(volumeId string) (*v1.PersistentVolume, erro
 	for _, pv := range pvs.Items {
 		if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == volumeId {
 			log.Tracef("Found matching PersistentVolume: %s: %+v\n", pv.Name, pv)
-			fmt.Printf("Full PV Details:\n%+v\n", pv)
 			return &pv, nil
 		}
 	}
