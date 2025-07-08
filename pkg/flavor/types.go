@@ -36,6 +36,7 @@ type Flavor interface {
 	HandleNFSNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
 	IsNFSVolume(volumeID string) bool
 	GetVolumePropertyOfPV(propertyName string, pvName string) (string, error)
+	GetVolumeById(volumeId string) (*v1.PersistentVolume, error)
 	GetNFSVolumeID(volumeID string) (string, error)
 	ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int64) error
 	GetOrchestratorVersion() (*version.Info, error)

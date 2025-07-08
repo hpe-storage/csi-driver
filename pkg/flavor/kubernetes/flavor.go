@@ -765,6 +765,26 @@ func (flavor *Flavor) GetVolumePropertyOfPV(propertyName string, pvName string) 
 	return "", nil
 }
 
+func (flavor *Flavor) GetVolumeById(volumeId string) (*v1.PersistentVolume, error) {
+	log.Tracef(">>>>> GetVolumeById, volumeID: %s", volumeId)
+	defer log.Trace("<<<<< GetVolumeById")
+
+	pvs, err := flavor.kubeClient.CoreV1().PersistentVolumes().List(context.Background(), meta_v1.ListOptions{})
+	if err != nil {
+		log.Errorf("Error getting the persistent volumes, err: %v", err.Error())
+		return nil, err
+	}
+
+	for _, pv := range pvs.Items {
+		if pv.Spec.CSI != nil && pv.Spec.CSI.VolumeHandle == volumeId {
+			log.Tracef("Found matching PersistentVolume: %s: %+v\n", pv.Name, pv)
+			return &pv, nil
+		}
+	}
+
+	return nil, fmt.Errorf("Persistent Volume not found with the volume ID %s", volumeId)
+}
+
 func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
 	log.Tracef(">>>>> GetOrchestratorVersion")
 	defer log.Tracef("<<<<< GetOrchestratorVersion")

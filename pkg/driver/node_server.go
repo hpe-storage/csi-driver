@@ -2000,6 +2000,19 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 	}
 	defer driver.ClearRequest(key)
 
+	//Check if it is a NFS client pod
+	log.Tracef("Checking whether the pod is a NFS resource")
+	pv, err := driver.flavor.GetVolumeById(request.VolumeId)
+	if err != nil {
+		log.Errorf("Error occured while getting the persistent volume: %s", err.Error())
+		return nil, status.Error(codes.Internal, fmt.Sprintf("Cannot find the volume for the volume ID: %s, Error : %s", request.VolumeId, err.Error()))
+	} else {
+		if driver.IsNFSResourceRequest(pv.Spec.CSI.VolumeAttributes) {
+			log.Infof("NodeExpandVolume requested with NFS resources, returning success")
+			return &csi.NodeExpandVolumeResponse{}, nil
+		}
+	}
+
 	accessType := model.MountType
 
 	// VolumeCapability is only available from CSI spec v1.2
