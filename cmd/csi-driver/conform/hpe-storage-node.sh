@@ -28,7 +28,7 @@ if [ -f /etc/os-release ]; then
     if [ $? -eq 0 ]; then
         CONFORM_TO=sles
     fi
-    echo $os_name | egrep -i "SLE Micro" >> /dev/null 2>&1
+    echo $os_name | egrep -i "SLE Micro|SL-Micro" >> /dev/null 2>&1
     if [ $? -eq 0 ]; then
         CONFORM_TO=slem
     fi
