@@ -2,7 +2,7 @@
 
 package dbservice
 
-import "github.com/Scalingo/go-etcd-lock/lock"
+import "github.com/Scalingo/go-etcd-lock/v5/lock"
 
 // DBService defines the interface to any DB related operations
 type DBService interface {
