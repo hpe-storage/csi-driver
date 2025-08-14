@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Scalingo/go-etcd-lock/lock"
-	v3 "github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
+	"github.com/Scalingo/go-etcd-lock/v5/lock"
+	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
+	v3 "go.etcd.io/etcd/client/v3"
 
 	"github.com/hpe-storage/common-host-libs/jsonutil"
 	log "github.com/hpe-storage/common-host-libs/logger"
@@ -83,9 +83,9 @@ func (d *DBClient) IsLocked(key string) (bool, error) {
 	locker := lock.NewEtcdLocker(d.Client)
 	lck, err := locker.Acquire(key, 1)
 	if err != nil {
-		// Check if it's lock err object
-		if lockErr, ok := err.(*lock.Error); ok {
-			log.Tracef("[Key: %s], %s", key, lockErr)
+		// Check if it's a lock error by matching the error string
+		if err.Error() == "already locked" {
+			log.Tracef("[Key: %s], %s", key, err)
 			return true, nil // Key already in 'locked' state
 		}
 		// Communication with etcd has failed or other error

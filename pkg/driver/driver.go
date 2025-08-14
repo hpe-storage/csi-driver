@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Scalingo/go-etcd-lock/lock"
+	"github.com/Scalingo/go-etcd-lock/v5/lock"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
