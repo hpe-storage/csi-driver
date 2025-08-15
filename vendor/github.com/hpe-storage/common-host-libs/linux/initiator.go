@@ -15,8 +15,8 @@ var (
 	initiatorNamePattern = "^InitiatorName=(?P<iscsiinit>.*)$"
 	iscsi                = "iscsi"
 	fc                   = "fc"
-	nvmeHostnqnPath      = "/etc/nvme/hostnqn"
-        nvmeHostnqnPattern   = "^(?P<nvmeinit>nqn\\..*)$"
+	nvmeHostnqnPath      = "/etc/nvme/hostnqn"        
+    	nvmeHostnqnPattern   = "^(?P<nvmeinit>nqn\\..*)$"
 	nvmeotcp             = "nvmeotcp"
 )
 
