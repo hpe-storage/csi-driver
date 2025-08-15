@@ -347,7 +347,7 @@ func (driver *Driver) createVolume(
 			}
 		}
 		errStr := fmt.Sprintf("Failed to create NFS provisioned volume %s, err %s, rollback status: %s", name, err.Error(), rollbackStatus)
-		log.Errorf(errStr)
+		log.Errorf("%s", errStr)
 		return nil, status.Error(codes.Internal, errStr)
 	}
 
@@ -576,7 +576,7 @@ func (driver *Driver) createVolume(
 			}
 			log.Tracef("Found parent volume: %+v", existingParentVolume)
 
-			// CON-3010 If requested size for clone volume is less than parent volume size 
+			// CON-3010 If requested size for clone volume is less than parent volume size
 			// then report error
 			if size < existingParentVolume.Size {
 				return nil,
@@ -692,7 +692,7 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 		log.Errorf("Volume %s with ID %s still in use", existingVolume.Name, existingVolume.ID)
 		// TODO: Return correct error code 'FailedPrecondition' as per CSI spec.
 		//       Here, we return 'internal' error code so that the external provisioner performs enough retries to cleanup the volume.
-		return status.Errorf(codes.Internal, fmt.Sprintf("Volume %s with ID %s is still in use", existingVolume.Name, existingVolume.ID))
+		return status.Errorf(codes.Internal, "Volume %s with ID %s is still in use", existingVolume.Name, existingVolume.ID)
 	}
 
 	// Get Storage Provider
@@ -713,7 +713,7 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	// check if snapshots exist
 	if len(snapshots) > 0 {
 		log.Tracef("Found snapshots for volume %s: %+v", volumeID, snapshots)
-		return status.Errorf(codes.FailedPrecondition, fmt.Sprintf("Volume %s with ID %s cannot be deleted as it has snapshots attached", existingVolume.Name, existingVolume.ID))
+		return status.Errorf(codes.FailedPrecondition, "Volume %s with ID %s cannot be deleted as it has snapshots attached", existingVolume.Name, existingVolume.ID)
 	}
 
 	// Delete the volume from the array
@@ -910,21 +910,21 @@ func (driver *Driver) controllerPublishVolume(
 	existingNode, err := storageProvider.GetNodeContext(node.UUID)
 	if err != nil {
 		log.Errorf("Error retrieving the node info from the CSP. err: %s", err.Error())
-		return nil, status.Error(codes.Unavailable, 
-		fmt.Sprintf("Error retrieving the node info for ID %s from the CSP, err: %s", node.UUID, err.Error()))
+		return nil, status.Error(codes.Unavailable,
+			fmt.Sprintf("Error retrieving the node info for ID %s from the CSP, err: %s", node.UUID, err.Error()))
 	}
 
 	// Configure access protocol defaulting to iSCSI when unspecified
-        var requestedAccessProtocol = volumeContext[accessProtocolKey]
-        if requestedAccessProtocol == "" {
-                // by default when no protocol specified make iscsi as default
-                requestedAccessProtocol = iscsi
-                log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
-        } else if requestedAccessProtocol == "iscsi" {
-                requestedAccessProtocol = iscsi
-        } else if requestedAccessProtocol == "fc" {
-                requestedAccessProtocol = fc
-        } else if requestedAccessProtocol == "nvmetcp" {
+	var requestedAccessProtocol = volumeContext[accessProtocolKey]
+	if requestedAccessProtocol == "" {
+		// by default when no protocol specified make iscsi as default
+		requestedAccessProtocol = iscsi
+		log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
+	} else if requestedAccessProtocol == "iscsi" {
+		requestedAccessProtocol = iscsi
+	} else if requestedAccessProtocol == "fc" {
+		requestedAccessProtocol = fc
+	} else if requestedAccessProtocol == "nvmetcp" {
 		requestedAccessProtocol = nvmetcp
 	}
 
@@ -958,7 +958,7 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	// TODO: add any additional info necessary to mount the device
-	publishContext := map[string]string{}	
+	publishContext := map[string]string{}
 
 	publishContext[serialNumberKey] = publishInfo.SerialNumber
 	publishContext[accessProtocolKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
@@ -966,7 +966,7 @@ func (driver *Driver) controllerPublishVolume(
 	publishContext[targetScopeKey] = requestedTargetScope
 	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
 	publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.DiscoveryIPs, ",")
-	
+
 	// Start of population of target array details
 	if publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails != nil {
 		secondaryArrayMarshalledStr, err := json.Marshal(&publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails)
@@ -988,7 +988,6 @@ func (driver *Driver) controllerPublishVolume(
 		publishContext[targetPortKey] = defaultNvmePort // default NVMe/TCP port
 		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.DiscoveryIPs, ",")
 	}
-
 
 	if readOnlyAccessMode {
 		publishContext[readOnlyKey] = strconv.FormatBool(readOnlyAccessMode)
@@ -1846,4 +1845,12 @@ func checkBackgroundOperationStatus(volume *model.Volume) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// ControllerModifyVolume implements the ControllerModifyVolume method for the csi.ControllerServer interface.
+func (driver *Driver) ControllerModifyVolume(
+	ctx context.Context, req *csi.ControllerModifyVolumeRequest,
+) (*csi.ControllerModifyVolumeResponse, error) {
+	// This driver does not support ControllerModifyVolume, return Unimplemented.
+	return nil, status.Error(codes.Unimplemented, "ControllerModifyVolume is not implemented")
 }

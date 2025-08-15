@@ -106,7 +106,7 @@ func csiCliHandler(cmd *cobra.Command) error {
 	// Parse the endpoint
 	_, addr, err := driver.ParseEndpoint(endpoint)
 	if err != nil {
-		log.Errorf(err.Error())
+		log.Errorf("%s", err.Error())
 		return err
 	}
 

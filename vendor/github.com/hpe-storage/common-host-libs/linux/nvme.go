@@ -24,6 +24,7 @@ const (
     nvmeListCmd            = "nvme list"
     nvmeListSubsysCmd      = "nvme list-subsys"
     defaultNvmePort        = "4420"
+    nvmeDiscoveryPort      = "8009"
     nvmeHostPathFormat     = "/sys/class/nvme/"
     nvmeNamespacePattern   = "nvme[0-9]+n[0-9]+"
     nvmeHostPath           = "/etc/nvme/hostnqn"
@@ -110,9 +111,21 @@ func ConnectNvmeTarget(target *model.NvmeTarget) error {
             "-a", ip,
             "-s", target.Port,
         }
-        _, rc, err := util.ExecCommandOutput(nvmecmd, args)
-        if err != nil && rc != 114 {
-            log.Warnf("NVMe connect failed for discovery IP %s, rc=%d, error: %s", ip, rc, err)
+        out, rc, err := util.ExecCommandOutput(nvmecmd, args)
+        // Treat rc=114 as success
+        if rc == 114 {
+            log.Infof("NVMe target %s connected via %s:%s (rc=114)", target.NQN, ip, target.Port)
+            success = true
+            continue
+        }
+        // Handle non-zero rc with 'already connected' message
+        if err != nil || rc != 0 {
+            if strings.Contains(strings.ToLower(out), "already connected") {
+                log.Infof("NVMe target %s already connected via %s:%s", target.NQN, ip, target.Port)
+                success = true
+                continue
+            }
+            log.Warnf("NVMe connect failed for discovery IP %s, rc=%d, error: %v", ip, rc, err)
             lastErr = err
             continue
         }
@@ -150,9 +163,44 @@ func HandleNvmeTcpDiscovery(volume *model.Volume) error {
         Port:    volume.TargetPort,
     }
 
-    // 3. Connect to NVMe target
-    if err := ConnectNvmeTarget(target); err != nil {
-        return fmt.Errorf("failed to connect to NVMe target: %v", err)
+    // 3. Perform discovery first to identify correct I/O portal(s)
+    discoveryIPs := volume.DiscoveryIPs
+    if len(discoveryIPs) == 0 && strings.TrimSpace(volume.TargetAddress) != "" {
+        discoveryIPs = strings.Split(volume.TargetAddress, ",")
+    }
+    endpoints, derr := discoverNvmeEndpoints(volume.Nqn, discoveryIPs)
+    if derr != nil {
+        log.Warnf("NVMe discover failed on %v: %v", discoveryIPs, derr)
+    }
+    // Prefer discovered endpoints; fall back to provided target if none found
+    if len(endpoints) > 0 {
+        // Build a combined target from discovered endpoints and reuse ConnectNvmeTarget
+        var epIPs []string
+        var epPort string
+        for _, ep := range endpoints {
+            if strings.TrimSpace(ep.IP) != "" {
+                epIPs = append(epIPs, ep.IP)
+            }
+            if epPort == "" && strings.TrimSpace(ep.Port) != "" {
+                epPort = strings.TrimSpace(ep.Port)
+            }
+        }
+        if epPort == "" {
+            epPort = defaultNvmePort
+        }
+        discTarget := &model.NvmeTarget{
+            NQN:     volume.Nqn,
+            Address: strings.Join(epIPs, ","),
+            Port:    epPort,
+        }
+        if err := ConnectNvmeTarget(discTarget); err != nil {
+            return fmt.Errorf("failed to connect to NVMe target %s via discovered endpoints: %v", volume.Nqn, err)
+        }
+    } else {
+        // Fallback: direct connect using provided target address
+        if err := ConnectNvmeTarget(target); err != nil {
+            return fmt.Errorf("failed to connect to NVMe target: %v", err)
+        }
     }
 
     // 4. Optionally, verify device presence (wait for /dev/nvmeXnY)
@@ -171,6 +219,80 @@ func HandleNvmeTcpDiscovery(volume *model.Volume) error {
 
     return nil
 }
+
+// nvmeEndpoint represents an NVMe/TCP I/O portal discovered via nvme discover
+type nvmeEndpoint struct {
+    IP    string
+    Port  string
+    Subnqn string
+}
+
+// discoverNvmeEndpoints runs nvme discover on the given discovery IPs and returns I/O portals matching the NQN
+func discoverNvmeEndpoints(nqn string, discoveryIPs []string) ([]nvmeEndpoint, error) {
+    var eps []nvmeEndpoint
+    if len(discoveryIPs) == 0 {
+        return eps, fmt.Errorf("no discovery IPs provided")
+    }
+    for _, ip := range discoveryIPs {
+        args := []string{
+            "discover",
+            "-t", "tcp",
+            "-a", ip,
+            "-s", nvmeDiscoveryPort,
+        }
+        out, rc, err := util.ExecCommandOutput(nvmecmd, args)
+        if err != nil || rc != 0 {
+            log.Warnf("NVMe discover failed on %s:%s: %v", ip, nvmeDiscoveryPort, err)
+            continue
+        }
+        parsed := parseDiscoveryOutput(out, nqn)
+        eps = append(eps, parsed...)
+    }
+    return eps, nil
+}
+
+// parseDiscoveryOutput extracts traddr/trsvcid/subnqn entries from nvme discover output
+func parseDiscoveryOutput(output string, wantedNqn string) []nvmeEndpoint {
+    lines := strings.Split(output, "\n")
+    var eps []nvmeEndpoint
+    var cur nvmeEndpoint
+    for _, line := range lines {
+        l := strings.TrimSpace(line)
+        if l == "" {
+            continue
+        }
+        if strings.HasPrefix(l, "=====") {
+            // new entry delimiter; flush previous if complete
+            if cur.IP != "" && cur.Port != "" && cur.Subnqn != "" {
+                if wantedNqn == "" || cur.Subnqn == wantedNqn {
+                    eps = append(eps, cur)
+                }
+            }
+            cur = nvmeEndpoint{}
+            continue
+        }
+        if strings.HasPrefix(l, "subnqn:") {
+            cur.Subnqn = strings.TrimSpace(strings.TrimPrefix(l, "subnqn:"))
+            continue
+        }
+        if strings.HasPrefix(l, "traddr:") {
+            cur.IP = strings.TrimSpace(strings.TrimPrefix(l, "traddr:"))
+            continue
+        }
+        if strings.HasPrefix(l, "trsvcid:") {
+            cur.Port = strings.TrimSpace(strings.TrimPrefix(l, "trsvcid:"))
+            continue
+        }
+    }
+    // flush last entry
+    if cur.IP != "" && cur.Port != "" && cur.Subnqn != "" {
+        if wantedNqn == "" || cur.Subnqn == wantedNqn {
+            eps = append(eps, cur)
+        }
+    }
+    return eps
+}
+
 
 // DisconnectNVMeTargetByNQN disconnects all NVMe controllers for a given subsystem NQN
 func DisconnectNVMeTargetByNQN(subsysNQN string) error {

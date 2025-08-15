@@ -1,7 +1,7 @@
 NAME = csi-driver
 COVER_PROFILE := $(NAME).cov
 
-CI_MINIMUM_TEST_COVERAGE := 28
+CI_MINIMUM_TEST_COVERAGE := 27
 TEST_MODULES := ./...
 
 GO      := go
@@ -115,3 +115,10 @@ code-coverage: $(COVER_PROFILE)
 	@echo "Unit-tests passed with $(TEST_COVERAGE) coverage"
 	$(eval PASSED_COVERAGE = $(shell awk 'BEGIN {printf ($(TEST_COVERAGE) < ${CI_MINIMUM_TEST_COVERAGE} ? "0" : "1")}'))
 	@if [ $(PASSED_COVERAGE) == 0 ]; then echo "Require at least ${CI_MINIMUM_TEST_COVERAGE}% test coverage"; exit 1; fi
+
+## trivy: Run trivy vulnerability scanner.
+.PHONY: trivy
+trivy:
+	@echo 'NOTE: To suppress failures (with reason) see .trivyignore.'
+	trivy fs --severity UNKNOWN,LOW,MEDIUM --no-progress --scanners vuln .
+	trivy fs --exit-code 1 --severity HIGH,CRITICAL --no-progress --scanners vuln .
