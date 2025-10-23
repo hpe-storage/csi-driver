@@ -39,6 +39,8 @@ const (
 	primeraMaxClientTimeout = 360
 	alletra9000             = "alletra9000"
 	primera                 = "primera"
+	alletrastoragemp        = "alletrastoragemp"
+	alletrastoragempTimeout = 90
 )
 
 // Driver is the object that implements the CSI interfaces
@@ -369,6 +371,11 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 		strings.Contains(strings.ToLower(credentials.ServiceName), primera) {
 		log.Tracef("Setting csp client timeout for alletra9000/primera service with %d seconds", primeraMaxClientTimeout)
 		credentials.CspClientTimeout = primeraMaxClientTimeout
+
+	}
+	if strings.Contains(strings.ToLower(credentials.ServiceName), alletrastoragemp) {
+		log.Tracef("Setting csp client timeout for alletrastoragemp service with %d seconds", alletrastoragempTimeout)
+		credentials.CspClientTimeout = alletrastoragempTimeout
 
 	}
 
