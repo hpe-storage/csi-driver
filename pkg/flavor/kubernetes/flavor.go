@@ -396,11 +396,11 @@ func getNetworksFromNode(node *model.Node) []string {
 }
 
 func getNqnsFromNode(node *model.Node) []string {
-    var nqns []string
-    for i := 0; i < len(node.Nqns); i++ {
-        nqns = append(nqns, *node.Nqns[i])
-    }
-    return nqns
+	var nqns []string
+	for i := 0; i < len(node.Nqns); i++ {
+		nqns = append(nqns, *node.Nqns[i])
+	}
+	return nqns
 }
 
 // UnloadNodeInfo remove the HPENodeInfo from the list of CRDs
@@ -1177,4 +1177,47 @@ func (flavor *Flavor) GetChapCredentials(volumeContext map[string]string) (*mode
 
 	// Return nil if no CHAP credentials are found.
 	return nil, nil
+}
+
+// UpdatePersistentVolume updates a PersistentVolume in Kubernetes
+func (flavor *Flavor) UpdatePersistentVolume(pv *v1.PersistentVolume) error {
+	log.Tracef(">>>>> UpdatePersistentVolume with PV %s", pv.Name)
+	defer log.Tracef("<<<<< UpdatePersistentVolume")
+
+	_, err := flavor.kubeClient.CoreV1().PersistentVolumes().Update(context.Background(), pv, meta_v1.UpdateOptions{})
+	if err != nil {
+		log.Errorf("Failed to update PV %s: %s", pv.Name, err.Error())
+		return err
+	}
+	return nil
+}
+
+// GetPodLabels retrieves all labels from a pod
+func (flavor *Flavor) GetPodLabels(name string, namespace string) (map[string]string, error) {
+	log.Tracef(">>>>> GetPodLabels, name: %s, namespace: %s", name, namespace)
+	defer log.Trace("<<<<< GetPodLabels")
+
+	pod, err := flavor.getPodByName(name, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	if pod == nil || pod.Labels == nil {
+		return make(map[string]string), nil
+	}
+
+	return pod.Labels, nil
+}
+
+// GetPVCByName to get the PVC details for given PVC name
+func (flavor *Flavor) GetPVCByName(name string, namespace string) (*v1.PersistentVolumeClaim, error) {
+	log.Tracef(">>>>> GetPVCByName, name: %s, namespace: %s", name, namespace)
+	defer log.Trace("<<<<< GetPVCByName")
+
+	pvc, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), name, meta_v1.GetOptions{})
+	if err != nil {
+		log.Errorf("Error retrieving the pvc %s/%s, err: %v", namespace, name, err.Error())
+		return nil, err
+	}
+	return pvc, nil
 }

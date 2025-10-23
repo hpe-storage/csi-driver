@@ -202,7 +202,7 @@ type Volume struct {
 	Iqn                   string                 `json:"iqn,omitempty"` // deprecated
 	Iqns                  []string               `json:"iqns,omitempty"`
 	Nqn                   string                 `json:"nqn,omitempty"`
-	TargetAddress	      string                 `json:"target_address,omitempty"`
+	TargetAddress         string                 `json:"target_address,omitempty"`
 	TargetPort            string                 `json:"target_port,omitempty"`
 	DiscoveryIP           string                 `json:"discovery_ip,omitempty"` // deprecated
 	DiscoveryIPs          []string               `json:"discovery_ips,omitempty"`
@@ -243,10 +243,11 @@ type IscsiSession struct {
 	InitiatorNameLegacy string `json:"initiatorName,omitempty"`
 	InitiatorIP         string `json:"initiator_ip_addr,omitempty"`
 }
+
 // NvmeSession info
 type NvmeSession struct {
-	InitiatorNQN       string `json:"initiator_nqn,omitempty"`
-	InitiatorIP        string `json:"initiator_ip_addr,omitempty"`
+	InitiatorNQN string `json:"initiator_nqn,omitempty"`
+	InitiatorIP  string `json:"initiator_ip_addr,omitempty"`
 }
 
 func (s FcSession) InitiatorWwpnStr() string {
@@ -317,7 +318,7 @@ type AccessInfo struct {
 type BlockDeviceAccessInfo struct {
 	AccessProtocol string   `json:"access_protocol,omitempty"`
 	TargetNames    []string `json:"target_names,omitempty"`
-	DiscoveryIPs []string `json:"discovery_ips,omitempty"`
+	DiscoveryIPs   []string `json:"discovery_ips,omitempty"`
 	LunID          int32    `json:"lun_id,omitempty"`
 	SecondaryBackendDetails
 	IscsiAccessInfo
@@ -346,9 +347,10 @@ type IscsiAccessInfo struct {
 
 // NvmetcpAccessInfo contains the fields necessary for NVMe/TCP access
 type NvmetcpAccessInfo struct {
-    TargetNames      []string `json:"target_names,omitempty"` // NQN(s)
-    TargetPort       string   `json:"target_port,omitempty"`  // e.g., 4420
+	TargetNames []string `json:"target_names,omitempty"` // NQN(s)
+	TargetPort  string   `json:"target_port,omitempty"`  // e.g., 4420
 }
+
 // VirtualDeviceAccessInfo contains the required data to access a virtual device
 type VirtualDeviceAccessInfo struct {
 }
@@ -420,16 +422,16 @@ type Token struct {
 
 // Node represents a host that would access volumes through the CSP
 type Node struct {
-	ID           string    `json:"id,omitempty"`
-	Name         string    `json:"name,omitempty"`
-	UUID         string    `json:"uuid,omitempty"`
-	Iqns         []*string `json:"iqns,omitempty"`
-	Networks     []*string `json:"networks,omitempty"`
-	Wwpns        []*string `json:"wwpns,omitempty"`
-	Nqns         []*string `json:"nqns,omitempty"`
-	ChapUser     string    `json:"chap_user,omitempty"`
-	ChapPassword string    `json:"chap_password,omitempty"`
-	AccessProtocol string  `json:"access_protocol,omitempty"`
+	ID             string    `json:"id,omitempty"`
+	Name           string    `json:"name,omitempty"`
+	UUID           string    `json:"uuid,omitempty"`
+	Iqns           []*string `json:"iqns,omitempty"`
+	Networks       []*string `json:"networks,omitempty"`
+	Wwpns          []*string `json:"wwpns,omitempty"`
+	Nqns           []*string `json:"nqns,omitempty"`
+	ChapUser       string    `json:"chap_user,omitempty"`
+	ChapPassword   string    `json:"chap_password,omitempty"`
+	AccessProtocol string    `json:"access_protocol,omitempty"`
 }
 
 // KeyValue is a store of key-value pairs

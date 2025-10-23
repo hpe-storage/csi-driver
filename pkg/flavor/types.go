@@ -30,6 +30,7 @@ type Flavor interface {
 	GetCredentialsFromVolume(name string) (map[string]string, error)
 	GetCredentialsFromSecret(name string, namespace string) (map[string]string, error)
 	IsPodExists(uid string) (bool, error)
+	GetPodLabels(name string, namespace string) (map[string]string, error)
 	CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error)
 	DeleteNFSVolume(pvName string) error
 	RollbackNFSResources(nfsResourceName, nfsNamespace string) error

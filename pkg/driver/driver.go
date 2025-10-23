@@ -62,6 +62,7 @@ type Driver struct {
 	requestCache   sync.Map
 	DBService      dbservice.DBService
 	KubeletRootDir string
+	pvMutexManager *PVMutexManager // Manager for volume-specific mutexes (used only in controller gRPC operations)
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI

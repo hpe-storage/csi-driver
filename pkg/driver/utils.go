@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"net"
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -20,6 +22,7 @@ import (
 	"google.golang.org/grpc"
 
 	log "github.com/hpe-storage/common-host-libs/logger"
+	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/util"
 )
 
@@ -126,12 +129,212 @@ func removeDataFile(dirPath string, fileName string) error {
 func isValidIP(ip string) bool {
 	return ip != "" && net.ParseIP(ip) != nil
 }
+
 // GetNvmeInitiator returns the NVMe host NQN as a string
 func GetNvmeInitiator() (string, error) {
-    data, err := ioutil.ReadFile("/etc/nvme/hostnqn")
-    if err != nil {
-        return "", err
-    }
-    nqn := strings.TrimSpace(string(data))
-    return nqn, nil
+	data, err := ioutil.ReadFile("/etc/nvme/hostnqn")
+	if err != nil {
+		return "", err
+	}
+	nqn := strings.TrimSpace(string(data))
+	return nqn, nil
+}
+
+func getNetworkInterfaceIP(targetIP string, interfaceCIDRs []*string) (string, error) {
+	log.Tracef(">>>>> GetNetworkInterfaceIP with targetIP: %s, interfaceCIDRs: %v", targetIP, interfaceCIDRs)
+	defer log.Trace("<<<<< GetNetworkInterfaceIP")
+
+	if targetIP == "" {
+		return "", fmt.Errorf("target IP address cannot be empty")
+	}
+
+	if len(interfaceCIDRs) == 0 {
+		return "", fmt.Errorf("interface CIDR list cannot be empty")
+	}
+
+	ip := net.ParseIP(targetIP)
+	if ip == nil {
+		return "", fmt.Errorf("invalid target IP address format: %s", targetIP)
+	}
+
+	var parseErrors []string
+	for _, cidr := range interfaceCIDRs {
+		if cidr == nil || *cidr == "" {
+			continue // Skip empty CIDR entries
+		}
+
+		// Parse the CIDR to get both the interface IP and the network
+		interfaceIP, ipnet, err := net.ParseCIDR(*cidr)
+		if err != nil {
+			parseErrors = append(parseErrors, fmt.Sprintf("invalid CIDR format '%s': %v", *cidr, err))
+			continue
+		}
+
+		if ipnet.Contains(ip) {
+			// Return the interface IP (the IP part from the CIDR) as IPv4
+			ipAddr := interfaceIP.To4()
+			if ipAddr != nil {
+				log.Tracef("Found matching interface IP %s for target %s in CIDR %s", ipAddr.String(), targetIP, *cidr)
+				return ipAddr.String(), nil
+			}
+		}
+	}
+
+	// If we had parse errors, include them in the final error message
+	if len(parseErrors) > 0 {
+		return "", fmt.Errorf("no matching network interface found for target IP %s. Parse errors encountered: %v", targetIP, parseErrors)
+	}
+
+	return "", fmt.Errorf("no matching network interface found for target IP %s in provided CIDR ranges: %v", targetIP, interfaceCIDRs)
+}
+
+// getAllNodeInterfaceIPs extracts all IP addresses from the node's network interface CIDRs
+// and returns them as a comma-separated string. This is used as a fallback when direct
+// network matching fails (e.g., for routed/indirect networks).
+func getAllNodeInterfaceIPs(interfaceCIDRs []*string) (string, error) {
+	log.Tracef(">>>>> getAllNodeInterfaceIPs with interfaceCIDRs: %v", interfaceCIDRs)
+	defer log.Trace("<<<<< getAllNodeInterfaceIPs")
+
+	if len(interfaceCIDRs) == 0 {
+		return "", fmt.Errorf("interface CIDR list cannot be empty")
+	}
+
+	var ips []string
+	var parseErrors []string
+
+	for _, cidr := range interfaceCIDRs {
+		if cidr == nil || *cidr == "" {
+			continue // Skip empty CIDR entries
+		}
+
+		// Parse the CIDR to extract the IP address
+		interfaceIP, _, err := net.ParseCIDR(*cidr)
+		if err != nil {
+			parseErrors = append(parseErrors, fmt.Sprintf("invalid CIDR format '%s': %v", *cidr, err))
+			continue
+		}
+
+		// Convert to IPv4 if possible
+		ipAddr := interfaceIP.To4()
+		if ipAddr != nil {
+			ips = append(ips, ipAddr.String())
+		}
+	}
+
+	if len(ips) == 0 {
+		if len(parseErrors) > 0 {
+			return "", fmt.Errorf("no valid IP addresses found. Parse errors: %v", parseErrors)
+		}
+		return "", fmt.Errorf("no valid IP addresses found in provided CIDR ranges")
+	}
+
+	result := strings.Join(ips, ",")
+	log.Tracef("Extracted IPs from node interfaces: %s", result)
+	return result, nil
+}
+
+// generateRandomIPFromRange parses an IP range string in the format "10.132.230.12#24"
+// and generates a random IP address within that range.
+// The format means: starting from the base IP, there are 'range' number of consecutive IPs available.
+// For example, "10.132.230.12#24" means IPs from 10.132.230.12 to 10.132.230.35 (24 IPs total).
+func generateRandomIPFromRange(ipRangeStr string) (string, error) {
+	log.Tracef(">>>>> generateRandomIPFromRange with ipRangeStr: %s", ipRangeStr)
+	defer log.Trace("<<<<< generateRandomIPFromRange")
+
+	if ipRangeStr == "" {
+		return "", fmt.Errorf("IP range string cannot be empty")
+	}
+
+	// Format expected: "10.132.230.12#24" where 24 is the count of available IPs
+	parts := strings.Split(ipRangeStr, "#")
+	if len(parts) != 2 {
+		return "", fmt.Errorf("invalid IP range format (expected 'IP#number'): %s", ipRangeStr)
+	}
+
+	baseIP := parts[0]
+	rangeStr := parts[1]
+
+	// Parse the range number (count of available IPs)
+	rangeCount, err := strconv.Atoi(rangeStr)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse IP range count from '%s': %v", ipRangeStr, err)
+	}
+
+	if rangeCount <= 0 {
+		return "", fmt.Errorf("IP range count must be positive: %d", rangeCount)
+	}
+
+	// Parse the base IP
+	ipParts := strings.Split(baseIP, ".")
+	if len(ipParts) != 4 {
+		return "", fmt.Errorf("invalid IP format in range string: %s", baseIP)
+	}
+
+	// Extract IP prefix (first 3 octets) and the starting suffix (last octet)
+	ipPrefix := strings.Join(ipParts[:3], ".")
+	startSuffix, err := strconv.Atoi(ipParts[3])
+	if err != nil {
+		return "", fmt.Errorf("invalid last octet in base IP '%s': %v", baseIP, err)
+	}
+
+	// Generate random offset from 0 to (rangeCount - 1)
+	randomOffset := rand.Intn(rangeCount)
+
+	// Calculate the final IP suffix
+	finalSuffix := startSuffix + randomOffset
+
+	// Validate that we don't exceed 255 (max value for IP octet)
+	if finalSuffix > 255 {
+		return "", fmt.Errorf("calculated IP suffix %d exceeds maximum value 255 (base: %s, range: %d)",
+			finalSuffix, baseIP, rangeCount)
+	}
+
+	// Create the generated IP
+	generatedIP := fmt.Sprintf("%s.%d", ipPrefix, finalSuffix)
+	log.Infof("Generated random IP %s from range %s (offset: %d from base %s)",
+		generatedIP, ipRangeStr, randomOffset, baseIP)
+
+	return generatedIP, nil
+}
+
+// ValidateFileVolumeConfig validates required configuration keys for file volumes
+// and returns a map of validated string values. Performs special validation for hostIP.
+func ValidateFileVolumeConfig(volume *model.Volume, volumeID string, requiredKeys ...string) (map[string]string, error) {
+	if volume.Config == nil {
+		return nil, fmt.Errorf("config is nil for volume %s", volumeID)
+	}
+
+	configValues := make(map[string]string)
+
+	for _, key := range requiredKeys {
+		value, ok := volume.Config[key]
+		if !ok || value == nil {
+			return nil, fmt.Errorf("%s key not found or value is nil in config for volume %s", key, volumeID)
+		}
+
+		stringValue, ok := value.(string)
+		if !ok || stringValue == "" {
+			return nil, fmt.Errorf("failed to get %s for volume %s", key, volumeID)
+		}
+
+		// Special validation for hostIP key
+		if key == fileHostIPKey && !isValidIP(stringValue) {
+			return nil, fmt.Errorf("invalid hostIP value for volume %s: %s", volumeID, stringValue)
+		}
+
+		configValues[key] = stringValue
+	}
+
+	return configValues, nil
+}
+
+// IsSnapshotSupportedByCSP checks if the given CSP service supports snapshot operations.
+// Returns true if snapshots are supported, false otherwise.
+func IsSnapshotSupportedByCSP(serviceName string) bool {
+	// If serviceName is empty, assume snapshot support (default behavior)
+	if serviceName == "" {
+		return true
+	}
+	// Check if CSP is in the unsupported list
+	return !snapshotUnsupportedCSPs[serviceName]
 }

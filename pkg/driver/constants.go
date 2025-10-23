@@ -4,11 +4,11 @@ package driver
 
 const (
 	// Protocol types
-	iscsi = "iscsi"
-	fc    = "fc"
-	nvmeotcp = "nvmeotcp"
+	iscsi           = "iscsi"
+	fc              = "fc"
+	nvmeotcp        = "nvmeotcp"
 	defaultNvmePort = "4420"
-	nvmetcp = "nvmetcp"
+	nvmetcp         = "nvmetcp"
 
 	// defaultFileSystem is the implemenation-specific default value
 	defaultFileSystem = "xfs"
@@ -99,6 +99,9 @@ const (
 	hostEncryptionSecretNamespaceKey = "hostEncryptionSecretNamespace"
 	hostEncryptionPassphraseKey      = "hostEncryptionPassphrase"
 
+	//PVC attributes propogated to the CSI
+	pvcNameAttribute      = "csi.storage.k8s.io/pvc/name"
+	pvcNamespaceAttribute = "csi.storage.k8s.io/pvc/namespace"
 	// POD attributes propogated to the CSI
 	csiEphemeralPodName      = "csi.storage.k8s.io/pod.name"
 	csiEphemeralPodNamespace = "csi.storage.k8s.io/pod.namespace"
@@ -127,5 +130,22 @@ const (
 
 	defaultCSITopologyKey = "csi.hpe.com/zone"
 	// FileSystem Corruption parameters
-	fsRepairKey          = "fsRepair"
+	fsRepairKey = "fsRepair"
+
+	// File volume constants
+	fileHostIPKey                   = "hostIP"
+	accessIPKey                     = "accessIP"
+	mountPathKey                    = "mountPath"
+	serviceNameKey                  = "serviceName"
+	homeFleetNFSCSPServiceName      = "alletrastoragemp-x10000-nfs-csp-svc"
+	alletraStorageNFSCSPServiceName = "alletrastoragemp-b10000-nfs-csp-svc"
+	fileVolumeNameKey               = "csi.storage.k8s.io/pv/name"
+	hostIPAnnotationKey             = "csi.hpe.com/hostIP"
 )
+
+// snapshotUnsupportedCSPs contains CSP service names that do not support snapshot operations
+var snapshotUnsupportedCSPs = map[string]bool{
+	homeFleetNFSCSPServiceName: true,
+	// Add more CSPs that don't support snapshots here as needed
+	// Example: "alletra-storage-light-csp-svc": true,
+}
