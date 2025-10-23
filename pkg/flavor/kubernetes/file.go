@@ -14,8 +14,9 @@ import (
 const (
 	NFS              = "nfs"
 	shareNfsVersion  = "shareNfsVersion"
-	fileHostIPKey    = "hostIP"
+	fileExportIPKey  = "exportIP"
 	fileMountPathKey = "mountPath"
+	mountOptionsKey  = "mountOptions"
 )
 
 // HandleFileNodePublish handles the NodePublishVolume request for file-based volumes in a Kubernetes environment.
@@ -36,35 +37,21 @@ const (
 // - A NodePublishVolumeResponse on successful mount.
 // - An error if any step in the process fails.
 
-func (flavor *Flavor) HandleFileNodePublish(req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+func (flavor *Flavor) HandleFileNodePublish(req *csi.NodePublishVolumeRequest, mountOptions []string) (*csi.NodePublishVolumeResponse, error) {
 	log.Tracef(">>>>> HandleFileNodePublish with volume %s target path %s", req.VolumeId, req.TargetPath)
 	defer log.Tracef("<<<<< HandleFileNodePublish")
-	var mountOptions []string
-	var clusterIP, exportPath string
-	var existHostIP, existExportPath bool
-	clusterIP, existHostIP = req.VolumeContext[fileHostIPKey]
-	exportPath, existExportPath = req.VolumeContext[fileMountPathKey]
-	if !existHostIP || !existExportPath {
-		errStr := fmt.Sprintf("failed to create file provisioned volume with hostip: %s, and mount path: %s, host ip or mount path should not be empty ", clusterIP, exportPath)
+	var exportIP, exportPath string
+	var exportIPExists, exportPathExists bool
+	exportIP, exportIPExists = req.PublishContext[fileExportIPKey]
+	exportPath, exportPathExists = req.PublishContext[fileMountPathKey]
+	if !exportIPExists || !exportPathExists || exportIP == "" || exportPath == "" {
+		errStr := fmt.Sprintf("failed to create file provisioned volume with exportIP: %s, and mount path: %s, exportIP or mount path should not be empty ", exportIP, exportPath)
 		log.Errorln(errStr)
 		return nil, status.Error(codes.Internal, errStr)
 	}
-	source := fmt.Sprintf("%s:%s", clusterIP, exportPath)
+	source := fmt.Sprintf("%s:%s", exportIP, exportPath)
 	target := req.GetTargetPath()
-	mountOptions = getNFSMountOptions(req.VolumeContext)
-	defaultShareNfsVersion := req.VolumeContext[shareNfsVersion]
-	if defaultShareNfsVersion == "" {
-		defaultShareNfsVersion = "4"
-	}
-	nfsComandArgs := fmt.Sprintf("%s%s", NFS, defaultShareNfsVersion)
-	if len(mountOptions) == 0 {
-		// use default mount options, i.e (rw,relatime,vers=4.0,rsize=1048576,wsize=1048576,namlen=255,hard,proto=tcp,timeo=600,retrans=2,sec=sys,local_lock=none)
-		mountOptions = []string{
-			"nolock",
-			"vers=4",
-		}
-	}
-	mountOptions = append(mountOptions, fmt.Sprintf("addr=%s", clusterIP))
+	mountOptions = append(mountOptions, fmt.Sprintf("addr=%s", exportIP))
 	if req.GetReadonly() {
 		mountOptions = append(mountOptions, "ro")
 	}
@@ -72,7 +59,7 @@ func (flavor *Flavor) HandleFileNodePublish(req *csi.NodePublishVolumeRequest) (
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	if err := flavor.chapiDriver.MountNFSVolume(source, target, mountOptions, nfsComandArgs); err != nil {
+	if err := flavor.chapiDriver.MountNFSVolume(source, target, mountOptions, ""); err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
 	}
 	return &csi.NodePublishVolumeResponse{}, nil
