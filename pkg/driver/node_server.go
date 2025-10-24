@@ -18,6 +18,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"golang.org/x/net/context"
+	"golang.org/x/sys/unix"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -1029,31 +1030,49 @@ func (driver *Driver) nodePublishVolume(
 
 	// If Block, then stage the volume for raw block device access
 	if volAccessType.String() == model.BlockType.String() {
-		log.Tracef("Publishing the volume for raw block access (create symlink), devicePath: %s, targetPath: %v",
+		log.Tracef("Publishing the volume for raw block access (create block device), devicePath: %s, targetPath: %v",
 			stagingDev.Device.AltFullPathName, targetPath)
 
-		// Check if target path symlink to the device already exists
-		exists, symlink, _ := util.IsFileSymlink(targetPath)
-		if symlink {
-			errMsg := fmt.Sprintf("Target path %s already published as symlink to the device %s", targetPath, stagingDev.Device.AltFullPathName)
+		// Check if target path block device to the mpath device already exists
+		exists, blockDevice, _ := util.IsFileBlockDevice(targetPath)
+		if blockDevice {
+			errMsg := fmt.Sprintf("Target path %s already published as block device to the mpath device %s", targetPath, stagingDev.Device.AltFullPathName)
 			log.Error("Error: ", errMsg)
 			return status.Error(codes.Internal, errMsg)
 		}
 		if exists {
 			// Remove the target path before creating the symlink
-			log.Tracef("Removing the target path %s before creating symlink to the device", targetPath)
+			log.Tracef("Removing the target block device %s before creating block device to the mpath device", targetPath)
 			if err := util.FileDelete(targetPath); err != nil {
 				return status.Error(codes.Internal,
-					fmt.Sprintf("Error removing the target path %s before creating symlink to the device, err: %s",
+					fmt.Sprintf("Error removing the target block device %s before creating block device to the mpath device, err: %s",
 						targetPath, err.Error()))
 			}
 		}
 
 		// Note: Bind-mount is not allowed for raw block device as there is no filesystem on it.
-		//       So, we create softlink to the device file. TODO: mknode() instead ???
-		//       Ex: ln -s /dev/mpathbm <targetPath>
-		if err := os.Symlink(stagingDev.Device.AltFullPathName, targetPath); err != nil {
-			errMsg := fmt.Sprintf("Failed to create symlink %s to the device path %s, err: %v",
+		rawDeviceMinor, err := strconv.Atoi(stagingDev.Device.Minor)
+		if err != nil {
+			errMsg := fmt.Sprintf("Failed to retrieve device minor to create %s from the mpath device path %s, err: %v",
+				targetPath, stagingDev.Device.AltFullPathName, err.Error())
+			log.Error("Error: ", errMsg)
+			return status.Error(codes.Internal, errMsg)
+		}
+
+		rawDeviceMajor, err := strconv.Atoi(stagingDev.Device.Major)
+		if err != nil {
+			errMsg := fmt.Sprintf("Failed to retrieve device major to create %s from the mpath device path %s, err: %v",
+				targetPath, stagingDev.Device.AltFullPathName, err.Error())
+			log.Error("Error: ", errMsg)
+			return status.Error(codes.Internal, errMsg)
+		}
+
+		rawDeviceMode := uint32(unix.S_IFBLK | 0660)
+		rawDeviceMM := int(unix.Mkdev(uint32(rawDeviceMajor), uint32(rawDeviceMinor)))
+
+		// Create block device
+		if err := unix.Mknod(targetPath, rawDeviceMode, rawDeviceMM); err != nil {
+			errMsg := fmt.Sprintf("Failed to create block device %s to the mpath device path %s, err: %v",
 				targetPath, stagingDev.Device.AltFullPathName, err.Error())
 			log.Error("Error: ", errMsg)
 			return status.Error(codes.Internal, errMsg)
@@ -1456,10 +1475,10 @@ func (driver *Driver) isVolumePublished(
 			return false, nil // Not published yet as targetPath does not exists
 		}
 
-		// Check if target path is the symlink to the device
-		_, symlink, _ := util.IsFileSymlink(targetPath)
-		if !symlink {
-			log.Tracef("Target path %s is not symlink to the device %s", targetPath, stagingDev.Device.AltFullPathName)
+		// Check if target path is a block device
+		_, blockDevice, _ := util.IsFileBlockDevice(targetPath)
+		if !blockDevice {
+			log.Tracef("Target path %s is not a block device to the mpath device %s", targetPath, stagingDev.Device.AltFullPathName)
 			return false, nil // Not published yet as symlink does not exists
 		}
 
@@ -1732,13 +1751,13 @@ func (driver *Driver) nodeUnpublishVolume(targetPath string) error {
 	defer log.Trace("<<<<< nodeUnpublishVolume")
 
 	// Block volume: Check for symlink and remove it
-	_, symlink, _ := util.IsFileSymlink(targetPath)
-	if symlink {
-		// Remove the symlink
-		log.Tracef("Removing the symlink from target path %s", targetPath)
+	_, blockDevice, _ := util.IsFileBlockDevice(targetPath)
+	if blockDevice {
+		// Remove the block device
+		log.Tracef("Removing the block device from mpath device %s", targetPath)
 		if err := util.FileDelete(targetPath); err != nil {
 			return status.Error(codes.Internal,
-				fmt.Sprintf("Error removing the symlink target path %s, err: %s",
+				fmt.Sprintf("Error removing the block device target path%s, err: %s",
 					targetPath, err.Error()))
 		}
 		return nil
