@@ -392,15 +392,15 @@ type Token struct {
 
 // Node represents a host that would access volumes through the CSP
 type Node struct {
-	ID           string    `json:"id,omitempty"`
-	Name         string    `json:"name,omitempty"`
-	UUID         string    `json:"uuid,omitempty"`
-	Iqns         []*string `json:"iqns,omitempty"`
-	Networks     []*string `json:"networks,omitempty"`
-	Wwpns        []*string `json:"wwpns,omitempty"`
-	ChapUser     string    `json:"chap_user,omitempty"`
-	ChapPassword string    `json:"chap_password,omitempty"`
-	AccessProtocol string  `json:"access_protocol,omitempty"`
+	ID             string    `json:"id,omitempty"`
+	Name           string    `json:"name,omitempty"`
+	UUID           string    `json:"uuid,omitempty"`
+	Iqns           []*string `json:"iqns,omitempty"`
+	Networks       []*string `json:"networks,omitempty"`
+	Wwpns          []*string `json:"wwpns,omitempty"`
+	ChapUser       string    `json:"chap_user,omitempty"`
+	ChapPassword   string    `json:"chap_password,omitempty"`
+	AccessProtocol string    `json:"access_protocol,omitempty"`
 }
 
 // KeyValue is a store of key-value pairs
@@ -463,4 +463,20 @@ type ProcMount struct {
 	MountPoint string `json:"Mountpoint,omitempty"`
 	FileSystem string `json:"FileSystem,omitempty"`
 	Options    string `json:"Options,omitempty"`
+}
+
+// PublishOptions are the options needed to publish a file volume
+type PublishFileOptions struct {
+	Name           string `json:"name,omitempty"`
+	HostUUID       string `json:"host_uuid,omitempty"`
+	AccessProtocol string `json:"access_protocol,omitempty"`
+	VolumeID       string `json:"volume_id,omitempty"`
+	AccessIP       string `json:"access_ip,omitempty"`
+}
+
+// PublishFileInfo is the node side data required to access a volume
+type PublishFileInfo struct {
+	HostIP    string `json:"host_ip,omitempty"`
+	MountPath string `json:"mount_path,omitempty"`
+	//TODO can contain more info if needed
 }
