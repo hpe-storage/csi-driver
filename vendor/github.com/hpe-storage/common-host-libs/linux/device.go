@@ -49,6 +49,7 @@ const (
 	// lrwxrwxrwx 1 root root 0 Mar  8 16:51 sdg -> ../devices/platform/host4/session2/target4:0:0/4:0:0:2/block/sdg
 	deviceByHctlPatternFmt = ".*%s:%s:%s:%s.*block/(?P<diskname>.*)"
 	lunNotSupportedErr     = "LOGICAL UNIT NOT SUPPORTED"
+	nvmeDevicePattern = "nvme[0-9]+n[0-9]+"
 )
 
 var (
@@ -450,7 +451,13 @@ func rescanLoginVolumeForBackend(volObj *model.Volume) error {
 		if err != nil {
 			return err
 		}
-	} else {
+	} else if strings.EqualFold(volObj.AccessProtocol, "nvmetcp") {
+        // NVMe over TCP volume
+        err = HandleNvmeTcpDiscovery(volObj)
+        if err != nil {
+            return err
+        }
+	}else {
 		// Check if client intends us to specifically login using multiple IP addresses(cloud volumes)
 		if len(volObj.Networks) > 0 {
 			// check if ifaces are created and enable port binding
@@ -1094,6 +1101,17 @@ func GetDeviceFromVolume(vol *model.Volume) (*model.Device, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	 if len(devices) > 0 {
+        return devices[0], nil
+    }
+
+	// Try NVMe device lookup if not found above
+    nvmeDev, err := GetNvmeDeviceFromNamespace(vol.SerialNumber)
+    if err == nil && nvmeDev != nil {
+        log.Debugf("Found NVMe device: %+v", nvmeDev)
+        return nvmeDev, nil
+    }
 	if len(devices) == 0 {
 		return nil, fmt.Errorf("unable to find device matching volume serial number %s", vol.SerialNumber)
 	}
@@ -1425,4 +1443,28 @@ func isMappedLuksDevice(devPath string) (bool, error) {
 		log.Error(err.Error())
 		return false, err
 	}
+}
+
+// GetNvmeDeviceFromNamespace returns NVMe device path for given namespace or serial
+func GetNvmeDeviceFromNamespace(serialOrNamespace string) (*model.Device, error) {
+    nvmeRoot := "/dev/"
+    files, err := ioutil.ReadDir(nvmeRoot)
+    if err != nil {
+        return nil, err
+    }
+    nvmeRegex := regexp.MustCompile(nvmeDevicePattern)
+    for _, f := range files {
+        if nvmeRegex.MatchString(f.Name()) {
+            // Optionally, check namespace/serial via sysfs
+            sysfsSerialPath := fmt.Sprintf("/sys/class/block/%s/serial", f.Name())
+            serial, _ := util.FileReadFirstLine(sysfsSerialPath)
+            if serialOrNamespace == f.Name() || serialOrNamespace == serial {
+                return &model.Device{
+                    Pathname: nvmeRoot + f.Name(),
+                    SerialNumber: serial,
+                }, nil
+            }
+        }
+    }
+    return nil, fmt.Errorf("NVMe device not found for %s", serialOrNamespace)
 }

@@ -924,7 +924,9 @@ func (driver *Driver) controllerPublishVolume(
                 requestedAccessProtocol = iscsi
         } else if requestedAccessProtocol == "fc" {
                 requestedAccessProtocol = fc
-        }
+        } else if requestedAccessProtocol == "nvmetcp" {
+		requestedAccessProtocol = "nvmetcp"
+	}
 
 	if existingNode != nil {
 		log.Tracef("CSP has already been notified about the node with ID %s and UUID %s", existingNode.ID, existingNode.UUID)
@@ -957,12 +959,33 @@ func (driver *Driver) controllerPublishVolume(
 
 	// TODO: add any additional info necessary to mount the device
 	publishContext := map[string]string{}
-	publishContext[serialNumberKey] = publishInfo.SerialNumber
-	publishContext[accessProtocolKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
-	publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
-	publishContext[targetScopeKey] = requestedTargetScope
-	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
+	
+	// NVMe over TCP support
+    if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, "nvmetcp") {
+        publishContext[serialNumberKey] = publishInfo.SerialNumber
+        publishContext[accessProtocolKey] = "nvmetcp"
+        // NQN, target address, and port for NVMe/TCP
+        if len(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames) > 0 {
+            publishContext[targetNamesKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames[0]
+        }
+        if len(publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.NvmeDiscoveryIPs) > 0 {
+            publishContext[discoveryIPsKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.NvmeDiscoveryIPs[0]
+        }
+        if publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.TargetPort != "" {
+            publishContext[targetPortKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.TargetPort
+        } else {
+            publishContext[targetPortKey] = "4420" // default NVMe/TCP port
+        }
+       
+    }else{
+		publishContext[serialNumberKey] = publishInfo.SerialNumber
+		publishContext[accessProtocolKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
+		publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
+		publishContext[targetScopeKey] = requestedTargetScope
+		publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
 
+	}
+	
 	// Start of population of target array details
 	if publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails != nil {
 		secondaryArrayMarshalledStr, err := json.Marshal(&publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails)

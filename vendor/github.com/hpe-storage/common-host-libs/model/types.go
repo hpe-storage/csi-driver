@@ -145,6 +145,14 @@ type IscsiTarget struct {
 	Scope   string // GST or VST
 }
 
+// NvmeTarget struct
+type NvmeTarget struct {
+	NQN     string
+	Address string
+	Port    string // 4420 (default NVMe over TCP port)
+	Scope   string // GST or VST
+}
+
 // Device struct
 type Device struct {
 	VolumeID            string         `json:"volume_id,omitempty"`
@@ -159,6 +167,7 @@ type Device struct {
 	Size                int64          `json:"size,omitempty"` // size in MiB
 	Slaves              []string       `json:"slaves,omitempty"`
 	IscsiTargets        []*IscsiTarget `json:"iscsi_target,omitempty"`
+	NvmeTargets         []*NvmeTarget  `json:"nvme_target,omitempty"`
 	Hcils               []string       `json:"-"`                      // export it if needed
 	TargetScope         string         `json:"target_scope,omitempty"` //GST="group", VST="volume" or empty(older array fiji etc), and no-op for FC
 	State               string         `json:"state,omitempty"`        // state of the device needed to verify the device is active
@@ -190,6 +199,9 @@ type Volume struct {
 	AccessProtocol        string                 `json:"access_protocol,omitempty"`
 	Iqn                   string                 `json:"iqn,omitempty"` // deprecated
 	Iqns                  []string               `json:"iqns,omitempty"`
+	Nqn                   string                 `json:"nqn,omitempty"`
+	TargetAddress	      string                 `json:"target_address,omitempty"`
+	TargetPort            string                 `json:"target_port,omitempty"`
 	DiscoveryIP           string                 `json:"discovery_ip,omitempty"` // deprecated
 	DiscoveryIPs          []string               `json:"discovery_ips,omitempty"`
 	MountPoint            string                 `json:"Mountpoint,omitempty"`
@@ -201,6 +213,7 @@ type Volume struct {
 	TargetScope           string                 `json:"target_scope,omitempty"` //GST="group", VST="volume" or empty(older array fiji etc), and no-op for FC
 	IscsiSessions         []*IscsiSession        `json:"iscsi_sessions,omitempty"`
 	FcSessions            []*FcSession           `json:"fc_sessions,omitempty"`
+	NvmeSessions          []*NvmeSession         `json:"nvme_sessions,omitempty"`
 	VolumeGroupId         string                 `json:"volume_group_id"`
 	SecondaryArrayDetails string                 `json:"secondary_array_details,omitempty"`
 	UsedBytes             int64                  `json:"used_bytes,omitempty"`
@@ -227,6 +240,11 @@ type IscsiSession struct {
 	InitiatorName       string `json:"initiator_name,omitempty"`
 	InitiatorNameLegacy string `json:"initiatorName,omitempty"`
 	InitiatorIP         string `json:"initiator_ip_addr,omitempty"`
+}
+// NvmeSession info
+type NvmeSession struct {
+	InitiatorNQN       string `json:"initiator_nqn,omitempty"`
+	InitiatorIP        string `json:"initiator_ip_addr,omitempty"`
 }
 
 func (s FcSession) InitiatorWwpnStr() string {
@@ -300,6 +318,7 @@ type BlockDeviceAccessInfo struct {
 	LunID          int32    `json:"lun_id,omitempty"`
 	SecondaryBackendDetails
 	IscsiAccessInfo
+	NvmetcpAccessInfo
 }
 
 // Information of LUN id, IQN, discovery IP's the secondary array
@@ -312,6 +331,7 @@ type SecondaryLunInfo struct {
 	LunID       int32    `json:"lun_id,omitempty""`
 	TargetNames []string `json:"target_names,omitempty"`
 	IscsiAccessInfo
+	NvmetcpAccessInfo
 }
 
 // IscsiAccessInfo contains the fields necessary for iSCSI access
@@ -321,6 +341,12 @@ type IscsiAccessInfo struct {
 	ChapPassword string   `json:"chap_password,omitempty"`
 }
 
+// NvmetcpAccessInfo contains the fields necessary for NVMe/TCP access
+type NvmetcpAccessInfo struct {
+    NvmeDiscoveryIPs []string `json:"nvme_discovery_ips,omitempty"`
+    TargetNames      []string `json:"target_names,omitempty"` // NQN(s)
+    TargetPort       string   `json:"target_port,omitempty"`  // e.g., 4420
+}
 // VirtualDeviceAccessInfo contains the required data to access a virtual device
 type VirtualDeviceAccessInfo struct {
 }
@@ -398,6 +424,7 @@ type Node struct {
 	Iqns         []*string `json:"iqns,omitempty"`
 	Networks     []*string `json:"networks,omitempty"`
 	Wwpns        []*string `json:"wwpns,omitempty"`
+	Nqn          *string   `json:"nqn,omitempty"`
 	ChapUser     string    `json:"chap_user,omitempty"`
 	ChapPassword string    `json:"chap_password,omitempty"`
 	AccessProtocol string  `json:"access_protocol,omitempty"`

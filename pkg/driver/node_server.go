@@ -41,6 +41,8 @@ var (
 
 const (
 	fileHostIPKey = "hostIP"
+	nvmetcp = "nvmetcp"
+    	targetPortKey = "targetPort"
 )
 
 var isWatcherEnabled = false
@@ -571,6 +573,41 @@ func (driver *Driver) setupDevice(
 
 	log.Tracef(">>>>> setupDevice, volumeID: %s, publishContext: %v", volumeID, log.MapScrubber(publishContext))
 	defer log.Trace("<<<<< setupDevice")
+
+	// Handle NVMe over TCP volumes
+    if publishContext[accessProtocolKey] == "nvmetcp" {
+        volume := &model.Volume{
+            SerialNumber:   publishContext[serialNumberKey],
+            AccessProtocol: publishContext[accessProtocolKey],
+            Nqn:           publishContext[targetNamesKey], // NQN for NVMe
+            TargetAddress: publishContext[discoveryIPsKey], // Target IP
+            TargetPort:    publishContext[targetPortKey],   // Target port (default 4420)
+            ConnectionMode: defaultConnectionMode,
+        }
+
+        // Cleanup any stale device existing before stage
+        device, _ := driver.chapiDriver.GetDevice(volume)
+        if device != nil {
+            device.TargetScope = volume.TargetScope
+            err := driver.chapiDriver.DeleteDevice(device)
+            if err != nil {
+                log.Warnf("Failed to cleanup stale NVMe device %s before staging, err %s", device.AltFullPathName, err.Error())
+            }
+        }
+
+        // Create NVMe Device
+        devices, err := driver.chapiDriver.CreateDevices([]*model.Volume{volume})
+        if err != nil {
+            log.Errorf("Failed to create NVMe device from publish info. Error: %s", err.Error())
+            return nil, err
+        }
+        if len(devices) == 0 {
+            log.Errorf("Failed to get the NVMe device just created using the volume %+v", volume)
+            return nil, fmt.Errorf("unable to find the NVMe device for volume %+v", volume)
+        }
+
+        return devices[0], nil
+    }
 
 	// TODO: Enhance CHAPI to work with a PublishInfo object rather than a volume
 
@@ -2203,6 +2240,7 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 
 	var iqns []*string
 	var wwpns []*string
+	var nqn *string
 	for _, initiator := range initiators {
 		if initiator.Type == iscsi {
 			for i := 0; i < len(initiator.Init); i++ {
@@ -2214,6 +2252,11 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 			}
 		}
 	}
+
+	nvmeNqn, err := GetNvmeInitiator()
+    if err == nil && nvmeNqn != "" {
+        nqn = &nvmeNqn
+    }
 
 	var cidrNetworks []*string
 	for _, network := range networks {
@@ -2230,6 +2273,7 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 		Iqns:     iqns,
 		Networks: cidrNetworks,
 		Wwpns:    wwpns,
+		Nqn:      nqn,
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)
