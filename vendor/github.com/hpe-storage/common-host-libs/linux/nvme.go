@@ -25,15 +25,15 @@ const (
     defaultNvmePort        = "4420"
     nvmeHostPathFormat     = "/sys/class/nvme/"
     nvmeNamespacePattern   = "nvme[0-9]+n[0-9]+"
+    nvmeHostPath           = "/etc/nvme/hostnqn"
 )
 
 // GetNvmeInitiator gets the NVMe host NQN
 func GetNvmeInitiator() (string, error) {
     // Read from /etc/nvme/hostnqn or generate one
-    hostnqnPath := "/etc/nvme/hostnqn"
-    hostnqn, err := util.FileReadFirstLine(hostnqnPath)
+    hostnqn, err := util.FileReadFirstLine(nvmeHostPath)
     if err != nil {
-        log.Debugf("Could not read hostnqn from %s, generating one", hostnqnPath)
+        log.Debugf("Could not read hostnqn from %s, generating one", nvmeHostPath)
         // Generate hostnqn using nvme gen-hostnqn
         args := []string{"gen-hostnqn"}
         hostnqn, _, err = util.ExecCommandOutput(nvmecmd, args)
