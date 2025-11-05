@@ -239,13 +239,18 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			nodeInfo.Spec.WWPNs = wwpnsFromNode
 			updateNodeRequired = true
 		}
+		nqnsFromNode := getNqnsFromNode(node)
+		if !reflect.DeepEqual(nodeInfo.Spec.NQNs, nqnsFromNode) {
+			nodeInfo.Spec.NQNs = nqnsFromNode
+			updateNodeRequired = true
+		}
 
 		if !updateNodeRequired {
 			// no update needed to existing CRD
 			return node.UUID, nil
 		}
-		log.Infof("updating Node %s with iqns %v wwpns %v networks %v",
-			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.WWPNs, nodeInfo.Spec.Networks)
+		log.Infof("updating Node %s with iqns %v wwpns %v networks %v nqns %v",
+			nodeInfo.Name, nodeInfo.Spec.IQNs, nodeInfo.Spec.WWPNs, nodeInfo.Spec.Networks, nodeInfo.Spec.NQNs)
 		_, err := flavor.crdClient.StorageV1().HPENodeInfos().Update(nodeInfo)
 		if err != nil {
 			log.Errorf("Error updating the node %s - %s\n", nodeInfo.Name, err.Error())
@@ -262,6 +267,7 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 				IQNs:     getIqnsFromNode(node),
 				Networks: getNetworksFromNode(node),
 				WWPNs:    getWwpnsFromNode(node),
+				NQNs:     getNqnsFromNode(node),
 			},
 		}
 
@@ -301,6 +307,14 @@ func getNetworksFromNode(node *model.Node) []string {
 		networks = append(networks, *node.Networks[i])
 	}
 	return networks
+}
+
+func getNqnsFromNode(node *model.Node) []string {
+    var nqns []string
+    for i := 0; i < len(node.Nqns); i++ {
+        nqns = append(nqns, *node.Nqns[i])
+    }
+    return nqns
 }
 
 // UnloadNodeInfo remove the HPENodeInfo from the list of CRDs
@@ -353,12 +367,17 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 			for i := range wwpns {
 				wwpns[i] = &nodeInfo.Spec.WWPNs[i]
 			}
+			nqns := make([]*string, len(nodeInfo.Spec.NQNs))
+			for i := range nqns {
+				nqns[i] = &nodeInfo.Spec.NQNs[i]
+			}
 			node := &model.Node{
 				Name:     nodeInfo.ObjectMeta.Name,
 				UUID:     nodeInfo.Spec.UUID,
 				Iqns:     iqns,
 				Networks: networks,
 				Wwpns:    wwpns,
+				Nqns:     nqns,
 			}
 
 			return node, nil

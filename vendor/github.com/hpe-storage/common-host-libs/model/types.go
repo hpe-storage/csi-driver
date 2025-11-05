@@ -328,7 +328,7 @@ type SecondaryBackendDetails struct {
 
 // Information of the each secondary array
 type SecondaryLunInfo struct {
-	LunID       int32    `json:"lun_id,omitempty""`
+	LunID       int32    `json:"lun_id,omitempty"`
 	TargetNames []string `json:"target_names,omitempty"`
 	IscsiAccessInfo
 	NvmetcpAccessInfo
@@ -424,7 +424,7 @@ type Node struct {
 	Iqns         []*string `json:"iqns,omitempty"`
 	Networks     []*string `json:"networks,omitempty"`
 	Wwpns        []*string `json:"wwpns,omitempty"`
-	Nqn          *string   `json:"nqn,omitempty"`
+	Nqns         []*string `json:"nqns,omitempty"`
 	ChapUser     string    `json:"chap_user,omitempty"`
 	ChapPassword string    `json:"chap_password,omitempty"`
 	AccessProtocol string  `json:"access_protocol,omitempty"`

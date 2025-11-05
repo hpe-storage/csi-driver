@@ -2254,9 +2254,14 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 	}
 
 	nvmeNqn, err := GetNvmeInitiator()
-    if err == nil && nvmeNqn != "" {
-        nqn = &nvmeNqn
-    }
+	if err == nil && nvmeNqn != "" {
+		nqn = &nvmeNqn
+	}
+
+	var nqns []*string
+	if nqn != nil {
+		nqns = append(nqns, nqn)
+	}
 
 	var cidrNetworks []*string
 	for _, network := range networks {
@@ -2273,7 +2278,7 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 		Iqns:     iqns,
 		Networks: cidrNetworks,
 		Wwpns:    wwpns,
-		Nqn:      nqn,
+		Nqns:     nqns,
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)

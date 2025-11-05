@@ -968,8 +968,8 @@ func (driver *Driver) controllerPublishVolume(
         if len(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames) > 0 {
             publishContext[targetNamesKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames[0]
         }
-        if len(publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.NvmeDiscoveryIPs) > 0 {
-            publishContext[discoveryIPsKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.NvmeDiscoveryIPs[0]
+        if len(publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.DiscoveryIPs) > 0 {
+            publishContext[discoveryIPsKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.DiscoveryIPs[0]
         }
         if publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.TargetPort != "" {
             publishContext[targetPortKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.TargetPort
