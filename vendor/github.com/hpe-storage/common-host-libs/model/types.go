@@ -343,7 +343,7 @@ type IscsiAccessInfo struct {
 
 // NvmetcpAccessInfo contains the fields necessary for NVMe/TCP access
 type NvmetcpAccessInfo struct {
-    NvmeDiscoveryIPs []string `json:"nvme_discovery_ips,omitempty"`
+    DiscoveryIPs []string `json:"discovery_ips,omitempty"`
     TargetNames      []string `json:"target_names,omitempty"` // NQN(s)
     TargetPort       string   `json:"target_port,omitempty"`  // e.g., 4420
 }
