@@ -4,6 +4,7 @@ package util
 
 import (
 	"encoding/json"
+
 	"github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 )
@@ -70,7 +71,7 @@ func GetSecondaryArrayDiscoveryIps(details string) []string {
 	numberOfSecondaryBackends := len(secondaryArrayDetails.PeerArrayDetails)
 	var secondaryDiscoverIps []string
 	for i := 0; i < numberOfSecondaryBackends; i++ {
-		for _, discoveryIpRetrieved := range secondaryArrayDetails.PeerArrayDetails[i].DiscoveryIPs {
+		for _, discoveryIpRetrieved := range secondaryArrayDetails.PeerArrayDetails[i].IscsiAccessInfo.DiscoveryIPs {
 			secondaryDiscoverIps = append(secondaryDiscoverIps, discoveryIpRetrieved)
 		}
 	}
