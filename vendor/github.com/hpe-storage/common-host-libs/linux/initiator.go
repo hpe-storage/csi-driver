@@ -15,6 +15,9 @@ var (
 	initiatorNamePattern = "^InitiatorName=(?P<iscsiinit>.*)$"
 	iscsi                = "iscsi"
 	fc                   = "fc"
+	nvmeHostnqnPath      = "/etc/nvme/hostnqn"           // Add this
+    nvmeHostnqnPattern   = "^(?P<nvmeinit>nqn\\..*)$"    // Add this
+	nvmeotcp             = "nvmeotcp"
 )
 
 //GetInitiators : get the host initiators
@@ -105,7 +108,7 @@ func getFcInitiators() (fcInit *model.Initiator, err error) {
 	return fcInit, nil
 }
 
-func getNvmeInitiators() (init *model.Initiator, err error) {
+/*func getNvmeInitiators() (init *model.Initiator, err error) {
 	log.Trace(">>>>> getNvmeInitiators")
 	defer log.Trace("<<<<< getNvmeInitiators")
 
@@ -118,4 +121,29 @@ func getNvmeInitiators() (init *model.Initiator, err error) {
 	initiators := []string{hostnqn}
 	init = &model.Initiator{Type: "nvmeotcp", Init: initiators}
 	return init, nil
+}*/
+func getNvmeInitiators() (init *model.Initiator, err error) {
+    log.Trace(">>>>> getNvmeInitiators")
+    defer log.Trace("<<<<< getNvmeInitiators")
+
+    exists, _, err := util.FileExists(nvmeHostnqnPath)
+    if !exists {
+        log.Debugf("%s not found, assuming not an NVMe host", nvmeHostnqnPath)
+        return nil, nil
+    }
+    
+    initiators, err := util.FileGetStringsWithPattern(nvmeHostnqnPath, nvmeHostnqnPattern)
+    if err != nil {
+        log.Errorf("failed to get nqn from %s error %s", nvmeHostnqnPath, err.Error())
+        return nil, err
+    }
+    
+    if len(initiators) == 0 {
+        log.Errorf("empty nqn found from %s", nvmeHostnqnPath)
+        return nil, errors.New("empty nqn found")
+    }
+    
+    log.Debugf("got nvme initiator name as %s", initiators[0])
+    init = &model.Initiator{Type: nvmeotcp, Init: initiators}
+    return init, nil
 }
