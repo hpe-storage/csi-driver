@@ -89,7 +89,7 @@ github.com/google/uuid
 # github.com/gorilla/mux v1.8.0
 ## explicit; go 1.12
 github.com/gorilla/mux
-# github.com/hpe-storage/common-host-libs v0.0.0-20250814050617-b92e778a7508
+# github.com/hpe-storage/common-host-libs v0.0.0-20251030032113-e9caff71ad6b
 ## explicit; go 1.23.0
 github.com/hpe-storage/common-host-libs/chapi
 github.com/hpe-storage/common-host-libs/concurrent

@@ -491,3 +491,19 @@ type ProcMount struct {
 	FileSystem string `json:"FileSystem,omitempty"`
 	Options    string `json:"Options,omitempty"`
 }
+
+// PublishOptions are the options needed to publish a file volume
+type PublishFileOptions struct {
+	Name           string `json:"name,omitempty"`
+	HostUUID       string `json:"host_uuid,omitempty"`
+	AccessProtocol string `json:"access_protocol,omitempty"`
+	VolumeID       string `json:"volume_id,omitempty"`
+	AccessIP       string `json:"access_ip,omitempty"`
+}
+
+// PublishFileInfo is the node side data required to access a volume
+type PublishFileInfo struct {
+	HostIP    string `json:"host_ip,omitempty"`
+	MountPath string `json:"mount_path,omitempty"`
+	//TODO can contain more info if needed
+}

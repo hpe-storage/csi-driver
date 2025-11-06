@@ -87,6 +87,21 @@ func IsFileSymlink(path string) (exists bool, symlink bool, err error) {
 	return true, (info.Mode()&os.ModeSymlink == os.ModeSymlink), nil
 }
 
+// IsFileBlockDevice to check if the path exists and is a raw device (block or symlink)
+func IsFileBlockDevice(path string) (exists bool, device bool, err error) {
+	log.Tracef(">>>>> IsFileBlockDevice for path %s", path)
+	defer log.Trace("<<<<< IsFileBlockDevice")
+
+	info, err := os.Lstat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, false, nil
+		}
+		return true, false, err
+	}
+	return true, (info.Mode()&os.ModeDevice == os.ModeDevice || info.Mode()&os.ModeSymlink == os.ModeSymlink), nil
+}
+
 // CreateDirIfNotExists to create a directory if it is not already available
 func CreateDirIfNotExists(dirPath string, perm os.FileMode) error {
 	// Check if the directory already exists
