@@ -287,3 +287,9 @@ func (provider *StorageProvider) EditVolume(id string, parameters map[string]int
 	}
 	return &fakeVolume, nil
 }
+
+func (provider *StorageProvider) PublishFileVolume(publishOptions *model.PublishFileOptions) (*model.PublishFileInfo, error) {
+	return &model.PublishFileInfo{
+		HostIP: "eui.fake",
+	}, nil
+}
