@@ -379,7 +379,7 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 				Wwpns:    wwpns,
 				Nqns:     nqns,
 			}
-
+			log.Tracef("HPE Node Info sent to CSP: %v", node)
 			return node, nil
 		}
 	}

@@ -2240,11 +2240,15 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 
 	var iqns []*string
 	var wwpns []*string
-	var nqn *string
+	var nqns []*string
 	for _, initiator := range initiators {
 		if initiator.Type == iscsi {
 			for i := 0; i < len(initiator.Init); i++ {
 				iqns = append(iqns, &initiator.Init[i])
+			}
+		} else if initiator.Type == nvmeotcp {
+			for i := 0; i < len(initiator.Init); i++ {
+				nqns = append(nqns, &initiator.Init[i])
 			}
 		} else {
 			for i := 0; i < len(initiator.Init); i++ {
@@ -2252,17 +2256,6 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 			}
 		}
 	}
-
-	nvmeNqn, err := GetNvmeInitiator()
-	if err == nil && nvmeNqn != "" {
-		nqn = &nvmeNqn
-	}
-
-	var nqns []*string
-	if nqn != nil {
-		nqns = append(nqns, nqn)
-	}
-
 	var cidrNetworks []*string
 	for _, network := range networks {
 		log.Infof("Processing network named %s with IpV4 CIDR %s", network.Name, network.CidrNetwork)
