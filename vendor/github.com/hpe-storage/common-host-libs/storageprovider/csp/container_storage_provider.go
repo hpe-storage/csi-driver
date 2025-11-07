@@ -529,6 +529,27 @@ func (provider *ContainerStorageProvider) PublishVolume(id, hostUUID, accessProt
 	return response, err
 }
 
+// PublishFileVolume will make a volume visible (add an ACL) to the given host
+func (provider *ContainerStorageProvider) PublishFileVolume(publishFileOptions *model.PublishFileOptions) (*model.PublishFileInfo, error) {
+	response := &model.PublishFileInfo{}
+	var errorResponse *ErrorsPayload
+
+	status, err := provider.invoke(
+		&connectivity.Request{
+			Action:        "PUT",
+			Path:          fmt.Sprintf("/containers/v1/volumes/%s/actions/publish", publishFileOptions.VolumeID),
+			Payload:       publishFileOptions,
+			Response:      &response,
+			ResponseError: &errorResponse,
+		},
+	)
+	if errorResponse != nil {
+		return nil, handleError(status, errorResponse)
+	}
+
+	return response, err
+}
+
 // UnpublishVolume will make a volume invisible (remove an ACL) from the given host
 func (provider *ContainerStorageProvider) UnpublishVolume(id, hostUUID string) error {
 	var errorResponse *ErrorsPayload
