@@ -68,6 +68,7 @@ const (
 	nfsForeignStorageClassKey      = "nfsForeignStorageClass"
 	nfsResourcesKey                = "nfsResources"
 	nfsTolerationSecScKey          = "nfsTolerationSeconds"
+	nfsEnableProbesKey             = "nfsEnableProbes"
 	defaultNfsTolerationSeconds    = 30
 	nfsProbeInitialDelaySeconds    = 0
 	nfsProbePeriodSeconds          = 10
@@ -92,6 +93,7 @@ type NFSSpec struct {
 	sourceNamespace      string
 	sourceVolumeClaim    string
 	tolerationSeconds    *int64
+	enableProbes         bool
 }
 
 // CreateNFSVolume creates nfs volume abstracting underlying nfs pvc, deployment and service
@@ -684,6 +686,16 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 		}
 	}
 
+	if nfsEnableProbesStr, ok := scParams[nfsEnableProbesKey]; ok {
+		if nfsEnableProbesStr == "true" {
+			nfsSpec.enableProbes = true
+		} else {
+			nfsSpec.enableProbes = false
+		}
+	} else {
+		nfsSpec.enableProbes = false
+	}
+
 	return &nfsSpec, nil
 }
 
@@ -1025,44 +1037,52 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 		LabelSelector:     &podLabelSelector,
 	}
 
-	startupProbe := &core_v1.Probe{
-		ProbeHandler: core_v1.ProbeHandler{
-			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeStartupKey},
-			},
-		},
-		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
-		PeriodSeconds:       nfsProbePeriodSeconds,
-		TimeoutSeconds:      nfsProbeTimeoutSeconds,
-	}
+	var livenessProbe *core_v1.Probe
+	var startupProbe *core_v1.Probe
+	var readinessProbe *core_v1.Probe
 
-	readinessProbe := &core_v1.Probe{
-		ProbeHandler: core_v1.ProbeHandler{
-			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeReadinessKey},
+	if nfsSpec.enableProbes {
+		log.Infof("enableProbes: %v, enabling NFS Probes", nfsSpec.enableProbes)
+		startupProbe = &core_v1.Probe{
+			ProbeHandler: core_v1.ProbeHandler{
+				Exec: &core_v1.ExecAction{
+					Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeStartupKey},
+				},
 			},
-		},
-		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
-		PeriodSeconds:       nfsProbePeriodSeconds,
-		TimeoutSeconds:      nfsProbeTimeoutSeconds,
-	}
+			InitialDelaySeconds: nfsProbeInitialDelaySeconds,
+			PeriodSeconds:       nfsProbePeriodSeconds,
+			TimeoutSeconds:      nfsProbeTimeoutSeconds,
+		}
 
-	livenessProbe := &core_v1.Probe{
-		ProbeHandler: core_v1.ProbeHandler{
-			Exec: &core_v1.ExecAction{
-				Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeLivenessKey},
+		readinessProbe = &core_v1.Probe{
+			ProbeHandler: core_v1.ProbeHandler{
+				Exec: &core_v1.ExecAction{
+					Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeReadinessKey},
+				},
 			},
-		},
-		InitialDelaySeconds: nfsProbeInitialDelaySeconds,
-		PeriodSeconds:       nfsLivenessProbePeriodSeconds,
-		TimeoutSeconds:      nfsLivenessProbeTimeoutSeconds,
+			InitialDelaySeconds: nfsProbeInitialDelaySeconds,
+			PeriodSeconds:       nfsProbePeriodSeconds,
+			TimeoutSeconds:      nfsProbeTimeoutSeconds,
+		}
+
+		livenessProbe = &core_v1.Probe{
+			ProbeHandler: core_v1.ProbeHandler{
+				Exec: &core_v1.ExecAction{
+					Command: []string{"/bin/sh", "/nfsHealthCheck.sh", nfsProbeLivenessKey},
+				},
+			},
+			InitialDelaySeconds: nfsProbeInitialDelaySeconds,
+			PeriodSeconds:       nfsLivenessProbePeriodSeconds,
+			TimeoutSeconds:      nfsLivenessProbeTimeoutSeconds,
+		}
+	} else {
+		log.Infof("enableProbes: %v, NFS Probes disabled.", nfsSpec.enableProbes)
 	}
 
 	containers := []core_v1.Container{flavor.makeContainer("hpe-nfs", nfsSpec)}
 	containers[0].StartupProbe = startupProbe
 	containers[0].ReadinessProbe = readinessProbe
 	containers[0].LivenessProbe = livenessProbe
-
 	podSpec := core_v1.PodTemplateSpec{
 		ObjectMeta: meta_v1.ObjectMeta{
 			Name:        name,
