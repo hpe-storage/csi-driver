@@ -394,6 +394,7 @@ func setAltFullPathName(dev *model.Device) (err error) {
 // Helper function to perform rescan and detect the newly attached volume (FC/iSCSI volume)
 func rescanLoginVolume(volume *model.Volume) error {
 	log.Traceln(">>>>> rescanLoginVolume", volume, "and accessProtocol", volume.AccessProtocol)
+	log.Traceln(">>>>> rescanLoginVolume Nqn", volume.Nqn, "and TargetAddress", volume.TargetAddress)
 	defer log.Traceln("<<<< rescanLoginVolume")
 	var err error
 	var primaryVolObj *model.Volume
@@ -408,6 +409,9 @@ func rescanLoginVolume(volume *model.Volume) error {
 	primaryVolObj.ConnectionMode = volume.ConnectionMode
 	primaryVolObj.SerialNumber = volume.SerialNumber
 	primaryVolObj.Networks = volume.Networks
+	primaryVolObj.Nqn = volume.Nqn
+	primaryVolObj.TargetAddress = strings.Join(volume.DiscoveryIPs, ",")
+	primaryVolObj.TargetPort = volume.TargetPort
 
 	err = rescanLoginVolumeForBackend(primaryVolObj)
 
@@ -499,6 +503,30 @@ func isLuksDevice(devPath string) (bool, error) {
 func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 	log.Debugf(">>>> createLinuxDevice called with volume %s serialNumber %s and lunID %s", volume.Name, volume.SerialNumber, volume.LunID)
 	defer log.Debug("<<<<< createLinuxDevice")
+	 // Handle NVMe/TCP device creation
+    if strings.EqualFold(volume.AccessProtocol, "nvmetcp") {
+        log.Tracef("NVMe/TCP requested, NQN: %s, Serial: %s", volume.Nqn, volume.SerialNumber)
+        // Initiate NVMe/TCP discovery and connection
+        if err := rescanLoginVolume(volume); err != nil {
+            return nil, fmt.Errorf("NVMe/TCP discovery failed: %v", err)
+        }
+        // Allow time for device to register
+        time.Sleep(time.Second * 2)
+        // Attempt to locate NVMe device by NQN or Serial
+        nvmeDev, lookupErr := GetNvmeDeviceFromNamespace(volume.Nqn)
+        if lookupErr == nil && nvmeDev != nil {
+            log.Infof("NVMe/TCP device found: %+v", nvmeDev)
+            return nvmeDev, nil
+        }
+        // Fallback to SerialNumber if NQN lookup fails
+        nvmeDev, lookupErr = GetNvmeDeviceFromNamespace(volume.SerialNumber)
+        if lookupErr == nil && nvmeDev != nil {
+            log.Infof("NVMe/TCP device found by serial: %+v", nvmeDev)
+            return nvmeDev, nil
+        }
+        return nil, fmt.Errorf("unable to locate NVMe/TCP device for NQN %s or serial %s", volume.Nqn, volume.SerialNumber)
+    }
+	
 	// Rescan and detect the newly attached volume
 	err = rescanLoginVolume(volume)
 	if err != nil {
@@ -1097,32 +1125,35 @@ func GetDeviceFromVolume(vol *model.Volume) (*model.Device, error) {
 	log.Tracef(">>>>> GetDeviceFromVolume for serial %s", vol.SerialNumber)
 	defer log.Trace("<<<<< GetDeviceFromVolume")
 
-	devices, err := GetLinuxDmDevices(false, vol)
-	if err != nil {
-		return nil, err
-	}
+	// Try NVMe device lookup first
+	if strings.EqualFold(vol.AccessProtocol, "nvmetcp") {
+		nvmeDev, err := GetNvmeDeviceFromNamespace(vol.SerialNumber)
+		log.Tracef("NVMe device: %+v", nvmeDev)
+		if err == nil && nvmeDev != nil {
+			log.Debugf("Found NVMe device: %+v", nvmeDev)
+			return nvmeDev, nil
+		}
+	}else{
+		devices, err := GetLinuxDmDevices(false, vol)
+		if err != nil {
+			return nil, err
+		}
 
-	 if len(devices) > 0 {
-        return devices[0], nil
-    }
-
-	// Try NVMe device lookup if not found above
-    nvmeDev, err := GetNvmeDeviceFromNamespace(vol.SerialNumber)
-    if err == nil && nvmeDev != nil {
-        log.Debugf("Found NVMe device: %+v", nvmeDev)
-        return nvmeDev, nil
-    }
-	if len(devices) == 0 {
-		return nil, fmt.Errorf("unable to find device matching volume serial number %s", vol.SerialNumber)
+		if len(devices) > 0 {
+			return devices[0], nil
+		}
+		if len(devices) == 0 {
+			return nil, fmt.Errorf("unable to find device matching volume serial number %s", vol.SerialNumber)
+		}
+		return devices[0], nil
 	}
-	return devices[0], nil
+	return nil, fmt.Errorf("device not found for volume %s with access protocol %s", vol.Name, vol.AccessProtocol)
 }
 
 //CreateLinuxDevices : attached and creates linux devices to host
 func CreateLinuxDevices(vols []*model.Volume) (devs []*model.Device, err error) {
 	log.Tracef(">>>>> CreateLinuxDevices")
 	defer log.Trace("<<<<< CreateLinuxDevices")
-
 	var devices []*model.Device
 	for _, vol := range vols {
 		log.Tracef("create request with serialnumber :%s, accessprotocol %s discoveryip %s, iqn %s ", vol.SerialNumber, vol.AccessProtocol, vol.DiscoveryIP, vol.Iqn)
@@ -1456,14 +1487,23 @@ func GetNvmeDeviceFromNamespace(serialOrNamespace string) (*model.Device, error)
     for _, f := range files {
         if nvmeRegex.MatchString(f.Name()) {
             // Optionally, check namespace/serial via sysfs
-            sysfsSerialPath := fmt.Sprintf("/sys/class/block/%s/serial", f.Name())
+            sysfsSerialPath := fmt.Sprintf("/sys/class/block/%s/subsystem/%s/nguid", f.Name(), f.Name())
+            log.Tracef("serial path=%s", sysfsSerialPath)
             serial, _ := util.FileReadFirstLine(sysfsSerialPath)
-            if serialOrNamespace == f.Name() || serialOrNamespace == serial {
+			log.Tracef("serial path=%s", sysfsSerialPath)
+			// Normalize the serial from sysfs by removing dashes and whitespace
+            normalizedSerial := strings.ReplaceAll(strings.TrimSpace(serial), "-", "")
+            log.Tracef("found serial number %s, normalized: %s", serial, normalizedSerial)
+            if serialOrNamespace == f.Name() || serialOrNamespace == normalizedSerial {
+				log.Tracef("serial number %s matched=%s", serialOrNamespace, normalizedSerial)
                 return &model.Device{
                     Pathname: nvmeRoot + f.Name(),
-                    SerialNumber: serial,
+					AltFullPathName: nvmeRoot + f.Name(),
+                    SerialNumber: normalizedSerial,
                 }, nil
-            }
+            }else{
+				log.Tracef("serial number %s did not match=%s", serialOrNamespace, normalizedSerial)
+			}
         }
     }
     return nil, fmt.Errorf("NVMe device not found for %s", serialOrNamespace)

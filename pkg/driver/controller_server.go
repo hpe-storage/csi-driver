@@ -960,31 +960,13 @@ func (driver *Driver) controllerPublishVolume(
 	// TODO: add any additional info necessary to mount the device
 	publishContext := map[string]string{}
 	
-	// NVMe over TCP support
-    if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, "nvmetcp") {
-        publishContext[serialNumberKey] = publishInfo.SerialNumber
-        publishContext[accessProtocolKey] = "nvmetcp"
-        // NQN, target address, and port for NVMe/TCP
-        if len(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames) > 0 {
-            publishContext[targetNamesKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames[0]
-        }
-        if len(publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.DiscoveryIPs) > 0 {
-            publishContext[discoveryIPsKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.DiscoveryIPs[0]
-        }
-        if publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.TargetPort != "" {
-            publishContext[targetPortKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.NvmetcpAccessInfo.TargetPort
-        } else {
-            publishContext[targetPortKey] = "4420" // default NVMe/TCP port
-        }
-       
-    }else{
+
 		publishContext[serialNumberKey] = publishInfo.SerialNumber
 		publishContext[accessProtocolKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
 		publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
 		publishContext[targetScopeKey] = requestedTargetScope
 		publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
-
-	}
+		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.DiscoveryIPs, ",")
 	
 	// Start of population of target array details
 	if publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails != nil {
@@ -1000,8 +982,14 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
-		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.IscsiAccessInfo.DiscoveryIPs, ",")
+		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.DiscoveryIPs, ",")
 	}
+
+	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, nvmetcp) {
+		publishContext[targetPortKey] = "4420" // default NVMe/TCP port
+		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.DiscoveryIPs, ",")
+	}
+
 
 	if readOnlyAccessMode {
 		publishContext[readOnlyKey] = strconv.FormatBool(readOnlyAccessMode)

@@ -94,6 +94,14 @@ func setKernelParam(path, value string) error {
 // ConnectNvmeTarget connects to an NVMe over TCP target
 func ConnectNvmeTarget(target *model.NvmeTarget) error {
 
+    var discoveryIP = strings.Split(target.Address, ",")
+    if len(discoveryIP) == 0 {
+        return fmt.Errorf("no discovery IPs provided for NVMe target")
+    }
+
+    // Use the first discovery IP for connection
+    target.Address = discoveryIP[0]
+
     args := []string{
         "connect",
         "-t", "tcp",
@@ -102,8 +110,33 @@ func ConnectNvmeTarget(target *model.NvmeTarget) error {
         "-s", target.Port,
     }
     
-    _, _, err := util.ExecCommandOutput(nvmecmd, args)
-    return err
+    _, rc, err := util.ExecCommandOutput(nvmecmd, args)
+    if err != nil && rc != 114 {
+        log.Warnf("NVMe connect failed for discovery IP %s, rc=%d, error: %s", discoveryIP[0], rc, err)
+        //try discovery with another IP if multiple are provided
+        for i := 1; i < len(discoveryIP); i++ {
+            log.Warnf("NVMe connect failed, trying next discovery IP %s", discoveryIP[i])
+            args := []string{
+                "connect",
+                "-t", "tcp",
+                "-n", target.NQN,
+                "-a", discoveryIP[i],
+                "-s", target.Port,
+            }
+            _, rc, err = util.ExecCommandOutput(nvmecmd, args)
+            if err != nil && rc != 114 {
+                log.Warnf("NVMe connect failed for discovery IP %s, rc=%d, error: %s", discoveryIP[i], rc,  err)
+                continue
+            }else{
+                log.Infof("Successfully connected to NVMe target using discovery IP %s", discoveryIP[i])
+                return nil
+            }
+        }
+        return fmt.Errorf("failed to connect to NVMe target: %v", err)        
+    }else{
+        log.Infof("Successfully connected to NVMe target using discovery IP %s", discoveryIP[0])
+        return nil
+    }
 }
 
 // DisconnectNvmeTarget disconnects from an NVMe target
@@ -137,7 +170,7 @@ func HandleNvmeTcpDiscovery(volume *model.Volume) error {
     // 2. Prepare NVMe target info
     target := &model.NvmeTarget{
         NQN:     volume.Nqn,
-        Address: volume.TargetAddress,
+        Address: strings.Join(volume.DiscoveryIPs, ","),
         Port:    volume.TargetPort,
     }
 
@@ -178,10 +211,14 @@ func FindNvmeDevices(serialNumber string) ([]string, error) {
         if nvmeRegex.MatchString(f.Name()) {
             devicePath := filepath.Join("/dev", f.Name())
             
-            // Check serial number via sysfs
-            sysfsSerialPath := fmt.Sprintf("/sys/class/block/%s/serial", f.Name())
+             // Check serial number via sysfs
+            sysfsSerialPath := fmt.Sprintf("/sys/class/block/%s/subsystem/%s/nguid", f.Name(), f.Name())
+            log.Tracef("serial path=%s", sysfsSerialPath)
             if serial, err := util.FileReadFirstLine(sysfsSerialPath); err == nil {
-                if strings.TrimSpace(serial) == serialNumber {
+                // Normalize the serial from sysfs by removing dashes and whitespace
+                normalizedSerial := strings.ReplaceAll(strings.TrimSpace(serial), "-", "")
+                log.Tracef("found serial number %s, normalized: %s", serial, normalizedSerial)
+                if strings.TrimSpace(normalizedSerial) == serialNumber {
                     devices = append(devices, devicePath)
                 }
             }

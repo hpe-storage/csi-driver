@@ -76,7 +76,8 @@ RUN ln -s /chroot/chroot-host-wrapper.sh /chroot/blkid \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/ip \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/dnsdomainname \
     && ln -s /chroot/chroot-host-wrapper.sh /chroot/sg_inq \
-    && ln -s /chroot/chroot-host-wrapper.sh /chroot/find
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/find \
+    && ln -s /chroot/chroot-host-wrapper.sh /chroot/nvme
 
 ENV PATH="/chroot:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 

@@ -315,6 +315,7 @@ type AccessInfo struct {
 type BlockDeviceAccessInfo struct {
 	AccessProtocol string   `json:"access_protocol,omitempty"`
 	TargetNames    []string `json:"target_names,omitempty"`
+	DiscoveryIPs []string `json:"discovery_ips,omitempty"`
 	LunID          int32    `json:"lun_id,omitempty"`
 	SecondaryBackendDetails
 	IscsiAccessInfo
@@ -343,7 +344,6 @@ type IscsiAccessInfo struct {
 
 // NvmetcpAccessInfo contains the fields necessary for NVMe/TCP access
 type NvmetcpAccessInfo struct {
-    DiscoveryIPs []string `json:"discovery_ips,omitempty"`
     TargetNames      []string `json:"target_names,omitempty"` // NQN(s)
     TargetPort       string   `json:"target_port,omitempty"`  // e.g., 4420
 }
