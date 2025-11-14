@@ -45,6 +45,6 @@ type Flavor interface {
 	ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error)
 	GetChapCredentials(volumeContext map[string]string) (*model.ChapInfo, error)
 	CheckConnection() bool
-	GetPVCByName(name string, namespace string) (*v1.PersistentVolumeClaim, error)
+	GetPVCByVolumeID(id string) (*v1.PersistentVolumeClaim, error)
 	HandleFileNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error)
 }
