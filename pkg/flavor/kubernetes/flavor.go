@@ -709,7 +709,7 @@ func (flavor *Flavor) GetPVCByVolumeID(id string) (*v1.PersistentVolumeClaim, er
 
 		pvc, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), name, meta_v1.GetOptions{})
 		if err != nil {
-			log.Errorf("Error retrieving the PVC %s, err: %v", id, err.Error())
+			log.Errorf("Error retrieving the PVC name %s in Namespace %s from claimRef of PV %s, error: %v", name, namespace, id, err.Error())
 			return nil, err
 		}
 
