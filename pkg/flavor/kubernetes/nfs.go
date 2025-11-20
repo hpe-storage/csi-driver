@@ -586,6 +586,12 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	var nfsSpec NFSSpec
 
 	// limits
+	cpuLimitRaw, cpuLimitProvided := scParams[nfsResourceLimitsCPUKey]
+	memLimitRaw, memLimitProvided := scParams[nfsResourceLimitsMemoryKey]
+
+	cpuLimitDisabled := cpuLimitProvided && cpuLimitRaw == "0"
+	memLimitDisabled := memLimitProvided && memLimitRaw == "0"
+
 	resourceLimits := make(core_v1.ResourceList)
 
 	// cpu limits eg: 500m
@@ -594,7 +600,9 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	resourceLimits[core_v1.ResourceCPU] = cpuLimitsQuantity
+	if !cpuLimitDisabled && !cpuLimitsQuantity.IsZero() {
+		resourceLimits[core_v1.ResourceCPU] = cpuLimitsQuantity
+	}
 
 	// memory limits eg: 1Gi
 	memoryLimitsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceLimitsMemoryKey, defaultRLimitMemory)
@@ -602,9 +610,11 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	resourceLimits[core_v1.ResourceMemory] = memoryLimitsQuantity
+	if !memLimitDisabled && !memoryLimitsQuantity.IsZero() {
+		resourceLimits[core_v1.ResourceMemory] = memoryLimitsQuantity
+	}
 
-	// requests
+    // requests
 	resourceRequests := make(core_v1.ResourceList)
 
 	// cpu request eg: 500m
@@ -613,7 +623,9 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	resourceRequests[core_v1.ResourceCPU] = cpuRequestsQuantity
+	if !cpuLimitDisabled && !cpuRequestsQuantity.IsZero() {
+		resourceRequests[core_v1.ResourceCPU] = cpuRequestsQuantity
+	}
 
 	// memory limits eg: 1Gi
 	memoryRequestsQuantity, err := flavor.getResourceQuantity(scParams, nfsResourceRequestsMemoryKey, defaultRRequestMemory)
@@ -621,12 +633,16 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	resourceRequests[core_v1.ResourceMemory] = memoryRequestsQuantity
+	if !memLimitDisabled && !memoryRequestsQuantity.IsZero() {
+		resourceRequests[core_v1.ResourceMemory] = memoryRequestsQuantity
+	}
 
 	// apply resources
-	nfsSpec.resourceRequirements = &core_v1.ResourceRequirements{
-		Limits:   resourceLimits,
-		Requests: resourceRequests,
+	if len(resourceLimits) > 0 || len(resourceRequests) > 0 {
+		nfsSpec.resourceRequirements = &core_v1.ResourceRequirements{
+			Limits:   resourceLimits,
+			Requests: resourceRequests,
+		}
 	}
 
 	// custom hpe-nfs label values
