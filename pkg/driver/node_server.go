@@ -518,7 +518,7 @@ func (driver *Driver) stageVolume(
 	// Store mount info in the staging device
 	stagingDevice.MountInfo = mountInfo
 
-        // Retrieve PVC spec for dataSource inspection for regular PVCs
+	// Retrieve PVC spec for dataSource inspection for regular PVCs
 	if isEphemeral(volumeContext) == false {
 		pvc, err := driver.flavor.GetPVCByVolumeID(volumeID)
 
@@ -526,14 +526,11 @@ func (driver *Driver) stageVolume(
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting PVC from volumeID %v, %v", volumeID, err))
 		}
 
-		if pvc.Spec.DataSource != nil {
-
-			// If the DataSource is a VolumeSnapshot
-			if pvc.Spec.DataSource.Kind == "VolumeSnapshot" {
-				log.Infof(" Datasource of volume %v is VolumeSnapshot and VolumeSnapshot Name: %s ", volumeID, pvc.Spec.DataSource.Name)
-				//set to true as volume is created from volume snapshot
-				IsVolumeClone = true
-			}
+		// If the PVC DataSource is a VolumeSnapshot
+		if pvc != nil && pvc.Spec.DataSource != nil && pvc.Spec.DataSource.Kind == "VolumeSnapshot" {
+			log.Infof(" Datasource of volume %v is VolumeSnapshot and VolumeSnapshot Name: %s ", volumeID, pvc.Spec.DataSource.Name)
+			//set to true as volume is created from volume snapshot
+			IsVolumeClone = true
 		}
 
 		// Check whether volume is created from snapshot then only we need resize
