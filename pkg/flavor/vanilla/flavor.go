@@ -155,7 +155,7 @@ func (flavor *Flavor) CheckConnection() bool {
 }
 
 //nolint:revive
-func (flavor *Flavor) GetPVCByName(name string, namespace string) (*v1.PersistentVolumeClaim, error) {
+func (flavor *Flavor) GetPVCByVolumeID(id string) (*v1.PersistentVolumeClaim, error) {
 	return nil, nil
 }
 
