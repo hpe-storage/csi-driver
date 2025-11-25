@@ -517,13 +517,14 @@ func (driver *Driver) stageVolume(
 	// Store mount info in the staging device
 	stagingDevice.MountInfo = mountInfo
 
-	// CON-3010
-	// Get the PVC details to identify the datasource of PVC
-	if volumeContext[pvcNameAttribute] != "" && volumeContext[pvcNamespaceAttribute] != "" {
-		pvc, err := driver.flavor.GetPVCByName(volumeContext[pvcNameAttribute], volumeContext[pvcNamespaceAttribute])
+        // Retrieve PVC spec for dataSource inspection for regular PVCs
+	if isEphemeral(volumeContext) == false {
+		pvc, err := driver.flavor.GetPVCByVolumeID(volumeID)
+
 		if err != nil {
-			return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting pvc data source for volume %v, %v", volumeID, err))
+			return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting PVC from volumeID %v, %v", volumeID, err))
 		}
+
 		if pvc.Spec.DataSource != nil {
 
 			// If the DataSource is a VolumeSnapshot
@@ -533,31 +534,30 @@ func (driver *Driver) stageVolume(
 				IsVolumeClone = true
 			}
 		}
-	}
 
-	// Check whether volume is created from snapshot then only we need resize
-	if IsVolumeClone {
-		// Initialize resizeFs
-		r := mountutil.NewResizeFs(exec.New())
+		// Check whether volume is created from snapshot then only we need resize
+		if IsVolumeClone {
+			// Initialize resizeFs
+			r := mountutil.NewResizeFs(exec.New())
 
-		log.Infof("Verify whether resize required for device path %v ", device.AltFullPathName)
+			log.Infof("Verify whether resize required for device path %v ", device.AltFullPathName)
 
-		// check whether we need resize for file system
-		needResize, err := r.NeedResize(device.AltFullPathName, stagingMountPoint)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Could not determine if volume %q need to be resized, error: %v", volumeID, err)
-		}
-		log.Infof("Need resize for filesystem: %v", needResize)
-
-		if needResize {
-			log.Infof("Resize of target path %s is required ", device.AltFullPathName)
-			if _, err := r.Resize(device.AltFullPathName, stagingMountPoint); err != nil {
-				return nil, status.Errorf(codes.Internal, "Could not resize volume %q, error :  %v", volumeID, err)
+			// check whether we need resize for file system
+			needResize, err := r.NeedResize(device.AltFullPathName, stagingMountPoint)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "Could not determine if volume %q need to be resized, error: %v", volumeID, err)
 			}
-			log.Infof("Resize of target path %s is successful", device.AltFullPathName)
+			log.Infof("Need resize for filesystem: %v", needResize)
+
+			if needResize {
+				log.Infof("Resize of target path %s is required ", device.AltFullPathName)
+				if _, err := r.Resize(device.AltFullPathName, stagingMountPoint); err != nil {
+					return nil, status.Errorf(codes.Internal, "Could not resize volume %q, error :  %v", volumeID, err)
+				}
+				log.Infof("Resize of target path %s is successful", device.AltFullPathName)
+			}
 		}
 	}
-	// CON-3010
 
 	return stagingDevice, nil
 }
