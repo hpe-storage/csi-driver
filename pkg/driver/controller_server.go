@@ -537,6 +537,23 @@ func (driver *Driver) createVolume(
 					status.Error(codes.InvalidArgument,
 						fmt.Sprintf("Requested volume filesystem %s cannot be different than snapshot's parent volume filesystem %s", filesystem, parentVolFsType))
 			}
+
+			// CON-4206: Always inherit provisioning_type from parent volume when restoring from snapshot
+			// This ensures clone has same provisioning type as the original volume
+			if existingParentVolume.Config != nil {
+				if parentProvType, exists := existingParentVolume.Config["provisioning_type"]; exists {
+					createOptions["provisioning_type"] = parentProvType
+					// Normalize tdvv to reduce as backend only accepts tpvv or reduce
+					provTypeStr := fmt.Sprintf("%v", parentProvType)
+					if provTypeStr == "tdvv" {
+						createOptions["provisioning_type"] = "reduce"
+						log.Infof("Inherited provisioning_type 'tdvv' from parent volume, normalized to 'reduce' for snapshot clone")
+					} else {
+						log.Infof("Inherited provisioning_type '%v' from parent volume for snapshot clone", parentProvType)
+					}
+				}
+			}
+
 			// Create a clone from another volume
 			log.Infof("About to create a new clone '%s' from snapshot %s with options %+v", name, existingSnap.ID, createOptions)
 			volume, err := storageProvider.CloneVolume(name, description, "", existingSnap.ID, size, createOptions)
