@@ -126,3 +126,12 @@ func removeDataFile(dirPath string, fileName string) error {
 func isValidIP(ip string) bool {
 	return ip != "" && net.ParseIP(ip) != nil
 }
+// GetNvmeInitiator returns the NVMe host NQN as a string
+func GetNvmeInitiator() (string, error) {
+    data, err := ioutil.ReadFile("/etc/nvme/hostnqn")
+    if err != nil {
+        return "", err
+    }
+    nqn := strings.TrimSpace(string(data))
+    return nqn, nil
+}

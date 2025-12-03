@@ -6,6 +6,8 @@ const (
 	// Protocol types
 	iscsi = "iscsi"
 	fc    = "fc"
+	nvmeotcp = "nvmeotcp"
+	defaultNvmePort = "4420"
 
 	// defaultFileSystem is the implemenation-specific default value
 	defaultFileSystem = "xfs"
