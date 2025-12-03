@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"os/user"
 	"regexp"
 	"strconv"
@@ -432,6 +434,59 @@ func UnmountFileSystem(mountPoint string) (*model.Mount, error) {
 	return mnt, nil
 }
 
+// DisconnectNVMeTargetByNQN disconnects all NVMe controllers for a given subsystem NQN
+func DisconnectNVMeTargetByNQN(subsysNQN string) error {
+    if subsysNQN == "" {
+        return fmt.Errorf("subsystem NQN is empty")
+    }
+    cmd := exec.Command("nvme", "disconnect", "-n", subsysNQN)
+    output, err := cmd.CombinedOutput()
+    if err != nil {
+        log.Errorf("Failed to disconnect NVMe subsystem NQN %s: %s, output: %s", subsysNQN, err.Error(), string(output))
+        return err
+    }
+    log.Infof("Disconnected NVMe subsystem NQN %s successfully", subsysNQN)
+    return nil
+}
+
+func IsLastNamespaceForNQN(nqn string) bool {
+    nvmeClassDir := "/sys/class/nvme/"
+    files, err := ioutil.ReadDir(nvmeClassDir)
+    if err != nil {
+        log.Errorf("Failed to read %s: %v", nvmeClassDir, err)
+        return false
+    }
+    nsCount := 0
+    for _, f := range files {
+        // Only consider controller directories (e.g., nvme0, nvme1)
+        if !strings.HasPrefix(f.Name(), "nvme") || strings.Contains(f.Name(), "nvme-subsys") {
+            continue
+        }
+        subsysnqnPath := fmt.Sprintf("%s%s/subsysnqn", nvmeClassDir, f.Name())
+        subsysNqn, nqnErr := util.FileReadFirstLine(subsysnqnPath)
+        if nqnErr != nil || strings.TrimSpace(subsysNqn) != nqn {
+            continue
+        }
+        // Count namespaces for this controller
+        ctrlDir := fmt.Sprintf("%s%s/", nvmeClassDir, f.Name())
+        ctrlFiles, err := ioutil.ReadDir(ctrlDir)
+        if err != nil {
+            continue
+        }
+        for _, cf := range ctrlFiles {
+			// Match namespace files like nvme1n1, nvme1c1n1, nvme1c2n1, etc.
+			nsPattern := fmt.Sprintf(`^%sc\d+n\d+$|^%sn\d+$`, f.Name(), f.Name())
+			matched, _ := regexp.MatchString(nsPattern, cf.Name())
+			if matched {
+				nsCount++
+			}
+		}
+    }
+    log.Tracef("Found %d active namespaces for NQN %s", nsCount, nqn)
+    // If only one namespace left for this NQN, it's safe to disconnect
+    return nsCount <= 1
+}
+
 // UnmountDevice : unmount device from host
 func UnmountDevice(device *model.Device, mountPoint string) (*model.Mount, error) {
 	log.Trace("UnmountDevice called")
@@ -439,7 +494,26 @@ func UnmountDevice(device *model.Device, mountPoint string) (*model.Mount, error
 		return nil, fmt.Errorf("no device or mountPoint present to unmount")
 	}
 	mount, err := UnmountFileSystem(mountPoint)
-	return mount, err
+	 if err != nil {
+        return mount, err
+    }
+	// Disconnect and delete NVMe subsystem after unmount
+	log.Debugf("Nvme targets %v+", device.NvmeTargets)
+    if device.NvmeTargets != nil && len(device.NvmeTargets) > 0 {
+        for _, target := range device.NvmeTargets {
+			log.Debugf("Nvme NQN %v+", target.NQN)
+            if target.NQN != "" && IsLastNamespaceForNQN(target.NQN) {
+                // Disconnect the device
+                err = DisconnectNVMeTargetByNQN(target.NQN)
+				if err != nil {
+					log.Errorf("Failed to disconnect NVMe target for device %s: %v", device.AltFullPathName, err)
+				}
+            }else{
+				log.Infof("Skipping disconnect for NQN %s as other namespaces are present", target.NQN)
+			}
+        }
+    }
+	return mount, nil
 }
 
 // RemountWithOptions : Remount mountpoint with options

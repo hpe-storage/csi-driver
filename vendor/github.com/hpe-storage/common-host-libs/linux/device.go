@@ -1477,7 +1477,7 @@ func isMappedLuksDevice(devPath string) (bool, error) {
 }
 
 // GetNvmeDeviceFromNamespace returns NVMe device path for given namespace or serial
-func GetNvmeDeviceFromNamespace(serialOrNamespace string) (*model.Device, error) {
+/*func GetNvmeDeviceFromNamespace(serialOrNamespace string) (*model.Device, error) {
     nvmeRoot := "/dev/"
     files, err := ioutil.ReadDir(nvmeRoot)
     if err != nil {
@@ -1495,16 +1495,184 @@ func GetNvmeDeviceFromNamespace(serialOrNamespace string) (*model.Device, error)
             normalizedSerial := strings.ReplaceAll(strings.TrimSpace(serial), "-", "")
             log.Tracef("found serial number %s, normalized: %s", serial, normalizedSerial)
             if serialOrNamespace == f.Name() || serialOrNamespace == normalizedSerial {
-				log.Tracef("serial number %s matched=%s", serialOrNamespace, normalizedSerial)
-                return &model.Device{
+                device := &model.Device{
                     Pathname: nvmeRoot + f.Name(),
-					AltFullPathName: nvmeRoot + f.Name(),
                     SerialNumber: normalizedSerial,
-                }, nil
-            }else{
-				log.Tracef("serial number %s did not match=%s", serialOrNamespace, normalizedSerial)
+                }
+				// Get NVMe subsystem info to populate NvmeTargets
+				subsysPath := fmt.Sprintf("/sys/class/block/%s/device/subsysnqn", f.Name())
+				if nqn, err := util.FileReadFirstLine(subsysPath); err == nil {
+					addressPath := fmt.Sprintf("/sys/class/block/%s/device/address", f.Name())
+					if addr, err := util.FileReadFirstLine(addressPath); err == nil {
+						device.NvmeTargets = []*model.NvmeTarget{
+							{
+								NQN:     strings.TrimSpace(nqn),
+								Address: strings.TrimSpace(addr),
+							},
+						}
+					}
+				}
+				return device, nil
 			}
+		}
+    }
+    return nil, fmt.Errorf("NVMe device not found for %s", serialOrNamespace)
+}*/
+
+// Helper function to parse NVMe address format
+func parseNvmeAddress(addrStr string) (ip string, port string) {
+    // Format: traddr=192.168.1.100,trsvcid=4420
+    parts := strings.Split(addrStr, ",")
+    for _, part := range parts {
+        if strings.HasPrefix(part, "traddr=") {
+            ip = strings.TrimPrefix(part, "traddr=")
+        } else if strings.HasPrefix(part, "trsvcid=") {
+            port = strings.TrimPrefix(part, "trsvcid=")
+        }
+    }
+    return ip, port
+}
+// GetNvmeDeviceFromNamespace returns NVMe device path, nqn and target addresses for given namespace or serial
+func GetNvmeDeviceFromNamespace(serialOrNamespace string) (*model.Device, error) {
+    nvmeRoot := "/dev/"
+    files, err := ioutil.ReadDir(nvmeRoot)
+    if err != nil {
+        return nil, err
+    }
+    nvmeRegex := regexp.MustCompile(nvmeDevicePattern)
+    for _, f := range files {
+        if nvmeRegex.MatchString(f.Name()) {
+            // Extract nvme controller number using regex (e.g., nvme0 from nvme0n1)
+            ctrlRegex := regexp.MustCompile(`^(nvme\d+)n\d+$`)
+            matches := ctrlRegex.FindStringSubmatch(f.Name())
+            if len(matches) < 2 {
+                log.Warnf("Failed to extract controller name from %s", f.Name())
+                continue
+            }
+            ctrlName := matches[1]
+            log.Tracef("Extracted controller name: %s from device: %s", ctrlName, f.Name())
+            
+            // Check namespace/serial via sysfs
+            sysfsSerialPath := fmt.Sprintf("/sys/class/block/%s/subsystem/%s/nguid", f.Name(), f.Name())
+            log.Tracef("serial path=%s", sysfsSerialPath)
+            serial, _ := util.FileReadFirstLine(sysfsSerialPath)
+            
+            // Normalize the serial from sysfs by removing dashes and whitespace
+            normalizedSerial := strings.ReplaceAll(strings.TrimSpace(serial), "-", "")
+            log.Tracef("found serial number %s, normalized: %s", serial, normalizedSerial)
+            
+            if normalizedSerial == serialOrNamespace || f.Name() == serialOrNamespace {
+                devicePath := nvmeRoot + f.Name()
+                device := &model.Device{
+                    Pathname:        devicePath,
+                    AltFullPathName: devicePath,
+                    SerialNumber:    normalizedSerial,
+                }
+                
+                // Collect all NVMe targets for this device
+                nvmeTargets, err := getNvmeTargetsForDevice(ctrlName)
+                if err != nil {
+                    log.Warnf("Failed to get NVMe targets for %s: %v", ctrlName, err)
+                } else if len(nvmeTargets) > 0 {
+                    device.NvmeTargets = nvmeTargets
+                    log.Debugf("Found %d NVMe targets for device %s", len(nvmeTargets), f.Name())
+                }
+                
+                return device, nil
+            }
         }
     }
     return nil, fmt.Errorf("NVMe device not found for %s", serialOrNamespace)
+}
+
+// getNvmeTargetsForDevice collects all NVMe targets (controllers) for a given device
+func getNvmeTargetsForDevice(deviceName string) ([]*model.NvmeTarget, error) {
+    log.Tracef(">>>>> getNvmeTargetsForDevice called for %s", deviceName)
+    defer log.Tracef("<<<<< getNvmeTargetsForDevice")
+    
+    var targets []*model.NvmeTarget
+    
+    // Get subsystem NQN first - this is common across all controllers
+    subsysPath := fmt.Sprintf("/sys/class/nvme/%s/subsysnqn", deviceName)
+    nqn, err := util.FileReadFirstLine(subsysPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read subsystem NQN from %s: %v", subsysPath, err)
+    }
+    nqn = strings.TrimSpace(nqn)
+    
+    // Check if this device uses multipath (nvme_core.multipath=Y)
+    // If multipathing is enabled, we need to enumerate all controllers under the subsystem
+    subsysDir := fmt.Sprintf("/sys/class/nvme-subsystem/%s", strings.TrimPrefix(nqn, "nqn."))
+    
+	log.Info("subsysDir", subsysDir)
+    // Try to read all controllers under the subsystem
+    subsysExists, _, _ := util.FileExists(subsysDir)
+    if subsysExists {
+        // Enumerate all nvme controllers in the subsystem
+        controllers, err := ioutil.ReadDir(subsysDir)
+        if err == nil {
+            for _, ctrl := range controllers {
+                if strings.HasPrefix(ctrl.Name(), "nvme") && ctrl.IsDir() {
+                    target, err := getNvmeTargetInfo(ctrl.Name(), nqn)
+					log.Tracef("target %v", target)
+					log.Tracef("target address %v", target.Address)
+                    if err != nil {
+                        log.Warnf("Failed to get target info for controller %s: %v", ctrl.Name(), err)
+                        continue
+                    }
+                    if target != nil {
+                        targets = append(targets, target)
+                    }
+                }
+            }
+			log.Tracef("targets %v", targets)
+        }
+    }
+    
+    // Fallback: if no subsystem directory or no targets found, try the device itself
+    if len(targets) == 0 {
+        target, err := getNvmeTargetInfo(deviceName, nqn)
+        if err != nil {
+            return nil, err
+        }
+        if target != nil {
+            targets = append(targets, target)
+        }
+    }
+    
+    log.Debugf("Found %d NVMe targets for device %s", len(targets), deviceName)
+    return targets, nil
+}
+
+// getNvmeTargetInfo retrieves target information for a specific NVMe controller
+func getNvmeTargetInfo(ctrlName string, nqn string) (*model.NvmeTarget, error) {
+    // Get NVMe transport address (IP:Port for TCP)
+    addressPath := fmt.Sprintf("/sys/class/nvme/%s/address", ctrlName)
+    addr, err := util.FileReadFirstLine(addressPath)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read address from %s: %v", addressPath, err)
+    }
+    addr = strings.TrimSpace(addr)
+    
+    // Get transport type to confirm it's TCP
+    transportPath := fmt.Sprintf("/sys/class/nvme/%s/transport", ctrlName)
+    transport, _ := util.FileReadFirstLine(transportPath)
+    transport = strings.TrimSpace(transport)
+    
+    // Get state
+    statePath := fmt.Sprintf("/sys/class/nvme/%s/state", ctrlName)
+    state, _ := util.FileReadFirstLine(statePath)
+    state = strings.TrimSpace(state)
+    
+    // Parse the address to extract IP and port
+    ip, port := parseNvmeAddress(addr)
+    
+    log.Debugf("NVMe controller %s: NQN=%s, Address=%s (IP=%s, Port=%s), Transport=%s, State=%s", 
+        ctrlName, nqn, addr, ip, port, transport, state)
+    
+    return &model.NvmeTarget{
+        NQN:     nqn,
+        Address: ip,
+        Port:    port,
+    }, nil
 }

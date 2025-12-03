@@ -93,50 +93,36 @@ func setKernelParam(path, value string) error {
 
 // ConnectNvmeTarget connects to an NVMe over TCP target
 func ConnectNvmeTarget(target *model.NvmeTarget) error {
-
-    var discoveryIP = strings.Split(target.Address, ",")
-    if len(discoveryIP) == 0 {
+    discoveryIPs := strings.Split(target.Address, ",")
+    if len(discoveryIPs) == 0 {
         return fmt.Errorf("no discovery IPs provided for NVMe target")
     }
 
-    // Use the first discovery IP for connection
-    target.Address = discoveryIP[0]
+    var lastErr error
+    var success bool
 
-    args := []string{
-        "connect",
-        "-t", "tcp",
-        "-n", target.NQN,
-        "-a", target.Address,
-        "-s", target.Port,
-    }
-    
-    _, rc, err := util.ExecCommandOutput(nvmecmd, args)
-    if err != nil && rc != 114 {
-        log.Warnf("NVMe connect failed for discovery IP %s, rc=%d, error: %s", discoveryIP[0], rc, err)
-        //try discovery with another IP if multiple are provided
-        for i := 1; i < len(discoveryIP); i++ {
-            log.Warnf("NVMe connect failed, trying next discovery IP %s", discoveryIP[i])
-            args := []string{
-                "connect",
-                "-t", "tcp",
-                "-n", target.NQN,
-                "-a", discoveryIP[i],
-                "-s", target.Port,
-            }
-            _, rc, err = util.ExecCommandOutput(nvmecmd, args)
-            if err != nil && rc != 114 {
-                log.Warnf("NVMe connect failed for discovery IP %s, rc=%d, error: %s", discoveryIP[i], rc,  err)
-                continue
-            }else{
-                log.Infof("Successfully connected to NVMe target using discovery IP %s", discoveryIP[i])
-                return nil
-            }
+    for _, ip := range discoveryIPs {
+        args := []string{
+            "connect",
+            "-t", "tcp",
+            "-n", target.NQN,
+            "-a", ip,
+            "-s", target.Port,
         }
-        return fmt.Errorf("failed to connect to NVMe target: %v", err)        
-    }else{
-        log.Infof("Successfully connected to NVMe target using discovery IP %s", discoveryIP[0])
-        return nil
+        _, rc, err := util.ExecCommandOutput(nvmecmd, args)
+        if err != nil && rc != 114 {
+            log.Warnf("NVMe connect failed for discovery IP %s, rc=%d, error: %s", ip, rc, err)
+            lastErr = err
+            continue
+        }
+        log.Infof("Successfully connected to NVMe target using discovery IP %s", ip)
+        success = true
     }
+
+    if !success {
+        return fmt.Errorf("failed to connect to NVMe target: %v", lastErr)
+    }
+    return nil
 }
 
 // DisconnectNvmeTarget disconnects from an NVMe target

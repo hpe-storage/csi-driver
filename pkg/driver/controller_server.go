@@ -986,7 +986,7 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, nvmetcp) {
-		publishContext[targetPortKey] = "4420" // default NVMe/TCP port
+		publishContext[targetPortKey] = defaultNvmePort // default NVMe/TCP port
 		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.DiscoveryIPs, ",")
 	}
 
