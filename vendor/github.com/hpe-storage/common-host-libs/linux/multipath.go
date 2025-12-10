@@ -225,8 +225,8 @@ func cleanupDeviceAndSlaves(dev *model.Device) (err error) {
 	// --- NVMe multipath handling ---
     if dev != nil && dev.Pathname != "" && IsNvmeDevice(dev.Pathname) {
         if err := HandleMultipathForDevice(dev); err != nil {
-        return err
-    }
+        	return err
+    	}
     }
     // --- End NVMe multipath handling ---
 
@@ -536,13 +536,9 @@ func HandleMultipathForDevice(dev *model.Device) error {
             return nil
         }
         log.Debugf("NVMe device %s does not have native multipath enabled", dev.Pathname)
-        // Optional: fallback to dm-multipath for NVMe if required by your environment
-        // If not required, just return nil here
-        // Otherwise, call your existing dm-multipath logic below
+        // TODO: later we will need it when dm-multipath for NVMe is supported
         // return handleDmMultipathForNvme(dev)
         return nil
     }
-    // Existing dm-multipath logic for SCSI/iSCSI devices
-    // return handleDmMultipathForScsi(dev)
     return nil
 }

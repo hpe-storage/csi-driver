@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -50,10 +51,10 @@ func ApplyNvmeTcpTuning() error {
     var tuningErrors []string
 
     // Example: Increase network buffer sizes for high throughput
-    if err := setSysctl("net.core.rmem_max", "16777216"); err != nil {
+    if err := setSysctl("net.core.rmem_max", netCoreRmemMax); err != nil {
         tuningErrors = append(tuningErrors, err.Error())
     }
-    if err := setSysctl("net.core.wmem_max", "16777216"); err != nil {
+    if err := setSysctl("net.core.wmem_max", netCoreWmemMax); err != nil {
         tuningErrors = append(tuningErrors, err.Error())
     }
 
@@ -125,17 +126,6 @@ func ConnectNvmeTarget(target *model.NvmeTarget) error {
     return nil
 }
 
-// DisconnectNvmeTarget disconnects from an NVMe target
-func DisconnectNvmeTarget(target *model.NvmeTarget) error {
-    args := []string{
-        "disconnect",
-        "-n", target.NQN,
-    }
-    
-    _, _, err := util.ExecCommandOutput(nvmecmd, args)
-    return err
-}
-
 // RescanNvme performs NVMe namespace rescan
 func RescanNvme() error {
     // NVMe typically doesn't require explicit rescanning like SCSI
@@ -179,6 +169,21 @@ func HandleNvmeTcpDiscovery(volume *model.Volume) error {
         return fmt.Errorf("NVMe device for serial %s not found after connect", volume.SerialNumber)
     }
 
+    return nil
+}
+
+// DisconnectNVMeTargetByNQN disconnects all NVMe controllers for a given subsystem NQN
+func DisconnectNVMeTargetByNQN(subsysNQN string) error {
+    if subsysNQN == "" {
+        return fmt.Errorf("subsystem NQN is empty")
+    }
+    cmd := exec.Command("nvme", "disconnect", "-n", subsysNQN)
+    output, err := cmd.CombinedOutput()
+    if err != nil {
+        log.Errorf("Failed to disconnect NVMe subsystem NQN %s: %s, output: %s", subsysNQN, err.Error(), string(output))
+        return err
+    }
+    log.Infof("Disconnected NVMe subsystem NQN %s successfully", subsysNQN)
     return nil
 }
 

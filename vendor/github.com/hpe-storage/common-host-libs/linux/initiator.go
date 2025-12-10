@@ -15,8 +15,8 @@ var (
 	initiatorNamePattern = "^InitiatorName=(?P<iscsiinit>.*)$"
 	iscsi                = "iscsi"
 	fc                   = "fc"
-	nvmeHostnqnPath      = "/etc/nvme/hostnqn"        
-    	nvmeHostnqnPattern   = "^(?P<nvmeinit>nqn\\..*)$"
+	nvmeHostnqnPath      = "/etc/nvme/hostnqn"
+        nvmeHostnqnPattern   = "^(?P<nvmeinit>nqn\\..*)$"
 	nvmeotcp             = "nvmeotcp"
 )
 
@@ -108,20 +108,6 @@ func getFcInitiators() (fcInit *model.Initiator, err error) {
 	return fcInit, nil
 }
 
-/*func getNvmeInitiators() (init *model.Initiator, err error) {
-	log.Trace(">>>>> getNvmeInitiators")
-	defer log.Trace("<<<<< getNvmeInitiators")
-
-	hostnqn, err := GetNvmeInitiator()
-	if err != nil {
-		log.Debugf("NVMe host NQN not found, assuming not an NVMe host")
-		return nil, nil
-	}
-
-	initiators := []string{hostnqn}
-	init = &model.Initiator{Type: "nvmeotcp", Init: initiators}
-	return init, nil
-}*/
 func getNvmeInitiators() (init *model.Initiator, err error) {
     log.Trace(">>>>> getNvmeInitiators")
     defer log.Trace("<<<<< getNvmeInitiators")
@@ -142,8 +128,7 @@ func getNvmeInitiators() (init *model.Initiator, err error) {
         log.Errorf("empty nqn found from %s", nvmeHostnqnPath)
         return nil, errors.New("empty nqn found")
     }
-    
-    log.Debugf("got nvme initiator name as %s", initiators[0])
+
     init = &model.Initiator{Type: nvmeotcp, Init: initiators}
     return init, nil
 }

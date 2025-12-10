@@ -8,7 +8,6 @@ import (
 	"hash/fnv"
 	"io/ioutil"
 	"os"
-	"os/exec"
 	"os/user"
 	"regexp"
 	"strconv"
@@ -433,24 +432,7 @@ func UnmountFileSystem(mountPoint string) (*model.Mount, error) {
 	}
 	return mnt, nil
 }
-
-// DisconnectNVMeTargetByNQN disconnects all NVMe controllers for a given subsystem NQN
-func DisconnectNVMeTargetByNQN(subsysNQN string) error {
-    if subsysNQN == "" {
-        return fmt.Errorf("subsystem NQN is empty")
-    }
-    cmd := exec.Command("nvme", "disconnect", "-n", subsysNQN)
-    output, err := cmd.CombinedOutput()
-    if err != nil {
-        log.Errorf("Failed to disconnect NVMe subsystem NQN %s: %s, output: %s", subsysNQN, err.Error(), string(output))
-        return err
-    }
-    log.Infof("Disconnected NVMe subsystem NQN %s successfully", subsysNQN)
-    return nil
-}
-
 func IsLastNamespaceForNQN(nqn string) bool {
-    nvmeClassDir := "/sys/class/nvme/"
     files, err := ioutil.ReadDir(nvmeClassDir)
     if err != nil {
         log.Errorf("Failed to read %s: %v", nvmeClassDir, err)
@@ -494,9 +476,9 @@ func UnmountDevice(device *model.Device, mountPoint string) (*model.Mount, error
 		return nil, fmt.Errorf("no device or mountPoint present to unmount")
 	}
 	mount, err := UnmountFileSystem(mountPoint)
-	 if err != nil {
-        return mount, err
-    }
+	if err != nil {
+            return mount, err
+        }
 	// Disconnect and delete NVMe subsystem after unmount
 	log.Debugf("Nvme targets %v+", device.NvmeTargets)
     if device.NvmeTargets != nil && len(device.NvmeTargets) > 0 {

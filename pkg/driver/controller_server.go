@@ -925,7 +925,7 @@ func (driver *Driver) controllerPublishVolume(
         } else if requestedAccessProtocol == "fc" {
                 requestedAccessProtocol = fc
         } else if requestedAccessProtocol == "nvmetcp" {
-		requestedAccessProtocol = "nvmetcp"
+		requestedAccessProtocol = nvmetcp
 	}
 
 	if existingNode != nil {
@@ -958,15 +958,14 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	// TODO: add any additional info necessary to mount the device
-	publishContext := map[string]string{}
-	
+	publishContext := map[string]string{}	
 
-		publishContext[serialNumberKey] = publishInfo.SerialNumber
-		publishContext[accessProtocolKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
-		publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
-		publishContext[targetScopeKey] = requestedTargetScope
-		publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
-		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.DiscoveryIPs, ",")
+	publishContext[serialNumberKey] = publishInfo.SerialNumber
+	publishContext[accessProtocolKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
+	publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
+	publishContext[targetScopeKey] = requestedTargetScope
+	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
+	publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.DiscoveryIPs, ",")
 	
 	// Start of population of target array details
 	if publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails != nil {

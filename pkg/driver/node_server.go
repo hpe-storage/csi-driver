@@ -42,8 +42,7 @@ var (
 
 const (
 	fileHostIPKey = "hostIP"
-	nvmetcp = "nvmetcp"
-    	targetPortKey = "targetPort"
+    targetPortKey = "targetPort"
 )
 
 var isWatcherEnabled = false
