@@ -1506,7 +1506,7 @@ func parseNvmeAddress(addrStr string) (ip string, port string) {
 //   to local block devices; this function tries to locate those devices via namespace
 //   identifiers (NGUID) or by matching the device name.
 func GetNvmeDeviceFromNamespace(serialOrNamespace string) (*model.Device, error) {
-	log.Tracef(">>>>> GetNvmeDeviceFromNamespace called for %s", serialOrNamespace)
+    log.Tracef(">>>>> GetNvmeDeviceFromNamespace called for %s", serialOrNamespace)
     defer log.Tracef("<<<<< GetNvmeDeviceFromNamespace")
     nvmeRoot := "/dev/"
     files, err := ioutil.ReadDir(nvmeRoot)

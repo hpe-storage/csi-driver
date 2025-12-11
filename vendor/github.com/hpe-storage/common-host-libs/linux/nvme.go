@@ -31,7 +31,7 @@ const (
 
 // GetNvmeInitiator gets the NVMe host NQN
 func GetNvmeInitiator() (string, error) {
-    // Read from /etc/nvme/hostnqn or generate one
+    // Read from /etc/nvme/hostnqn or generate one if not present
     hostnqn, err := util.FileReadFirstLine(nvmeHostPath)
     if err != nil {
         log.Debugf("Could not read hostnqn from %s, generating one", nvmeHostPath)
