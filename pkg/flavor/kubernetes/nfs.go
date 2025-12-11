@@ -1,4 +1,4 @@
-// Copyright 2019 Hewlett Packard Enterprise Development LP
+// Copyright 2019,2025 Hewlett Packard Enterprise Development LP
 
 package kubernetes
 
@@ -771,6 +771,21 @@ func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim, nfsNamesp
 		if err == nil && childClaim != nil {
 			log.Tracef("replacing datasource from %s to %s for nfs claim %s creation", claim.Spec.DataSource.Name, childClaim.ObjectMeta.Name, claim.ObjectMeta.Name)
 			claimClone.Spec.DataSource.Name = childClaim.ObjectMeta.Name
+			// Ensure the PVC clone uses the underlying child PVC as the source.
+			// Kubernetes supports both DataSource (legacy) and DataSourceRef (newer); some
+			// clusters/controllers validate or consume one or the other. Keep them in sync
+			// with explicit Kind/Name to avoid validation errors or misdirected clones.
+			if claimClone.Spec.DataSourceRef != nil {
+				// Set the referenced object type and name on DataSourceRef
+				claimClone.Spec.DataSourceRef.Kind = pvcKind
+				claimClone.Spec.DataSourceRef.Name = childClaim.ObjectMeta.Name
+				// Mirror DataSourceRef into DataSource for compatibility with older paths
+				if claimClone.Spec.DataSource == nil {
+					claimClone.Spec.DataSource = &core_v1.TypedLocalObjectReference{}
+				}
+				claimClone.Spec.DataSource.Kind = pvcKind
+				claimClone.Spec.DataSource.Name = childClaim.ObjectMeta.Name
+			}
 		}
 	}
 	return claimClone, nil
