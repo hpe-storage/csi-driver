@@ -74,6 +74,12 @@ if [ "$CONFORM_TO" = "ubuntu" ]; then
         apt-get -qq install -y sg3-utils
         exit_on_error $?
     fi
+    # Install NVMe CLI tools
+    if [ ! -f /usr/sbin/nvme ]; then
+        apt-get -qq update
+        apt-get -qq install -y nvme-cli
+        exit_on_error $?
+    fi
 
 elif [ "$CONFORM_TO" = "redhat" ]; then
     # Install device-mapper-multipath
@@ -98,6 +104,12 @@ elif [ "$CONFORM_TO" = "redhat" ]; then
     # Install SG3 utils package
     if [ ! -f /usr/bin/sg_inq ]; then
         yum -y install sg3_utils
+        exit_on_error $?
+    fi
+
+    # Install NVMe CLI tools
+    if [ ! -f /usr/sbin/nvme ]; then
+        yum -y install nvme-cli
         exit_on_error $?
     fi
 
@@ -128,13 +140,19 @@ elif [ "$CONFORM_TO" = "sles" ]; then
         exit_on_error $?
     fi
 
+    # Install NVMe CLI tools
+    if [ ! -f /usr/sbin/nvme ]; then
+        zypper -n install nvme-cli
+        exit_on_error $?
+    fi
+
 elif [ "$CONFORM_TO" = "slem" ]; then
     # SLE Micro
     echo -n "Ensuring critical binaries are in the SLEM image: "
-    for bin in /usr/bin/sg_inq /sbin/mount.nfs4 /sbin/iscsid /sbin/multipathd; do
+    for bin in /usr/bin/sg_inq /sbin/mount.nfs4 /sbin/iscsid /sbin/multipathd /usr/sbin/nvme; do
         echo -n "$bin "
         if [ ! -f $bin ]; then
-            echo "$bin is missing. Run 'transactional-update -n pkg install multipath-tools open-iscsi nfs-client sg3_utils' on the worker nodes and reboot."
+            echo "$bin is missing. Run 'transactional-update -n pkg install multipath-tools open-iscsi nfs-client sg3_utils nvme-cli' on the worker nodes and reboot."
             exit_on_error 1
         fi
     done
@@ -146,6 +164,12 @@ elif [ "$CONFORM_TO" = "coreos" ]; then
     if ! [[ -e /etc/iscsi/initiatorname.iscsi ]]; then
         echo "Generating first-boot IQN"
         echo "InitiatorName=$(iscsi-iname)" > /etc/iscsi/initiatorname.iscsi
+    fi
+    # Generate NVMe host NQN if it doesn't exist
+    if ! [[ -e /etc/nvme/hostnqn ]]; then
+        echo "Generating first-boot Host NQN"
+        mkdir -p /etc/nvme
+        echo "$(nvme gen-hostnqn)" > /etc/nvme/hostnqn
     fi
 else
     echo "unsupported configuration for node package checks. os $os_name"
@@ -161,6 +185,25 @@ fi
 # Load iscsi_tcp modules, its a no-op if its already loaded
 modprobe iscsi_tcp
 
+# Load NVMe-oTCP modules
+modprobe nvme-core
+modprobe nvme-tcp
+
+
+# Generate NVMe host NQN if it doesn't exist (for non-CoreOS systems)
+if [ "$CONFORM_TO" != "coreos" ]; then
+    if ! [[ -e /etc/nvme/hostnqn ]]; then
+        echo "Generating Host NQN"
+        mkdir -p /etc/nvme
+        nvme gen-hostnqn > /etc/nvme/hostnqn
+        exit_on_error $?
+    fi
+fi
+
+# Ensure hostnqn file has proper permissions
+if [[ -e /etc/nvme/hostnqn ]]; then
+    chmod 644 /etc/nvme/hostnqn
+fi
 # Don't let udev automatically scan targets(all luns) on Unit Attention.
 # This will prevent udev scanning devices which we are attempting to remove
 if [ -f /lib/udev/rules.d/90-scsi-ua.rules ]; then

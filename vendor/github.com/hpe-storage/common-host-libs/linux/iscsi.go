@@ -251,7 +251,7 @@ func HandleIscsiDiscovery(volume *model.Volume) (err error) {
 		secondaryVolObj.LunID = strconv.Itoa(int(secondaryLunInfo.LunID))
 		secondaryVolObj.Iqns = secondaryLunInfo.TargetNames
 		secondaryVolObj.TargetScope = volume.TargetScope
-		secondaryVolObj.DiscoveryIPs = secondaryLunInfo.DiscoveryIPs
+		secondaryVolObj.DiscoveryIPs = secondaryLunInfo.IscsiAccessInfo.DiscoveryIPs
 		secondaryVolObj.Chap = volume.Chap
 		secondaryVolObj.ConnectionMode = volume.ConnectionMode
 		secondaryVolObj.SerialNumber = volume.SerialNumber

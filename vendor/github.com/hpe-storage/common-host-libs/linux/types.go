@@ -43,4 +43,8 @@ const (
 	systemCtl               = "systemctl"
 	service                 = "service"
 	linuxExtraImage         = "linux-image-extra" // ubuntu package linux-image-extra needed for scsi_dh_alua
+	nvmetcp 		= "nvmetcp"
+	nvmeClassDir 		= "/sys/class/nvme/"
+	netCoreRmemMax 		= "16777216" // in bytes
+	netCoreWmemMax          = "16777216" // in bytes
 )

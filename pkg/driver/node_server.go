@@ -42,6 +42,7 @@ var (
 
 const (
 	fileHostIPKey = "hostIP"
+    targetPortKey = "targetPort"
 )
 
 var isWatcherEnabled = false
@@ -573,12 +574,24 @@ func (driver *Driver) setupDevice(
 	// TODO: Enhance CHAPI to work with a PublishInfo object rather than a volume
 
 	discoveryIps := strings.Split(publishContext[discoveryIPsKey], ",")
-	iqns := strings.Split(publishContext[targetNamesKey], ",")
-
+	
+	// For NVMe/TCP, set Nqn field in the model.Volume and update iqns accordingly
+	var nqn string
+	var iqns = []string{}
+	if publishContext[accessProtocolKey] == nvmetcp {
+		nqn = publishContext[targetNamesKey]
+		iqns = []string{}
+	}else if publishContext[accessProtocolKey] == iscsi{
+		nqn = ""
+		iqns = strings.Split(publishContext[targetNamesKey], ",")
+	}
 	volume := &model.Volume{
 		SerialNumber:          publishContext[serialNumberKey],
 		AccessProtocol:        publishContext[accessProtocolKey],
 		Iqns:                  iqns,
+		Nqn:                   nqn,
+		TargetAddress: 	       publishContext[targetNamesKey],
+		TargetPort:            publishContext[targetPortKey],
 		TargetScope:           publishContext[targetScopeKey],
 		LunID:                 publishContext[lunIDKey],
 		DiscoveryIPs:          discoveryIps,
@@ -2160,7 +2173,7 @@ func (driver *Driver) NodeGetInfo(ctx context.Context, req *csi.NodeGetInfoReque
 		watcher, _ := util.InitializeWatcher(getNodeInfoFunc)
 		// Add list of files /and directories to watch. The list contains
 		// iSCSI , FC and CHAP Info and Networking config directories
-		list := []string{"/etc/sysconfig/network-scripts/", "/etc/sysconfig/network/", "/etc/iscsi/initiatorname.iscsi", "/etc/networks", "/etc/iscsi/iscsid.conf"}
+		list := []string{"/etc/sysconfig/network-scripts/", "/etc/sysconfig/network/", "/etc/iscsi/initiatorname.iscsi", "/etc/networks", "/etc/iscsi/iscsid.conf", "/etc/nvme/hostnqn"}
 		watcher.AddWatchList(list)
 		// Start event the watcher in a separate thread.
 		go watcher.StartWatcher()
@@ -2219,10 +2232,15 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 
 	var iqns []*string
 	var wwpns []*string
+	var nqns []*string
 	for _, initiator := range initiators {
 		if initiator.Type == iscsi {
 			for i := 0; i < len(initiator.Init); i++ {
 				iqns = append(iqns, &initiator.Init[i])
+			}
+		} else if initiator.Type == nvmeotcp {
+			for i := 0; i < len(initiator.Init); i++ {
+				nqns = append(nqns, &initiator.Init[i])
 			}
 		} else {
 			for i := 0; i < len(initiator.Init); i++ {
@@ -2230,7 +2248,6 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 			}
 		}
 	}
-
 	var cidrNetworks []*string
 	for _, network := range networks {
 		log.Infof("Processing network named %s with IpV4 CIDR %s", network.Name, network.CidrNetwork)
@@ -2246,6 +2263,7 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 		Iqns:     iqns,
 		Networks: cidrNetworks,
 		Wwpns:    wwpns,
+		Nqns:     nqns,
 	}
 
 	nodeID, err := driver.flavor.LoadNodeInfo(node)

@@ -4,6 +4,8 @@ package linux
 
 import (
 	"fmt"
+	"io/ioutil"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -218,6 +220,15 @@ func retryCleanupDeviceAndSlaves(dev *model.Device) error {
 func cleanupDeviceAndSlaves(dev *model.Device) (err error) {
 	log.Tracef(">>>>> cleanupDeviceAndSlaves called for %+v", dev)
 	defer log.Trace("<<<<< cleanupDeviceAndSlaves")
+
+
+	// --- NVMe multipath handling ---
+    if dev != nil && dev.Pathname != "" && IsNvmeDevice(dev.Pathname) {
+        if err := HandleMultipathForDevice(dev); err != nil {
+        	return err
+    	}
+    }
+    // --- End NVMe multipath handling ---
 
 	isFC := isFibreChannelDevice(dev.Slaves)
 
@@ -497,4 +508,37 @@ func multipathGetPathsOfDevice(dev *model.Device, needActivePath bool) (paths []
 		}
 	}
 	return paths, nil
+}
+// IsNvmeDevice returns true if the device path is an NVMe device (e.g., /dev/nvmeXnY)
+func IsNvmeDevice(devPath string) bool {
+    base := filepath.Base(devPath)
+    matched, _ := regexp.MatchString(`^nvme\d+n\d+$`, base)
+    return matched
+}
+
+// IsNvmeMultipathEnabled checks if NVMe native multipath is enabled for a device
+func IsNvmeMultipathEnabled(devPath string) bool {
+    base := filepath.Base(devPath)
+    nvmeMpPath := filepath.Join("/sys/class/block", base, "nvme_multipath")
+    data, err := ioutil.ReadFile(nvmeMpPath)
+    if err != nil {
+        return false
+    }
+    return strings.TrimSpace(string(data)) == "Y"
+}
+// HandleMultipathForDevice handles multipath for both SCSI and NVMe devices
+func HandleMultipathForDevice(dev *model.Device) error {
+   
+    if IsNvmeDevice(dev.Pathname) {
+        if IsNvmeMultipathEnabled(dev.Pathname) {
+            log.Debugf("NVMe native multipath is enabled for %s, skipping dm-multipath logic", dev.Pathname)
+            // All path management is handled by the NVMe subsystem
+            return nil
+        }
+        log.Debugf("NVMe device %s does not have native multipath enabled", dev.Pathname)
+        // TODO: later we will need it when dm-multipath for NVMe is supported
+        // return handleDmMultipathForNvme(dev)
+        return nil
+    }
+    return nil
 }

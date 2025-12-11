@@ -28,6 +28,7 @@ if [ "$nodeService" = true ] || [ "$nodeInit" = true ]; then
     ln -s /host/etc/multipath.conf /etc/multipath.conf
     ln -s /host/etc/multipath /etc/multipath
     ln -s /host/etc/iscsi /etc/iscsi
+    ln -s /host/etc/nvme /etc/nvme
 
     # symlink to host os release files for parsing
     if [ -f /host/etc/redhat-release ]; then
