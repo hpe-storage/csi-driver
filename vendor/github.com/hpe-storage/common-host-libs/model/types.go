@@ -116,6 +116,8 @@ type NetworkInterface struct {
 	Name        string `json:"name,omitempty"`
 	AddressV4   string `json:"address_v4,omitempty"`
 	MaskV4      string `json:"mask_v4,omitempty"`
+	AddressV6   string `json:"address_v6,omitempty"`
+	MaskV6      string `json:"mask_v6,omitempty"`
 	BroadcastV4 string `json:",omitempty"`
 	Mac         string `json:",omitempty"`
 	Mtu         int64  `json:",omitempty"`

@@ -146,7 +146,7 @@ func HandleNvmeTcpDiscovery(volume *model.Volume) error {
     // 2. Prepare NVMe target info
     target := &model.NvmeTarget{
         NQN:     volume.Nqn,
-        Address: strings.Join(volume.DiscoveryIPs, ","),
+        Address: volume.TargetAddress,
         Port:    volume.TargetPort,
     }
 

@@ -149,28 +149,51 @@ func getNetworkInterfaces() ([]*model.NetworkInterface, error) {
 		}
 		for _, addr := range addrs {
 			networkIp, ok := addr.(*net.IPNet)
-			if ok && !networkIp.IP.IsLoopback() && networkIp.IP.To4() != nil && networkIp.Mask != nil {
-				mask := networkIp.Mask
-				if len(mask) != 4 {
-					// continue with other addresses
-					continue
+			if ok && !networkIp.IP.IsLoopback() {
+				if networkIp.IP.To4() != nil && networkIp.Mask != nil {
+					mask := networkIp.Mask
+					if len(mask) != 4 {
+						// continue with other addresses
+						continue
+					}
+					nic := &model.NetworkInterface{
+						Name:        i.Name,
+						AddressV4:   networkIp.IP.To4().String(),
+						MaskV4:      fmt.Sprintf("%d.%d.%d.%d", mask[0], mask[1], mask[2], mask[3]),
+						Mtu:         int64(i.MTU),
+						Mac:         i.HardwareAddr.String(),
+						CidrNetwork: addr.String(),
+					}
+					if strings.Contains(i.Flags.String(), "up") {
+						nic.Up = true
+					} else {
+						nic.Up = false
+					}
+					log.Infof("Found IPv4 network interface %s with address %s", nic.Name, nic.AddressV4)
+					nics = append(nics, nic)
+				} else if networkIp.IP.To16() != nil && networkIp.Mask != nil {
+					mask := networkIp.Mask
+					if len(mask) != 16 {
+						// continue with other addresses
+						continue
+					}
+					nic := &model.NetworkInterface{
+						Name:        i.Name,
+						AddressV6:   networkIp.IP.To16().String(),
+						MaskV6:      net.IP(mask).String(),
+						Mtu:         int64(i.MTU),
+						Mac:         i.HardwareAddr.String(),
+						CidrNetwork: addr.String(),
+					}
+					if strings.Contains(i.Flags.String(), "up") {
+						nic.Up = true
+					} else {
+						nic.Up = false
+					}
+					log.Infof("Found IPv6 network interface %s with address %s", nic.Name, nic.AddressV6)
+					nics = append(nics, nic)
 				}
-				nic := &model.NetworkInterface{
-					Name:        i.Name,
-					AddressV4:   networkIp.IP.To4().String(),
-					MaskV4:      fmt.Sprintf("%d.%d.%d.%d", mask[0], mask[1], mask[2], mask[3]),
-					Mtu:         int64(i.MTU),
-					Mac:         i.HardwareAddr.String(),
-					CidrNetwork: addr.String(),
-				}
-				if strings.Contains(i.Flags.String(), "up") {
-					nic.Up = true
-				} else {
-					nic.Up = false
-				}
-				nics = append(nics, nic)
 			}
-
 		}
 	}
 	return nics, nil
