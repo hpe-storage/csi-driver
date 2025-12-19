@@ -503,6 +503,7 @@ func isLuksDevice(devPath string) (bool, error) {
 func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 	log.Debugf(">>>> createLinuxDevice called with volume %s serialNumber %s and lunID %s", volume.Name, volume.SerialNumber, volume.LunID)
 	defer log.Debug("<<<<< createLinuxDevice")
+
 	 // Handle NVMe/TCP device creation
     if strings.EqualFold(volume.AccessProtocol, "nvmetcp") {
         log.Tracef("NVMe/TCP requested, NQN: %s, Serial: %s", volume.Nqn, volume.SerialNumber)
@@ -515,14 +516,14 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
         // Attempt to locate NVMe device by NQN or Serial
         nvmeDev, lookupErr := GetNvmeDeviceFromNamespace(volume.Nqn)
         if lookupErr == nil && nvmeDev != nil {
-		// Populate NVMe targets
-		nvmeDev.NvmeTargets = []*model.NvmeTarget{
-			{
-				NQN:     volume.Nqn,
-				Address: volume.TargetAddress,
-				Port:    volume.TargetPort,
-			},
-		}
+			// Populate NVMe targets
+			nvmeDev.NvmeTargets = []*model.NvmeTarget{
+				{
+					NQN:     volume.Nqn,
+					Address: volume.TargetAddress,
+					Port:    volume.TargetPort,
+				},
+			}
             log.Infof("NVMe/TCP device found: %+v", nvmeDev)
             return nvmeDev, nil
         }

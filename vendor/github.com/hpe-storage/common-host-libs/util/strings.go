@@ -55,3 +55,15 @@ func GetMD5HashOfTwoStrings(string1, string2 string) string {
 	io.WriteString(h, string1+string2)
 	return hex.EncodeToString(h.Sum(nil))
 }
+
+// SanitizeIPAddress removes any character from the input string that is not
+// a valid character for either IPv4 or IPv6 addresses.
+// Valid characters are: 0-9, a-f, A-F, ., :
+func SanitizeIPAddress(ip string) string {
+	const invalidCharsRegex = "[^0-9a-fA-F.:]"
+	var ipCleaner = regexp.MustCompile(invalidCharsRegex)
+	if ip != "" {
+		return ipCleaner.ReplaceAllString(ip, "")
+	}
+	return ip
+}

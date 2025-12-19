@@ -432,6 +432,7 @@ func UnmountFileSystem(mountPoint string) (*model.Mount, error) {
 	}
 	return mnt, nil
 }
+
 func IsLastNamespaceForNQN(nqn string) bool {
     files, err := ioutil.ReadDir(nvmeClassDir)
     if err != nil {
@@ -477,8 +478,8 @@ func UnmountDevice(device *model.Device, mountPoint string) (*model.Mount, error
 	}
 	mount, err := UnmountFileSystem(mountPoint)
 	if err != nil {
-            return mount, err
-        }
+        	return mount, err
+    	}
 	// Disconnect and delete NVMe subsystem after unmount
 	log.Debugf("Nvme targets %v+", device.NvmeTargets)
     if device.NvmeTargets != nil && len(device.NvmeTargets) > 0 {

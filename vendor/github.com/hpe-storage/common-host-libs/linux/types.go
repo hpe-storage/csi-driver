@@ -47,4 +47,5 @@ const (
 	nvmeClassDir 		= "/sys/class/nvme/"
 	netCoreRmemMax 		= "16777216" // in bytes
 	netCoreWmemMax          = "16777216" // in bytes
+
 )

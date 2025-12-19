@@ -4,7 +4,6 @@ package util
 
 import (
 	"encoding/json"
-
 	"github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 )
