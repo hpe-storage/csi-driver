@@ -1061,28 +1061,24 @@ func (driver *Driver) nodePublishVolume(
 		}
 
 		// Note: Bind-mount is not allowed for raw block device as there is no filesystem on it.
-		rawDeviceMinor, err := strconv.Atoi(stagingDev.Device.Minor)
-		if err != nil {
-			errMsg := fmt.Sprintf("Failed to retrieve device minor to create %s from the mpath device path %s, err: %v",
+		// Retrieve major/minor from the actual device node (works for NVMe, iSCSI, FC)
+		var devStat unix.Stat_t
+		if err := unix.Stat(stagingDev.Device.AltFullPathName, &devStat); err != nil {
+			errMsg := fmt.Sprintf("Failed to stat device to create %s from the device path %s, err: %v",
 				targetPath, stagingDev.Device.AltFullPathName, err.Error())
 			log.Error("Error: ", errMsg)
 			return status.Error(codes.Internal, errMsg)
 		}
 
-		rawDeviceMajor, err := strconv.Atoi(stagingDev.Device.Major)
-		if err != nil {
-			errMsg := fmt.Sprintf("Failed to retrieve device major to create %s from the mpath device path %s, err: %v",
-				targetPath, stagingDev.Device.AltFullPathName, err.Error())
-			log.Error("Error: ", errMsg)
-			return status.Error(codes.Internal, errMsg)
-		}
+		rawDeviceMajor := int(unix.Major(uint64(devStat.Rdev)))
+		rawDeviceMinor := int(unix.Minor(uint64(devStat.Rdev)))
 
 		rawDeviceMode := uint32(unix.S_IFBLK | 0660)
 		rawDeviceMM := int(unix.Mkdev(uint32(rawDeviceMajor), uint32(rawDeviceMinor)))
 
 		// Create block device
 		if err := unix.Mknod(targetPath, rawDeviceMode, rawDeviceMM); err != nil {
-			errMsg := fmt.Sprintf("Failed to create block device %s to the mpath device path %s, err: %v",
+			errMsg := fmt.Sprintf("Failed to create block device %s to the device path %s, err: %v",
 				targetPath, stagingDev.Device.AltFullPathName, err.Error())
 			log.Error("Error: ", errMsg)
 			return status.Error(codes.Internal, errMsg)
