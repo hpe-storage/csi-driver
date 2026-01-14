@@ -8,7 +8,7 @@ require (
 	github.com/Scalingo/go-etcd-lock/v5 v5.0.8
 	github.com/container-storage-interface/spec v1.7.0
 	github.com/golang/protobuf v1.5.4
-	github.com/hpe-storage/common-host-libs v0.0.0-20260107112819-bdcc0dc562f2
+	github.com/hpe-storage/common-host-libs v0.0.0-20260113142101-385c8116c778
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20251212042708-ffa3e0c9c7d3
 	github.com/kubernetes-csi/csi-lib-utils v0.11.0
 	github.com/kubernetes-csi/csi-test v2.2.0+incompatible
