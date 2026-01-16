@@ -525,12 +525,84 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 				},
 			}
             log.Infof("NVMe/TCP device found: %+v", nvmeDev)
+			// Apply host encryption for NVMe if requested
+			if volume.EncryptionKey != "" {
+				devPath := nvmeDev.Pathname
+				isLuksDev, err := isLuksDevice(devPath)
+				if err != nil {
+					return nil, err
+				}
+				if !isLuksDev {
+					log.Infof("Device %s is a new NVMe device. LUKS formatting it...", devPath)
+					_, _, err := util.ExecCommandOutputWithStdinArgs("cryptsetup",
+						[]string{"luksFormat", "--type", "luks1", "--batch-mode", devPath},
+						[]string{volume.EncryptionKey})
+					if err != nil {
+						err = fmt.Errorf("LUKS format command failed with error: %v", err)
+						log.Error(err.Error())
+						return nil, err
+					}
+					log.Infof("Device %s has been LUKS formatted successfully", devPath)
+				}
+
+				mappedName := "enc-" + filepath.Base(devPath)
+				log.Infof("Opening LUKS NVMe device %s with mapped device %s...", devPath, mappedName)
+				_, _, err = util.ExecCommandOutputWithStdinArgs("cryptsetup",
+					[]string{"luksOpen", devPath, mappedName},
+					[]string{volume.EncryptionKey})
+				if err != nil {
+					err = fmt.Errorf("LUKS open command failed with error: %v", err)
+					log.Error(err.Error())
+					return nil, err
+				}
+				log.Infof("Opened LUKS NVMe device %s with mapped device %s successfully", devPath, mappedName)
+
+				// Update device with LUKS mapper info
+				nvmeDev.LuksPathname = mappedName
+				nvmeDev.AltFullLuksPathName = "/dev/mapper/" + mappedName
+			}
             return nvmeDev, nil
         }
         // Fallback to SerialNumber if NQN lookup fails
         nvmeDev, lookupErr = GetNvmeDeviceFromNamespace(volume.SerialNumber)
         if lookupErr == nil && nvmeDev != nil {
             log.Infof("NVMe/TCP device found by serial: %+v", nvmeDev)
+			// Apply host encryption for NVMe if requested
+			if volume.EncryptionKey != "" {
+				devPath := nvmeDev.Pathname
+				isLuksDev, err := isLuksDevice(devPath)
+				if err != nil {
+					return nil, err
+				}
+				if !isLuksDev {
+					log.Infof("Device %s is a new NVMe device. LUKS formatting it...", devPath)
+					_, _, err := util.ExecCommandOutputWithStdinArgs("cryptsetup",
+						[]string{"luksFormat", "--type", "luks1", "--batch-mode", devPath},
+						[]string{volume.EncryptionKey})
+					if err != nil {
+						err = fmt.Errorf("LUKS format command failed with error: %v", err)
+						log.Error(err.Error())
+						return nil, err
+					}
+					log.Infof("Device %s has been LUKS formatted successfully", devPath)
+				}
+
+				mappedName := "enc-" + filepath.Base(devPath)
+				log.Infof("Opening LUKS NVMe device %s with mapped device %s...", devPath, mappedName)
+				_, _, err = util.ExecCommandOutputWithStdinArgs("cryptsetup",
+					[]string{"luksOpen", devPath, mappedName},
+					[]string{volume.EncryptionKey})
+				if err != nil {
+					err = fmt.Errorf("LUKS open command failed with error: %v", err)
+					log.Error(err.Error())
+					return nil, err
+				}
+				log.Infof("Opened LUKS NVMe device %s with mapped device %s successfully", devPath, mappedName)
+
+				// Update device with LUKS mapper info
+				nvmeDev.LuksPathname = mappedName
+				nvmeDev.AltFullLuksPathName = "/dev/mapper/" + mappedName
+			}
             return nvmeDev, nil
         }
         return nil, fmt.Errorf("unable to locate NVMe/TCP device for NQN %s or serial %s", volume.Nqn, volume.SerialNumber)
@@ -1349,6 +1421,35 @@ func RescanForCapacityUpdates(devicePath string) error {
 	log.Tracef(">>>>> RescanForCapacityUpdates called for %s", devicePath)
 	defer log.Traceln("<<<<< RescanForCapacityUpdates")
 
+	// Handle NVMe devices (including NVMe/TCP) using native NVMe rescan logic.
+	// For NVMe we do not use rescan-scsi-bus.sh or multipathd, since only
+	// native NVMe multipathing is supported.
+	if devicePath != "" {
+		baseName := filepath.Base(devicePath)
+		if matched, _ := regexp.MatchString(nvmeDevicePattern, baseName); matched {
+			log.Tracef("NVMe device %s detected in RescanForCapacityUpdates, using NVMe-native rescan path", devicePath)
+			// The underlying device can be a mapped LUKS device, in which case it
+			// needs to be resized using LUKS command instead of NVMe rescan.
+			isMappedLuksDev, err := isMappedLuksDevice(devicePath)
+			if err != nil {
+				return err
+			}
+
+			if isMappedLuksDev {
+				log.Tracef("NVMe device %s is a mapped LUKS device, invoking resizeMappedLuksDevice", devicePath)
+				_, err := resizeMappedLuksDevice(devicePath)
+				return err
+			}
+
+			// Perform NVMe-native rescan for non-LUKS NVMe namespaces
+			log.Tracef("Invoking rescanNVMeDevice for NVMe device %s", devicePath)
+			if err := rescanNVMeDevice(devicePath); err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+
 	args := []string{"-s", "-m"}
 	_, _, err := util.ExecCommandOutput("rescan-scsi-bus.sh", args)
 	if err != nil {
@@ -1380,6 +1481,48 @@ func RescanForCapacityUpdates(devicePath string) error {
 			return fmt.Errorf("failed to rescan device %s on resize, err: %s", devicePath, out)
 		}
 	}
+	return nil
+}
+
+// rescanNVMeDevice triggers a size update for an NVMe namespace device (e.g., /dev/nvme1n1 or /dev/nvme1n1p1)
+func rescanNVMeDevice(devPath string) error {
+	log.Tracef(">>>> rescanNVMeDevice - %s", devPath)
+	defer log.Tracef("<<<< rescanNVMeDevice - %s", devPath)
+
+	// Extract namespace base name from the device path
+	ns := filepath.Base(devPath)
+	re := regexp.MustCompile(`^(nvme\d+n\d+)`)
+	nsBase := re.FindString(ns)
+	if nsBase == "" {
+		log.Warnf("rescanNVMeDevice called for non-NVMe device %s", devPath)
+		return fmt.Errorf("not an NVMe namespace device: %s", devPath)
+	}
+
+	log.Tracef("Starting NVMe namespace rescan for device %s (nsBase=%s)", devPath, nsBase)
+
+	// 1) Best-effort: ask kernel to rescan the namespace
+	rescanPath := fmt.Sprintf("/sys/block/%s/device/rescan", nsBase)
+	log.Tracef("Attempting NVMe namespace rescan via sysfs path %s", rescanPath)
+	if err := ioutil.WriteFile(rescanPath, []byte("1\n"), 0644); err != nil {
+		// Permission / missing path issues should not fail expansion; just warn
+		if os.IsPermission(err) || os.IsNotExist(err) {
+			log.Warnf("Unable to write NVMe rescan to %s for device %s: %v (continuing, relying on kernel auto-resize)",
+				rescanPath, devPath, err)
+		} else {
+			log.Errorf("failed NVMe rescan for %s via %s: %v (continuing, relying on kernel auto-resize)", devPath, rescanPath, err)
+		}
+	} else {
+		log.Infof("Successfully triggered NVMe namespace rescan for %s via %s", devPath, rescanPath)
+	}
+
+    // 2) Primary: settle udev so block layer reflects new size
+    log.Tracef("running udevadm settle after NVMe rescan for %s", devPath)
+    out, exitStatus, err := util.ExecCommandOutput("udevadm", []string{"settle"})
+    if err != nil {
+        log.Errorf("udevadm settle failed for %s: %v (output: %s, exit code: %d)", devPath, err, out, exitStatus)
+        return err
+    }
+    
 	return nil
 }
 
