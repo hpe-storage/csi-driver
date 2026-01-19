@@ -525,12 +525,84 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 				},
 			}
             log.Infof("NVMe/TCP device found: %+v", nvmeDev)
+			// Apply host encryption for NVMe if requested
+			if volume.EncryptionKey != "" {
+				devPath := nvmeDev.Pathname
+				isLuksDev, err := isLuksDevice(devPath)
+				if err != nil {
+					return nil, err
+				}
+				if !isLuksDev {
+					log.Infof("Device %s is a new NVMe device. LUKS formatting it...", devPath)
+					_, _, err := util.ExecCommandOutputWithStdinArgs("cryptsetup",
+						[]string{"luksFormat", "--type", "luks1", "--batch-mode", devPath},
+						[]string{volume.EncryptionKey})
+					if err != nil {
+						err = fmt.Errorf("LUKS format command failed with error: %v", err)
+						log.Error(err.Error())
+						return nil, err
+					}
+					log.Infof("Device %s has been LUKS formatted successfully", devPath)
+				}
+
+				mappedName := "enc-" + filepath.Base(devPath)
+				log.Infof("Opening LUKS NVMe device %s with mapped device %s...", devPath, mappedName)
+				_, _, err = util.ExecCommandOutputWithStdinArgs("cryptsetup",
+					[]string{"luksOpen", devPath, mappedName},
+					[]string{volume.EncryptionKey})
+				if err != nil {
+					err = fmt.Errorf("LUKS open command failed with error: %v", err)
+					log.Error(err.Error())
+					return nil, err
+				}
+				log.Infof("Opened LUKS NVMe device %s with mapped device %s successfully", devPath, mappedName)
+
+				// Update device with LUKS mapper info
+				nvmeDev.LuksPathname = mappedName
+				nvmeDev.AltFullLuksPathName = "/dev/mapper/" + mappedName
+			}
             return nvmeDev, nil
         }
         // Fallback to SerialNumber if NQN lookup fails
         nvmeDev, lookupErr = GetNvmeDeviceFromNamespace(volume.SerialNumber)
         if lookupErr == nil && nvmeDev != nil {
             log.Infof("NVMe/TCP device found by serial: %+v", nvmeDev)
+			// Apply host encryption for NVMe if requested
+			if volume.EncryptionKey != "" {
+				devPath := nvmeDev.Pathname
+				isLuksDev, err := isLuksDevice(devPath)
+				if err != nil {
+					return nil, err
+				}
+				if !isLuksDev {
+					log.Infof("Device %s is a new NVMe device. LUKS formatting it...", devPath)
+					_, _, err := util.ExecCommandOutputWithStdinArgs("cryptsetup",
+						[]string{"luksFormat", "--type", "luks1", "--batch-mode", devPath},
+						[]string{volume.EncryptionKey})
+					if err != nil {
+						err = fmt.Errorf("LUKS format command failed with error: %v", err)
+						log.Error(err.Error())
+						return nil, err
+					}
+					log.Infof("Device %s has been LUKS formatted successfully", devPath)
+				}
+
+				mappedName := "enc-" + filepath.Base(devPath)
+				log.Infof("Opening LUKS NVMe device %s with mapped device %s...", devPath, mappedName)
+				_, _, err = util.ExecCommandOutputWithStdinArgs("cryptsetup",
+					[]string{"luksOpen", devPath, mappedName},
+					[]string{volume.EncryptionKey})
+				if err != nil {
+					err = fmt.Errorf("LUKS open command failed with error: %v", err)
+					log.Error(err.Error())
+					return nil, err
+				}
+				log.Infof("Opened LUKS NVMe device %s with mapped device %s successfully", devPath, mappedName)
+
+				// Update device with LUKS mapper info
+				nvmeDev.LuksPathname = mappedName
+				nvmeDev.AltFullLuksPathName = "/dev/mapper/" + mappedName
+			}
             return nvmeDev, nil
         }
         return nil, fmt.Errorf("unable to locate NVMe/TCP device for NQN %s or serial %s", volume.Nqn, volume.SerialNumber)
