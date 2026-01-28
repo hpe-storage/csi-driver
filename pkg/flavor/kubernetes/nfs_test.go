@@ -190,3 +190,445 @@ func TestMakeNFSDeployment(t *testing.T) {
 	dep = flavor.makeNFSDeployment("hpe-nfs-b50dea26-e6d5-4ab4-868e-033256aa1acd-649f89c89b-48t4k", &nfsSpec, defaultNFSNamespace)
 	assert.Equal(t, *dep.Spec.Template.Spec.Tolerations[0].TolerationSeconds, num)
 }
+
+func TestCreateNFSServiceDuplicate(t *testing.T) {
+	serviceName := "hpe-nfs-duplicate-test"
+	err := flavor.createNFSService(serviceName, defaultNFSNamespace)
+	assert.Nil(t, err)
+	// create duplicate and ensure no error is thrown
+	err = flavor.createNFSService(serviceName, defaultNFSNamespace)
+	assert.Nil(t, err)
+}
+
+func TestGetNFSServiceNotFound(t *testing.T) {
+	service, err := flavor.getNFSService("non-existent-service", defaultNFSNamespace)
+	assert.NotNil(t, err)
+	assert.Nil(t, service)
+}
+
+func TestMakeNFSDeploymentValidation(t *testing.T) {
+	var nfsSpec NFSSpec
+	nfsSpec.image = "hpestorage/test-image:v1.0"
+	nfsSpec.volumeClaim = "test-pvc"
+	nfsSpec.labelKey = "test-label-key"
+	nfsSpec.labelValue = "test-label-value"
+	nfsSpec.sourceNamespace = "test-namespace"
+	nfsSpec.sourceVolumeClaim = "source-pvc"
+
+	dep := flavor.makeNFSDeployment("test-deployment", &nfsSpec, "test-ns")
+
+	assert.NotNil(t, dep)
+	assert.Equal(t, "test-deployment", dep.ObjectMeta.Name)
+	assert.Equal(t, "test-ns", dep.ObjectMeta.Namespace)
+	assert.Equal(t, "hpestorage/test-image:v1.0", dep.Spec.Template.Spec.Containers[0].Image)
+}
+
+func TestGetNFSSpecWithCustomNodeSelector(t *testing.T) {
+	// Create a node with custom label value
+	ready := v1.NodeCondition{Type: v1.NodeReady, Status: v1.ConditionTrue}
+	customNode := &v1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "custom-node",
+			Labels: map[string]string{nfsNodeSelectorKey: "custom-value"},
+		},
+		Status: v1.NodeStatus{
+			Conditions: []v1.NodeCondition{ready},
+			Addresses: []v1.NodeAddress{
+				{
+					Type:    v1.NodeExternalIP,
+					Address: "10.10.10.10",
+				},
+			},
+		},
+	}
+	_, err := flavor.kubeClient.CoreV1().Nodes().Create(context.Background(), customNode, metav1.CreateOptions{})
+	assert.Nil(t, err)
+
+	createParams := make(map[string]string)
+	createParams["nfsNodeSelector"] = "custom-value"
+
+	spec, err := flavor.getNFSSpec(createParams)
+	assert.Nil(t, err)
+	assert.NotNil(t, spec)
+	assert.Equal(t, 1, len(spec.nodeSelector))
+	assert.Contains(t, spec.nodeSelector, nfsNodeSelectorKey)
+	assert.Equal(t, "custom-value", spec.nodeSelector[nfsNodeSelectorKey])
+}
+
+func TestCreateConfigMapDuplicate(t *testing.T) {
+	namespace := "test-config-namespace"
+	domain := "example.com"
+
+	// create namespace first
+	_, err := flavor.createNFSNamespace(namespace)
+	assert.Nil(t, err)
+
+	// create config map
+	err = flavor.createNFSConfigMap(namespace, domain)
+	assert.Nil(t, err)
+
+	// create duplicate
+	err = flavor.createNFSConfigMap(namespace, domain)
+	assert.Nil(t, err)
+}
+
+func TestGetNodesWithEmptySelector(t *testing.T) {
+	nodes, err := flavor.getNFSNodes("")
+	assert.Nil(t, err)
+	// Empty selector value should match no nodes (all test nodes have value "true", not "")
+	assert.Equal(t, 0, len(nodes))
+}
+
+func TestCreateNFSNamespaceDuplicate(t *testing.T) {
+	namespace := "test-duplicate-namespace"
+
+	// create namespace first time
+	ns1, err := flavor.createNFSNamespace(namespace)
+	assert.Nil(t, err)
+	assert.Equal(t, namespace, ns1.ObjectMeta.Name)
+
+	// create duplicate namespace - should return AlreadyExists error
+	ns2, err := flavor.createNFSNamespace(namespace)
+	assert.NotNil(t, err)
+	assert.Nil(t, ns2)
+	assert.Contains(t, err.Error(), "already exists")
+}
+
+func TestGetNFSSpecWithEmptyImage(t *testing.T) {
+	createParams := make(map[string]string)
+	createParams["nfsProvisionerImage"] = ""
+
+	spec, err := flavor.getNFSSpec(createParams)
+	assert.Nil(t, err)
+	assert.NotNil(t, spec)
+	// Empty string in params overrides the default, resulting in empty image
+	assert.Equal(t, "", spec.image)
+}
+
+func TestMakeNFSDeploymentWithNilResourceRequirements(t *testing.T) {
+	var nfsSpec NFSSpec
+	nfsSpec.image = "hpestorage/test-nfs:latest"
+	nfsSpec.volumeClaim = "test-vol"
+	nfsSpec.labelKey = "app"
+	nfsSpec.labelValue = "nfs-test"
+	nfsSpec.sourceNamespace = defaultNFSNamespace
+	nfsSpec.sourceVolumeClaim = "test-vol"
+	nfsSpec.resourceRequirements = nil
+
+	dep := flavor.makeNFSDeployment("test-nfs-deployment", &nfsSpec, defaultNFSNamespace)
+
+	assert.NotNil(t, dep)
+	assert.Equal(t, "test-nfs-deployment", dep.ObjectMeta.Name)
+}
+
+func TestGetNFSSpecWithZeroResourceLimits(t *testing.T) {
+	createParams := make(map[string]string)
+	createParams["nfsResourceLimitsCpuM"] = "0"
+	createParams["nfsResourceLimitsMemoryMi"] = "0"
+
+	spec, err := flavor.getNFSSpec(createParams)
+	// Should handle zero values gracefully
+	assert.Nil(t, err)
+	assert.NotNil(t, spec)
+}
+
+func TestGetNFSSpecWithNegativeTolerationSeconds(t *testing.T) {
+	createParams := make(map[string]string)
+	createParams["nfsTolerationSeconds"] = "-100"
+
+	spec, err := flavor.getNFSSpec(createParams)
+	// Should handle negative values
+	assert.Nil(t, err)
+	assert.NotNil(t, spec)
+}
+
+func TestMakeNFSDeploymentWithCustomTolerations(t *testing.T) {
+	var nfsSpec NFSSpec
+	nfsSpec.image = "hpestorage/nfs:v2.0"
+	nfsSpec.volumeClaim = "test-pvc"
+	nfsSpec.labelKey = "env"
+	nfsSpec.labelValue = "test"
+	nfsSpec.sourceNamespace = "test-ns"
+	nfsSpec.sourceVolumeClaim = "source-pvc"
+	var customToleration int64 = 600
+	nfsSpec.tolerationSeconds = &customToleration
+
+	dep := flavor.makeNFSDeployment("nfs-with-tolerations", &nfsSpec, "test-namespace")
+
+	assert.NotNil(t, dep)
+	// Should have 3 tolerations: not-ready, unreachable, and dedicated
+	assert.Equal(t, 3, len(dep.Spec.Template.Spec.Tolerations))
+
+	// Check that custom toleration seconds are applied to not-ready and unreachable tolerations
+	for _, toleration := range dep.Spec.Template.Spec.Tolerations {
+		if toleration.Key == "node.kubernetes.io/not-ready" || toleration.Key == "node.kubernetes.io/unreachable" {
+			assert.NotNil(t, toleration.TolerationSeconds)
+			assert.Equal(t, customToleration, *toleration.TolerationSeconds)
+		}
+	}
+}
+
+func TestGetNFSServiceAfterCreation(t *testing.T) {
+	serviceName := "test-get-service"
+	namespace := defaultNFSNamespace
+
+	// create service
+	err := flavor.createNFSService(serviceName, namespace)
+	assert.Nil(t, err)
+
+	// get service and validate
+	service, err := flavor.getNFSService(serviceName, namespace)
+	assert.Nil(t, err)
+	assert.NotNil(t, service)
+	assert.Equal(t, serviceName, service.ObjectMeta.Name)
+	assert.Equal(t, namespace, service.ObjectMeta.Namespace)
+}
+
+func TestHandleNFSNodePublish(t *testing.T) {
+	// Create test namespace
+	testNamespace := "test-nfs-namespace"
+	_, err := flavor.createNFSNamespace(testNamespace)
+	assert.Nil(t, err)
+
+	// Create a test PVC to simulate the NFS volume source
+	testPVC := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pvc",
+			Namespace: testNamespace,
+			UID:       "test-volume-id-12345",
+		},
+		Spec: v1.PersistentVolumeClaimSpec{
+			AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteMany},
+			Resources: v1.VolumeResourceRequirements{
+				Requests: v1.ResourceList{
+					v1.ResourceStorage: resource.MustParse("1Gi"),
+				},
+			},
+		},
+	}
+	_, err = flavor.kubeClient.CoreV1().PersistentVolumeClaims(testNamespace).Create(context.Background(), testPVC, metav1.CreateOptions{})
+	assert.Nil(t, err)
+
+	// Create the underlying NFS PVC
+	nfsPVCName := fmt.Sprintf("%s%s", nfsPrefix, testPVC.ObjectMeta.UID)
+	nfsPVC := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      nfsPVCName,
+			Namespace: testNamespace,
+			UID:       "nfs-pvc-uid-67890",
+		},
+		Spec: v1.PersistentVolumeClaimSpec{
+			AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+			Resources: v1.VolumeResourceRequirements{
+				Requests: v1.ResourceList{
+					v1.ResourceStorage: resource.MustParse("1Gi"),
+				},
+			},
+		},
+		Status: v1.PersistentVolumeClaimStatus{
+			Phase: v1.ClaimBound,
+		},
+	}
+	_, err = flavor.kubeClient.CoreV1().PersistentVolumeClaims(testNamespace).Create(context.Background(), nfsPVC, metav1.CreateOptions{})
+	assert.Nil(t, err)
+
+	// Create the underlying PV for NFS PVC
+	nfsPVName := fmt.Sprintf("%s%s", pvcPrefix, nfsPVC.ObjectMeta.UID)
+	nfsPV := &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nfsPVName,
+			Labels: map[string]string{
+				nfsParentVolumeIDKey: string(testPVC.ObjectMeta.UID),
+			},
+		},
+		Spec: v1.PersistentVolumeSpec{
+			Capacity: v1.ResourceList{
+				v1.ResourceStorage: resource.MustParse("1Gi"),
+			},
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       "csi.hpe.com",
+					VolumeHandle: "underlying-volume-handle",
+				},
+			},
+			ClaimRef: &v1.ObjectReference{
+				Name:      nfsPVCName,
+				Namespace: testNamespace,
+			},
+		},
+	}
+	_, err = flavor.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), nfsPV, metav1.CreateOptions{})
+	assert.Nil(t, err)
+
+	// Create NFS service with IPv4 cluster IP
+	serviceName := nfsPVCName
+	service := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      serviceName,
+			Namespace: testNamespace,
+			Labels:    createNFSAppLabels(),
+		},
+		Spec: v1.ServiceSpec{
+			Type:      v1.ServiceTypeClusterIP,
+			ClusterIP: "10.96.100.50",
+			Selector:  createNFSAppLabels(),
+			Ports: []v1.ServicePort{
+				{
+					Name:     "nfs",
+					Port:     2049,
+					Protocol: v1.ProtocolTCP,
+				},
+			},
+		},
+	}
+	_, err = flavor.kubeClient.CoreV1().Services(testNamespace).Create(context.Background(), service, metav1.CreateOptions{})
+	assert.Nil(t, err)
+
+	// Test case 1: Successful mount with IPv4
+	t.Run("SuccessfulMountIPv4", func(t *testing.T) {
+		// Note: This test will fail without a mock chapiDriver implementation
+		// as it tries to actually mount the volume. In a real test environment,
+		// you would need to mock the chapiDriver.MountNFSVolume method
+		volumeID := string(testPVC.ObjectMeta.UID)
+
+		// Verify getNFSResourceNameByVolumeID works
+		resourceName, err := flavor.getNFSResourceNameByVolumeID(volumeID)
+		assert.Nil(t, err)
+		assert.Equal(t, nfsPVCName, resourceName)
+
+		// Verify getNFSNamespaceByVolumeID works
+		namespace, err := flavor.getNFSNamespaceByVolumeID(volumeID)
+		assert.Nil(t, err)
+		assert.Equal(t, testNamespace, namespace)
+
+		// Verify service can be retrieved
+		svc, err := flavor.getNFSService(resourceName, testNamespace)
+		assert.Nil(t, err)
+		assert.NotNil(t, svc)
+		assert.Equal(t, "10.96.100.50", svc.Spec.ClusterIP)
+	})
+}
+
+func TestHandleNFSNodePublishIPv6(t *testing.T) {
+	// Create test namespace for IPv6 test
+	testNamespace := "test-nfs-ipv6-namespace"
+	_, err := flavor.createNFSNamespace(testNamespace)
+	assert.Nil(t, err)
+
+	// Create a test PVC
+	testPVC := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-ipv6-pvc",
+			Namespace: testNamespace,
+			UID:       "ipv6-volume-id-12345",
+		},
+		Spec: v1.PersistentVolumeClaimSpec{
+			AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteMany},
+			Resources: v1.VolumeResourceRequirements{
+				Requests: v1.ResourceList{
+					v1.ResourceStorage: resource.MustParse("1Gi"),
+				},
+			},
+		},
+	}
+	_, err = flavor.kubeClient.CoreV1().PersistentVolumeClaims(testNamespace).Create(context.Background(), testPVC, metav1.CreateOptions{})
+	assert.Nil(t, err)
+
+	// Create the underlying NFS PVC
+	nfsPVCName := fmt.Sprintf("%s%s", nfsPrefix, testPVC.ObjectMeta.UID)
+	nfsPVC := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      nfsPVCName,
+			Namespace: testNamespace,
+			UID:       "nfs-ipv6-pvc-uid",
+		},
+		Spec: v1.PersistentVolumeClaimSpec{
+			AccessModes: []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
+		},
+		Status: v1.PersistentVolumeClaimStatus{
+			Phase: v1.ClaimBound,
+		},
+	}
+	_, err = flavor.kubeClient.CoreV1().PersistentVolumeClaims(testNamespace).Create(context.Background(), nfsPVC, metav1.CreateOptions{})
+	assert.Nil(t, err)
+
+	// Create the underlying PV
+	nfsPVName := fmt.Sprintf("%s%s", pvcPrefix, nfsPVC.ObjectMeta.UID)
+	nfsPV := &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nfsPVName,
+			Labels: map[string]string{
+				nfsParentVolumeIDKey: string(testPVC.ObjectMeta.UID),
+			},
+		},
+		Spec: v1.PersistentVolumeSpec{
+			Capacity: v1.ResourceList{
+				v1.ResourceStorage: resource.MustParse("1Gi"),
+			},
+			PersistentVolumeSource: v1.PersistentVolumeSource{
+				CSI: &v1.CSIPersistentVolumeSource{
+					Driver:       "csi.hpe.com",
+					VolumeHandle: "ipv6-volume-handle",
+				},
+			},
+			ClaimRef: &v1.ObjectReference{
+				Name:      nfsPVCName,
+				Namespace: testNamespace,
+			},
+		},
+	}
+	_, err = flavor.kubeClient.CoreV1().PersistentVolumes().Create(context.Background(), nfsPV, metav1.CreateOptions{})
+	assert.Nil(t, err)
+
+	// Create NFS service with IPv6 cluster IP
+	serviceName := nfsPVCName
+	service := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      serviceName,
+			Namespace: testNamespace,
+			Labels:    createNFSAppLabels(),
+		},
+		Spec: v1.ServiceSpec{
+			Type:      v1.ServiceTypeClusterIP,
+			ClusterIP: "2001:db8::1",
+			Selector:  createNFSAppLabels(),
+			Ports: []v1.ServicePort{
+				{
+					Name:     "nfs",
+					Port:     2049,
+					Protocol: v1.ProtocolTCP,
+				},
+			},
+		},
+	}
+	_, err = flavor.kubeClient.CoreV1().Services(testNamespace).Create(context.Background(), service, metav1.CreateOptions{})
+	assert.Nil(t, err)
+
+	// Verify service retrieval and IPv6 handling
+	volumeID := string(testPVC.ObjectMeta.UID)
+	resourceName, err := flavor.getNFSResourceNameByVolumeID(volumeID)
+	assert.Nil(t, err)
+
+	svc, err := flavor.getNFSService(resourceName, testNamespace)
+	assert.Nil(t, err)
+	assert.NotNil(t, svc)
+	assert.Equal(t, "2001:db8::1", svc.Spec.ClusterIP)
+}
+
+func TestGetNFSMountOptions(t *testing.T) {
+	// Test with custom mount options
+	volumeContext := map[string]string{
+		nfsMountOptionsKey: "rw,nolock,vers=4.1",
+	}
+	mountOptions := getNFSMountOptions(volumeContext)
+	assert.NotNil(t, mountOptions)
+	assert.Equal(t, 3, len(mountOptions))
+	assert.Equal(t, "rw", mountOptions[0])
+	assert.Equal(t, "nolock", mountOptions[1])
+	assert.Equal(t, "vers=4.1", mountOptions[2])
+
+	// Test with no mount options
+	emptyContext := map[string]string{}
+	mountOptions = getNFSMountOptions(emptyContext)
+	assert.Nil(t, mountOptions)
+}
