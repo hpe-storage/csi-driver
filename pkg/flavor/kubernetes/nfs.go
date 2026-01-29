@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -507,6 +508,10 @@ func (flavor *Flavor) HandleNFSNodePublish(req *csi.NodePublishVolumeRequest) (*
 	}
 	clusterIP := service.Spec.ClusterIP
 
+	// Wrap IPv6 addresses in square brackets for NFS mount format
+	if ip := net.ParseIP(clusterIP); ip != nil && ip.To4() == nil {
+		clusterIP = fmt.Sprintf("[%s]", clusterIP)
+	}
 	source := fmt.Sprintf("%s:%s", clusterIP, defaultExportPath)
 	target := req.GetTargetPath()
 	log.Debugf("mounting nfs volume %s to %s", source, target)
