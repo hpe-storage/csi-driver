@@ -1,5 +1,5 @@
 # throw away builder image
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.6-1752069608 AS build
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.7-1768785530 AS build
 
 # pick golang build version from https://go.dev/dl
 ENV BUILDGO=1.24.3
@@ -23,7 +23,7 @@ ARG TARGETPLATFORM
 RUN make ARCH=$TARGETARCH compile # $TARGETPLATFORM
 
 # image build
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.6-1752069876
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7-1768783948
 
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD cmd/csi-driver/AlmaLinux-Base.repo /etc/yum.repos.d/
@@ -38,7 +38,7 @@ RUN ln -s /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11
 LABEL name="HPE CSI Driver for Kubernetes" \
     maintainer="HPE Storage" \
     vendor="HPE" \
-    version="3.0.0" \
+    version="3.1.0-beta" \
     summary="HPE CSI Driver for Kubernetes" \
     description="The HPE CSI Driver for Kubernetes enables container orchestrators, such as Kubernetes and OpenShift, to manage the life-cycle of persistent storage." \
     io.k8s.display-name="HPE CSI Driver for Kubernetes" \
