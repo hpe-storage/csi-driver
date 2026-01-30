@@ -224,6 +224,14 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 		// update node initiator IQNs on mismatch
 		iqnsFromNode := getIqnsFromNode(node)
 		if !reflect.DeepEqual(nodeInfo.Spec.IQNs, iqnsFromNode) {
+			// Validate before updating - check all initiators together
+			wwpnsFromNode := getWwpnsFromNode(node)
+			nqnsFromNode := getNqnsFromNode(node)
+			
+			if err := flavor.validateUniqueInitiators(node.Name, iqnsFromNode, wwpnsFromNode, nqnsFromNode); err != nil {
+				log.Errorf("Initiator validation failed: %s", err.Error())
+				return "", err
+			}
 			nodeInfo.Spec.IQNs = iqnsFromNode
 			updateNodeRequired = true
 		}
@@ -258,6 +266,15 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 		}
 	} else {
 		// if we didn't find HPENodeInfo yet, create one.
+		// Validate initiators before creating new node
+		iqnsFromNode := getIqnsFromNode(node)
+		wwpnsFromNode := getWwpnsFromNode(node)
+		nqnsFromNode := getNqnsFromNode(node)
+
+		if err := flavor.validateUniqueInitiators(node.Name, iqnsFromNode, wwpnsFromNode, nqnsFromNode); err != nil {
+			log.Errorf("Initiator validation failed: %s", err.Error())
+			return "", err
+		}
 		newNodeInfo := &crd_v1.HPENodeInfo{
 			ObjectMeta: meta_v1.ObjectMeta{
 				Name: node.Name,
@@ -284,6 +301,75 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 
 	return node.UUID, nil
 }
+
+// validateUniqueInitiators checks if IQNs/WWPNs/NQNs from the current node 
+// already exist in other nodes' HPENodeInfo CRs
+func (flavor *Flavor) validateUniqueInitiators(nodeName string, iqns, wwpns, nqns []string) error {
+    log.Tracef(">>>>> validateUniqueInitiators for node %s", nodeName)
+    defer log.Trace("<<<<< validateUniqueInitiators")
+    
+    // Get all existing HPENodeInfo objects
+    nodeInfoList, err := flavor.crdClient.StorageV1().HPENodeInfos().List(meta_v1.ListOptions{})
+    if err != nil {
+        return fmt.Errorf("failed to list HPENodeInfos: %v", err)
+    }
+    
+    // Check each existing node (except the current one)
+    for _, existingNodeInfo := range nodeInfoList.Items {
+        if existingNodeInfo.Name == nodeName {
+            continue // Skip self
+        }
+        
+        // Check for duplicate IQNs
+        for _, currentIQN := range iqns {
+            if currentIQN == "" {
+                continue // Skip empty
+            }
+            for _, existingIQN := range existingNodeInfo.Spec.IQNs {
+                if currentIQN == existingIQN {
+                    return fmt.Errorf(
+                        "CRITICAL: Duplicate IQN '%s' detected on node '%s' (attempting to register on node '%s'). "+
+                        "This will cause data corruption. Each node must have unique iSCSI initiator names. "+
+                        "Please regenerate IQNs or fix node templates before proceeding",
+                        currentIQN, existingNodeInfo.Name, nodeName)
+                }
+            }
+        }
+        
+        // Check for duplicate WWPNs
+        for _, currentWWPN := range wwpns {
+            if currentWWPN == "" {
+                continue
+            }
+            for _, existingWWPN := range existingNodeInfo.Spec.WWPNs {
+                if currentWWPN == existingWWPN {
+                    return fmt.Errorf(
+                        "CRITICAL: Duplicate WWPN '%s' detected on node '%s' (attempting to register on node '%s'). "+
+                        "This will cause data corruption. Each node must have unique Fibre Channel WWPNs",
+                        currentWWPN, existingNodeInfo.Name, nodeName)
+                }
+            }
+        }
+        
+        // Check for duplicate NQNs
+        for _, currentNQN := range nqns {
+            if currentNQN == "" {
+                continue
+            }
+            for _, existingNQN := range existingNodeInfo.Spec.NQNs {
+                if currentNQN == existingNQN {
+                    return fmt.Errorf(
+                        "CRITICAL: Duplicate NQN '%s' detected on node '%s' (attempting to register on node '%s'). "+
+                        "This will cause data corruption. Each node must have unique NVMe Qualified Names",
+                        currentNQN, existingNodeInfo.Name, nodeName)
+                }
+            }
+        }
+    }
+    
+    return nil
+}
+
 
 func getIqnsFromNode(node *model.Node) []string {
 	var iqns []string
