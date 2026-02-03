@@ -451,7 +451,7 @@ func (driver *Driver) createVolume(
 		isbackgroudOperationDone, err := checkBackgroundOperationStatus(existingVolume)
 		if err != nil {
 			log.Errorf("Background operation for volume %s is not complete: %s", existingVolume.Name, err.Error())
-			return nil, status.Error(codes.Aborted, fmt.Sprintf("Background operation for volume is not complete: %s", err.Error()))
+			return nil, status.Error(codes.Unavailable, fmt.Sprintf("Background operation for volume is not complete: %s", err.Error()))
 		}
 		// applicable only if the existing volume is in the background operation state
 		if isbackgroudOperationDone {
@@ -547,7 +547,7 @@ func (driver *Driver) createVolume(
 			_, err = checkBackgroundOperationStatus(volume)
 			if err != nil {
 				log.Errorf("Background operation for volume %s is not complete: %s", volume.Name, err.Error())
-				return nil, status.Error(codes.Aborted, fmt.Sprintf("Background operation for volume is not complete: %s", err.Error()))
+				return nil, status.Error(codes.Unavailable, fmt.Sprintf("Background operation for volume is not complete: %s", err.Error()))
 			}
 			// update volume context with cloned volume parameters
 			updateVolumeContext(respVolContext, volume)
@@ -594,7 +594,7 @@ func (driver *Driver) createVolume(
 			_, err = checkBackgroundOperationStatus(volume)
 			if err != nil {
 				log.Errorf("Background operation for volume %s is not complete: %s", volume.Name, err.Error())
-				return nil, status.Error(codes.Aborted, fmt.Sprintf("Background operation for volume is not complete: %s", err.Error()))
+				return nil, status.Error(codes.Unavailable, fmt.Sprintf("Background operation for volume is not complete: %s", err.Error()))
 			}
 			// update volume context with cloned volume parameters
 			updateVolumeContext(respVolContext, volume)
