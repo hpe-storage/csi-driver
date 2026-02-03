@@ -2039,6 +2039,15 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 	}
 
 	accessType := model.MountType
+	// Derive the accessProtocol from volume attributes of PV
+	accessProtocol := ""
+	if pv != nil && pv.Spec.CSI != nil && pv.Spec.CSI.VolumeAttributes != nil {
+		accessProtocol = pv.Spec.CSI.VolumeAttributes[accessProtocolKey]
+		log.Tracef("Volume attributes found in the persistent volume for volume ID: %s with accessProtocol %s", request.VolumeId,accessProtocol)
+	}else{
+		log.Warnf("Volume attributes not found in the persistent volume for volume ID: %s defaulting to iSCSI protocol", request.VolumeId)
+		accessProtocol = iscsi
+	}
 
 	// VolumeCapability is only available from CSI spec v1.2
 	if request.GetVolumeCapability() != nil {
@@ -2059,7 +2068,7 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		// Expand device to underlying volume size
 		log.Infof("About to expand device %s with access type block to underlying volume size",
 			request.VolumePath)
-		expandErr = driver.chapiDriver.ExpandDevice(targetPath, model.BlockType)
+		expandErr = driver.chapiDriver.ExpandDevice(targetPath, model.BlockType, accessProtocol)
 	} else {
 		// figure out if volumePath is actually a staging path
 		stagedDevice, err := readStagedDeviceInfo(request.GetVolumePath())
@@ -2086,7 +2095,7 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		// Expand device to underlying volume size
 		log.Infof("About to expand device %s with access type mount to underlying volume size",
 			request.VolumePath)
-		expandErr = driver.chapiDriver.ExpandDevice(targetPath, model.MountType)
+		expandErr = driver.chapiDriver.ExpandDevice(targetPath, model.MountType, accessProtocol)
 	}
 
 	if expandErr != nil {
