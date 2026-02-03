@@ -1415,40 +1415,37 @@ func getDeviceHolders(dev *model.Device) (h string, err error) {
 	return holder, nil
 }
 
+// Performs rescanSize operations for NVME protocol-based for encrypted and non-encrypted devices
+func NvmeRescanforCapacityUpdates(devicePath string) error {
+	log.Tracef(">>>>> NvmeRescanForCapacityUpdates called for %s", devicePath)
+	defer log.Traceln("<<<<< NvmeRescanForCapacityUpdates")
+	log.Tracef("NVMe device %s detected in RescanForCapacityUpdates, using NVMe rescan path", devicePath)
+	// The underlying device can be a mapped LUKS device, in which case it
+	// needs to be resized using LUKS command instead of NVMe rescan.
+	isMappedLuksDev, err := isMappedLuksDevice(devicePath)
+	if err != nil {
+		return err
+	}
+
+	if isMappedLuksDev {
+		log.Tracef("NVMe device %s is a mapped LUKS device, invoking resizeMappedLuksDevice", devicePath)
+		_, err := resizeMappedLuksDevice(devicePath)
+		return err
+	}
+
+	// Perform NVMe-native rescan for non-LUKS NVMe namespaces
+	log.Tracef("Invoking rescanNVMeDevice for NVMe device %s", devicePath)
+	if err := rescanNVMeDevice(devicePath); err != nil {
+		return err
+	}
+	return nil
+}
+
 // RescanSize performs size rescan of all scsi devices on host and updates applicable multipath devices
 // TODO: replace rescan-scsi-bus.sh dependency with manual rescan of scsi devices
 func RescanForCapacityUpdates(devicePath string) error {
 	log.Tracef(">>>>> RescanForCapacityUpdates called for %s", devicePath)
 	defer log.Traceln("<<<<< RescanForCapacityUpdates")
-
-	// Handle NVMe devices (including NVMe/TCP) using native NVMe rescan logic.
-	// For NVMe we do not use rescan-scsi-bus.sh or multipathd, since only
-	// native NVMe multipathing is supported.
-	if devicePath != "" {
-		baseName := filepath.Base(devicePath)
-		if matched, _ := regexp.MatchString(nvmeDevicePattern, baseName); matched {
-			log.Tracef("NVMe device %s detected in RescanForCapacityUpdates, using NVMe-native rescan path", devicePath)
-			// The underlying device can be a mapped LUKS device, in which case it
-			// needs to be resized using LUKS command instead of NVMe rescan.
-			isMappedLuksDev, err := isMappedLuksDevice(devicePath)
-			if err != nil {
-				return err
-			}
-
-			if isMappedLuksDev {
-				log.Tracef("NVMe device %s is a mapped LUKS device, invoking resizeMappedLuksDevice", devicePath)
-				_, err := resizeMappedLuksDevice(devicePath)
-				return err
-			}
-
-			// Perform NVMe-native rescan for non-LUKS NVMe namespaces
-			log.Tracef("Invoking rescanNVMeDevice for NVMe device %s", devicePath)
-			if err := rescanNVMeDevice(devicePath); err != nil {
-				return err
-			}
-			return nil
-		}
-	}
 
 	args := []string{"-s", "-m"}
 	_, _, err := util.ExecCommandOutput("rescan-scsi-bus.sh", args)
@@ -1500,27 +1497,32 @@ func rescanNVMeDevice(devPath string) error {
 
 	log.Tracef("Starting NVMe namespace rescan for device %s (nsBase=%s)", devPath, nsBase)
 
-	// 1) Best-effort: ask kernel to rescan the namespace
-	rescanPath := fmt.Sprintf("/sys/block/%s/device/rescan", nsBase)
-	log.Tracef("Attempting NVMe namespace rescan via sysfs path %s", rescanPath)
-	if err := ioutil.WriteFile(rescanPath, []byte("1\n"), 0644); err != nil {
-		// Permission / missing path issues should not fail expansion; just warn
-		if os.IsPermission(err) || os.IsNotExist(err) {
-			log.Warnf("Unable to write NVMe rescan to %s for device %s: %v (continuing, relying on kernel auto-resize)",
-				rescanPath, devPath, err)
+	// TODO: For NVMe block devices we could derive the NVMe namespace ID from sysDevPath using Major:Minor
+	// and then write to /sys/class/nvme/nvmeX/nvmeXnY/rescan.
+	if nsBase != "" {
+		// 1) Best-effort: ask kernel to rescan the namespace
+		rescanPath := fmt.Sprintf("/sys/block/%s/device/rescan", nsBase)
+		log.Tracef("Attempting NVMe namespace rescan via sysfs path %s", rescanPath)
+		if err := os.WriteFile(rescanPath, []byte("1\n"), 0o644); err != nil {
+			// Permission / missing path issues should not fail expansion; just warn
+			if os.IsPermission(err) || os.IsNotExist(err) {
+				log.Warnf("Unable to write NVMe rescan to %s for device %s: %v (continuing, relying on kernel auto-resize)",
+					rescanPath, devPath, err)
+			} else {
+				log.Warnf("failed NVMe rescan for %s via %s: %v (continuing, relying on kernel auto-resize)", devPath, rescanPath, err)
+			}
 		} else {
-			log.Errorf("failed NVMe rescan for %s via %s: %v (continuing, relying on kernel auto-resize)", devPath, rescanPath, err)
+			log.Infof("Successfully triggered NVMe namespace rescan for %s via %s", devPath, rescanPath)
 		}
 	} else {
-		log.Infof("Successfully triggered NVMe namespace rescan for %s via %s", devPath, rescanPath)
+		log.Tracef("Skipping explicit nvme namespace rescan for block devices and replying on kernal auto-resize")
 	}
 
     // 2) Primary: settle udev so block layer reflects new size
     log.Tracef("running udevadm settle after NVMe rescan for %s", devPath)
     out, exitStatus, err := util.ExecCommandOutput("udevadm", []string{"settle"})
     if err != nil {
-        log.Errorf("udevadm settle failed for %s: %v (output: %s, exit code: %d)", devPath, err, out, exitStatus)
-        return err
+        log.Warnf("udevadm settle failed for %s: %v (output: %s, exit code: %d)", devPath, err, out, exitStatus)
     }
     
 	return nil
@@ -1554,16 +1556,27 @@ func GetBlockSizeBytes(devicePath string) (int64, error) {
 
 // ExpandDevice expands device and filesystem at given targetPath to underlying volume size
 // targetPath is /dev/dm-* for block device and mountpoint for filesystem based device
-func ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error {
-	log.Tracef(">>>>> ExpandDevice called with targetPath: %s, volAccessType: %s", targetPath, volAccessType.String())
+func ExpandDevice(targetPath string, volAccessType model.VolumeAccessType, accessProtocol string) error {
+	log.Tracef(">>>>> ExpandDevice called with targetPath: %s, volAccessType: %s, accessProtocol: %s", targetPath, volAccessType.String(), accessProtocol)
 	defer log.Traceln("<<<<< ExpandDevice")
 
 	// If Block volume access type
 	if volAccessType == model.BlockType {
-		// resize device with targetPath, i.e /dev/dm-*
-		if err := RescanForCapacityUpdates(targetPath); err != nil {
-			return fmt.Errorf("unable to perform rescan to update device capacity for %s, error :%s",
-				targetPath, err.Error())
+		// Split rescan path by protocol
+		if strings.EqualFold(accessProtocol, nvmetcp) {
+			log.Tracef("Performing NVMe/TCP block device rescan for targetPath %s", targetPath)
+			// NVMe/TCP block device rescan
+			if err := NvmeRescanforCapacityUpdates(targetPath); err != nil {
+				return fmt.Errorf("unable to perform NVMe rescan to update device capacity for %s, error :%s",
+					targetPath, err.Error())
+			}
+		} else {
+			log.Tracef("Performing rescan for block device %s with access protocol %s", targetPath, accessProtocol)
+			// Existing SCSI/multipath block device rescan
+			if err := RescanForCapacityUpdates(targetPath); err != nil {
+				return fmt.Errorf("unable to perform rescan to update device capacity for %s, error :%s",
+					targetPath, err.Error())
+			}
 		}
 		return nil
 	}
@@ -1575,11 +1588,22 @@ func ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error
 		return fmt.Errorf("unable to get device mounted at %s", targetPath)
 	}
 
-	// resize device with devPath, i.e /dev/mapper/mpath*
-	err = RescanForCapacityUpdates(devPath)
-	if err != nil {
-		return fmt.Errorf("unable to perform rescan to update device capacity for %s, error :%s", devPath, err.Error())
+	if strings.EqualFold(accessProtocol, nvmetcp) {
+		log.Tracef("NVMe/TCP protocol detected for device %s", devPath)
+		// NVMe/TCP block device rescan
+		if err := NvmeRescanforCapacityUpdates(devPath); err != nil {
+			return fmt.Errorf("unable to perform NVMe rescan to update device capacity for %s, error :%s",
+				devPath, err.Error())
+		}
+	} else {
+		log.Tracef("Performing rescan for block device %s with access protocol %s", devPath, accessProtocol)
+		// Existing SCSI/multipath block device rescan
+		// resize device with devPath, i.e /dev/mapper/mpath*
+		if err := RescanForCapacityUpdates(devPath); err != nil {
+			return fmt.Errorf("unable to perform rescan to update device capacity for %s, error :%s", devPath, err.Error())
+		}
 	}
+	
 	// resize filesystem
 	fsType, err := GetFilesystemType(devPath)
 	if err != nil {
