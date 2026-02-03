@@ -1,4 +1,4 @@
-// Copyright 2019,2025 Hewlett Packard Enterprise Development LP
+// Copyright 2019,2025-26 Hewlett Packard Enterprise Development LP
 
 package kubernetes
 
@@ -69,7 +69,7 @@ const (
 	nfsForeignStorageClassKey      = "nfsForeignStorageClass"
 	nfsResourcesKey                = "nfsResources"
 	nfsTolerationSecScKey          = "nfsTolerationSeconds"
-	nfsDisableProbesKey            = "nfsDisableProbes"
+	nfsEnableProbesKey             = "nfsEnableProbes"
 	defaultNfsTolerationSeconds    = 30
 	nfsProbeInitialDelaySeconds    = 0
 	nfsProbePeriodSeconds          = 10
@@ -94,7 +94,7 @@ type NFSSpec struct {
 	sourceNamespace      string
 	sourceVolumeClaim    string
 	tolerationSeconds    *int64
-	disableProbes        bool
+	enableProbes         bool
 }
 
 // CreateNFSVolume creates nfs volume abstracting underlying nfs pvc, deployment and service
@@ -691,14 +691,14 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 		}
 	}
 
-	if nfsDisableProbesStr, ok := scParams[nfsDisableProbesKey]; ok {
-		if nfsDisableProbesStr == "true" {
-			nfsSpec.disableProbes = true
+	if nfsEnableProbesStr, ok := scParams[nfsEnableProbesKey]; ok {
+		if nfsEnableProbesStr == "true" {
+			nfsSpec.enableProbes = true
 		} else {
-			nfsSpec.disableProbes = false
+			nfsSpec.enableProbes = false
 		}
 	} else {
-		nfsSpec.disableProbes = false
+		nfsSpec.enableProbes = false
 	}
 
 	return &nfsSpec, nil
@@ -1061,8 +1061,8 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 	var startupProbe *core_v1.Probe
 	var readinessProbe *core_v1.Probe
 
-	if !nfsSpec.disableProbes {
-		log.Infof("enabling NFS Probes")
+	if nfsSpec.enableProbes {
+		log.Infof("Enabling NFS Probes")
 		startupProbe = &core_v1.Probe{
 			ProbeHandler: core_v1.ProbeHandler{
 				Exec: &core_v1.ExecAction{
