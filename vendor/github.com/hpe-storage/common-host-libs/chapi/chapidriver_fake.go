@@ -151,7 +151,7 @@ func (driver *FakeDriver) OfflineDevice(device *model.Device) error {
 }
 
 // ExpandDevice will expand the given device/filesystem on the host
-func (driver *FakeDriver) ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error {
+func (driver *FakeDriver) ExpandDevice(targetPath string, volAccessType model.VolumeAccessType, accessProtocol string) error {
 	return nil
 }
 

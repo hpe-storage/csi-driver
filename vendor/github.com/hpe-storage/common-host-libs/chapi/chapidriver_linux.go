@@ -597,8 +597,8 @@ func (driver *LinuxDriver) OfflineDevice(device *model.Device) error {
 }
 
 // ExpandDevice will expand the given device/filesystem on the host
-func (driver *LinuxDriver) ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error {
-	return linux.ExpandDevice(targetPath, volAccessType)
+func (driver *LinuxDriver) ExpandDevice(targetPath string, volAccessType model.VolumeAccessType, accessProtocol string) error {
+	return linux.ExpandDevice(targetPath, volAccessType, accessProtocol)
 }
 
 // IsBlockDevice will check if the given path is a block device

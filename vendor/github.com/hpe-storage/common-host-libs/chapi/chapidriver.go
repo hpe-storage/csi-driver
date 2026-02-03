@@ -25,7 +25,7 @@ type Driver interface {
 	UnmountFileSystem(mountPoint string) (*model.Mount, error)                                                                      // Idempotent
 	GetMounts(serialNumber string) ([]*model.Mount, error)
 	GetMountsForDevice(device *model.Device) ([]*model.Mount, error)
-	ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error
+	ExpandDevice(targetPath string, volAccessType model.VolumeAccessType, accessProtocol string) error
 	IsBlockDevice(devicePath string) (bool, error)
 	GetBlockSizeBytes(devicePath string) (int64, error)
 	IsExtFileSystemClean(volumeID string, device string) bool

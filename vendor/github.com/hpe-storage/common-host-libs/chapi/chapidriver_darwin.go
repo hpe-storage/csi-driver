@@ -128,7 +128,7 @@ func (driver *MacDriver) BindUnmount(mountPoint string) error {
 }
 
 // ExpandDevice will expand the given device/filesystem on the host
-func (driver *MacDriver) ExpandDevice(targetPath string, volAccessType model.VolumeAccessType) error {
+func (driver *MacDriver) ExpandDevice(targetPath string, volAccessType model.VolumeAccessType, accessProtocol string) error {
 	return fmt.Errorf("not implemented")
 }
 
