@@ -14,6 +14,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/chapi"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
+	"github.com/hpe-storage/common-host-libs/util"
 	crd_v1 "github.com/hpe-storage/k8s-custom-resources/pkg/apis/hpestorage/v1"
 	crd_client "github.com/hpe-storage/k8s-custom-resources/pkg/client/clientset/versioned"
 	v1beta1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
@@ -662,6 +663,18 @@ func (flavor *Flavor) getClaimOverrideOptions(claim *v1.PersistentVolumeClaim, o
 						continue
 					}
 				}
+
+				// Convert override key to snake_case to check for snake_case variant
+				snakeCaseKey := util.ToSnakeCase(override)
+				if snakeCaseKey != override {
+					// If the snake_case variant is different from the override key,
+					// remove it to prevent conflicts after snake_case conversion
+					if _, exists := optionsMap[snakeCaseKey]; exists {
+						delete(optionsMap, snakeCaseKey)
+					}
+				}
+
+				// Apply the override
 				log.Infof("adding key: %v with override value: %v", override, annotation)
 				optionsMap[override] = annotation
 			}
