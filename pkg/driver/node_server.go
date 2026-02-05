@@ -521,7 +521,11 @@ func (driver *Driver) stageVolume(
 
 	// Retrieve PVC spec for dataSource inspection for regular PVCs
 	if isEphemeral(volumeContext) == false {
-		pvc, err := driver.flavor.GetPVCByVolumeID(volumeID)
+		pvcID := volumeID
+		if secrets != nil && secrets[serviceNameKey] == nimbleCSPServiceName {
+			pvcID = volumeContext[pvNameAttribute]
+		}
+		pvc, err := driver.flavor.GetPVCByVolumeID(pvcID)
 
 		if err != nil {
 			return nil, status.Error(codes.Internal, fmt.Sprintf("Error getting PVC from volumeID %v, %v", volumeID, err))
