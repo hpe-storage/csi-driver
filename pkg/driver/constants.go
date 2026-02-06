@@ -127,5 +127,8 @@ const (
 
 	defaultCSITopologyKey = "csi.hpe.com/zone"
 	// FileSystem Corruption parameters
-	fsRepairKey = "fsRepair"
+	fsRepairKey          = "fsRepair"
+	serviceNameKey       = "serviceName"
+	pvNameAttribute      = "csi.storage.k8s.io/pv/name"
+	nimbleCSPServiceName = "nimble-csp-svc"
 )
