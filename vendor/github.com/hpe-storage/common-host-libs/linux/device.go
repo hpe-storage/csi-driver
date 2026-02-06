@@ -1490,10 +1490,6 @@ func rescanNVMeDevice(devPath string) error {
 	ns := filepath.Base(devPath)
 	re := regexp.MustCompile(`^(nvme\d+n\d+)`)
 	nsBase := re.FindString(ns)
-	if nsBase == "" {
-		log.Warnf("rescanNVMeDevice called for non-NVMe device %s", devPath)
-		return fmt.Errorf("not an NVMe namespace device: %s", devPath)
-	}
 
 	log.Tracef("Starting NVMe namespace rescan for device %s (nsBase=%s)", devPath, nsBase)
 
