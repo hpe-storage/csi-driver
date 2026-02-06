@@ -2067,11 +2067,24 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 	var expandErr error
 	targetPath := ""
 	if accessType == model.BlockType {
-		// for raw block device volume-path is device path: i.e /dev/dm-1
-		targetPath = request.GetVolumePath()
-		// Expand device to underlying volume size
-		log.Infof("About to expand device %s with access type block to underlying volume size",
-			request.VolumePath)
+		// For block volumes, the volume path is the Kubernetes publish path (e.g., /var/lib/kubelet/plugins/.../volumeDevices/publish/...)
+		// which is a block device file created with mknod, not the actual multipath device.
+		// We must read the staging device info to get the real device path (e.g., /dev/mapper/mpathX)
+		stagedDevice, err := readStagedDeviceInfo(request.GetStagingTargetPath())
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument,
+				fmt.Sprintf("Cannot get staging device info for block volume expansion from staging path %s, Error: %s",
+					request.GetStagingTargetPath(), err.Error()))
+		}
+		if stagedDevice == nil || stagedDevice.Device == nil {
+			return nil, status.Error(codes.Internal,
+				fmt.Sprintf("Invalid staging device info found for block volume expansion. Staging device cannot be nil"))
+		}
+
+		// Use the actual device path from staging (e.g., /dev/mapper/mpathX)
+		targetPath = stagedDevice.Device.AltFullPathName
+		log.Infof("About to expand block device %s (resolved from staging path %s, volume path %s) to underlying volume size",
+			targetPath, request.GetStagingTargetPath(), request.VolumePath)
 		expandErr = driver.chapiDriver.ExpandDevice(targetPath, model.BlockType, accessProtocol)
 	} else {
 		// figure out if volumePath is actually a staging path
