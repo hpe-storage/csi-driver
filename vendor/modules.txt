@@ -101,7 +101,7 @@ github.com/gorilla/mux
 # github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
 ## explicit; go 1.23.0
 github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options
-# github.com/hpe-storage/common-host-libs v0.0.0-20260203064634-0a02563dd7a3
+# github.com/hpe-storage/common-host-libs v0.0.0-20260206064340-020bf964f244
 ## explicit; go 1.24.0
 github.com/hpe-storage/common-host-libs/chapi
 github.com/hpe-storage/common-host-libs/concurrent
