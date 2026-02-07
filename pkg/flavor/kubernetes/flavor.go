@@ -795,38 +795,6 @@ func (flavor *Flavor) getPodByName(name string, namespace string) (*v1.Pod, erro
 	return pod, nil
 }
 
-// GetPVCByVolumeID to get the PVC details for given volumeID
-func (flavor *Flavor) GetPVCByVolumeID(id string) (*v1.PersistentVolumeClaim, error) {
-	log.Tracef(">>>>> GetPVCByVolumeID, id: %s", id)
-	defer log.Trace("<<<<< GetPVCByVolumeID")
-
-	pv, err := flavor.kubeClient.CoreV1().PersistentVolumes().Get(context.Background(), id, meta_v1.GetOptions{})
-
-	if err != nil {
-		log.Errorf("Error retrieving the ID %s, err: %v", id, err.Error())
-		return nil, err
-	}
-
-	if pv.Spec.ClaimRef != nil {
-
-		namespace := pv.Spec.ClaimRef.Namespace
-		name := pv.Spec.ClaimRef.Name
-
-		pvc, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), name, meta_v1.GetOptions{})
-		if err != nil {
-			log.Errorf("Error retrieving the PVC name %s in Namespace %s from claimRef of PV %s, error: %v", name, namespace, id, err.Error())
-			return nil, err
-		}
-
-		return pvc, nil
-
-	} else {
-		err := fmt.Errorf("Error retrieving the claimRef of %s", id)
-		log.Errorf("%v", err.Error())
-		return nil, err
-	}
-}
-
 // makeVolumeHandle returns csi-<sha256(podUID,volSourceSpecName)>
 // Original source location: kubernetes/pkg/volume/csi/csi_mounter.go
 // TODO: Must be in-sync with k8s code
