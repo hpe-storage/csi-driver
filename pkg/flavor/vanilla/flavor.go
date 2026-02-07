@@ -155,11 +155,6 @@ func (flavor *Flavor) CheckConnection() bool {
 }
 
 //nolint:revive
-func (flavor *Flavor) GetPVCByVolumeID(id string) (*v1.PersistentVolumeClaim, error) {
-	return nil, nil
-}
-
-//nolint:revive
 func (flavor *Flavor) HandleFileNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	return nil, status.Error(codes.Internal, "File provisioned volume is not supported for non-k8s environments")
 }
