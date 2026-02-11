@@ -1,6 +1,6 @@
 module github.com/hpe-storage/csi-driver
 
-go 1.25.6
+go 1.25.7
 
 require (
 	github.com/Scalingo/go-etcd-lock/v5 v5.0.8
