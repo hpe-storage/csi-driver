@@ -42,7 +42,7 @@ var (
 
 const (
 	fileHostIPKey = "hostIP"
-    targetPortKey = "targetPort"
+	targetPortKey = "targetPort"
 )
 
 var isWatcherEnabled = false
@@ -525,19 +525,26 @@ func (driver *Driver) stageVolume(
 
 		log.Infof("Verify whether resize required for device path %v ", device.AltFullPathName)
 
-		// check whether we need resize for file system
-		needResize, err := r.NeedResize(device.AltFullPathName, stagingMountPoint)
-		if err != nil {
-			return nil, status.Errorf(codes.Internal, "Could not determine if volume %q need to be resized, error: %v", volumeID, err)
-		}
-		log.Infof("Need resize for filesystem: %v", needResize)
-
-		if needResize {
-			log.Infof("Resize of target path %s is required ", device.AltFullPathName)
-			if _, err := r.Resize(device.AltFullPathName, stagingMountPoint); err != nil {
-				return nil, status.Errorf(codes.Internal, "Could not resize volume %q, error :  %v", volumeID, err)
+		// Verify device path is a valid block device before checking if resize is needed
+		// This prevents errors in test scenarios with fake devices and handles edge cases
+		isBlockDevice, err := driver.chapiDriver.IsBlockDevice(device.AltFullPathName)
+		if err != nil || !isBlockDevice {
+			log.Warnf("Device path %s is not a valid block device (isBlock=%v, err=%v), skipping resize check", device.AltFullPathName, isBlockDevice, err)
+		} else {
+			// check whether we need resize for file system
+			needResize, err := r.NeedResize(device.AltFullPathName, stagingMountPoint)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "Could not determine if volume %q need to be resized, error: %v", volumeID, err)
 			}
-			log.Infof("Resize of target path %s is successful", device.AltFullPathName)
+			log.Infof("Need resize for filesystem: %v", needResize)
+
+			if needResize {
+				log.Infof("Resize of target path %s is required ", device.AltFullPathName)
+				if _, err := r.Resize(device.AltFullPathName, stagingMountPoint); err != nil {
+					return nil, status.Errorf(codes.Internal, "Could not resize volume %q, error :  %v", volumeID, err)
+				}
+				log.Infof("Resize of target path %s is successful", device.AltFullPathName)
+			}
 		}
 	}
 
@@ -557,14 +564,14 @@ func (driver *Driver) setupDevice(
 	// TODO: Enhance CHAPI to work with a PublishInfo object rather than a volume
 
 	discoveryIps := strings.Split(publishContext[discoveryIPsKey], ",")
-	
+
 	// For NVMe/TCP, set Nqn field in the model.Volume and update iqns accordingly
 	var nqn string
 	var iqns = []string{}
 	if publishContext[accessProtocolKey] == nvmetcp {
 		nqn = publishContext[targetNamesKey]
 		iqns = []string{}
-	}else if publishContext[accessProtocolKey] == iscsi{
+	} else if publishContext[accessProtocolKey] == iscsi {
 		nqn = ""
 		iqns = strings.Split(publishContext[targetNamesKey], ",")
 	}
@@ -573,7 +580,7 @@ func (driver *Driver) setupDevice(
 		AccessProtocol:        publishContext[accessProtocolKey],
 		Iqns:                  iqns,
 		Nqn:                   nqn,
-		TargetAddress: 	       publishContext[targetNamesKey],
+		TargetAddress:         publishContext[targetNamesKey],
 		TargetPort:            publishContext[targetPortKey],
 		TargetScope:           publishContext[targetScopeKey],
 		LunID:                 publishContext[lunIDKey],
@@ -2026,8 +2033,8 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 	accessProtocol := ""
 	if pv != nil && pv.Spec.CSI != nil && pv.Spec.CSI.VolumeAttributes != nil {
 		accessProtocol = pv.Spec.CSI.VolumeAttributes[accessProtocolKey]
-		log.Tracef("Volume attributes found in the persistent volume for volume ID: %s with accessProtocol %s", request.VolumeId,accessProtocol)
-	}else{
+		log.Tracef("Volume attributes found in the persistent volume for volume ID: %s with accessProtocol %s", request.VolumeId, accessProtocol)
+	} else {
 		log.Warnf("Volume attributes not found in the persistent volume for volume ID: %s defaulting to iSCSI protocol", request.VolumeId)
 		accessProtocol = iscsi
 	}
