@@ -523,27 +523,36 @@ func (driver *Driver) stageVolume(
 		// Initialize resizeFs
 		r := mountutil.NewResizeFs(exec.New())
 
-		log.Infof("Verify whether resize required for device path %v ", device.AltFullPathName)
+		resizeDevicePath := device.AltFullPathName
+		// Resize path selection:
+		// - Encrypted (LUKS): use device.AltFullLuksPathName (enc-* mapper path).
+		// - Non-encrypted: use device.AltFullPathName.
+		// Example: /dev/mapper/enc-mpatha (LUKS) vs /dev/mapper/mpatha (non-LUKS).
+		if device.AltFullLuksPathName != "" {
+			resizeDevicePath = device.AltFullLuksPathName
+		}
+
+		log.Infof("Verify whether resize required for device path %v ", resizeDevicePath)
 
 		// Verify device path is a valid block device before checking if resize is needed
 		// This prevents errors in test scenarios with fake devices and handles edge cases
-		isBlockDevice, err := driver.chapiDriver.IsBlockDevice(device.AltFullPathName)
+		isBlockDevice, err := driver.chapiDriver.IsBlockDevice(resizeDevicePath)
 		if err != nil || !isBlockDevice {
-			log.Warnf("Device path %s is not a valid block device (isBlock=%v, err=%v), skipping resize check", device.AltFullPathName, isBlockDevice, err)
+			log.Warnf("Device path %s is not a valid block device (isBlock=%v, err=%v), skipping resize check", resizeDevicePath, isBlockDevice, err)
 		} else {
 			// check whether we need resize for file system
-			needResize, err := r.NeedResize(device.AltFullPathName, stagingMountPoint)
+			needResize, err := r.NeedResize(resizeDevicePath, stagingMountPoint)
 			if err != nil {
 				return nil, status.Errorf(codes.Internal, "Could not determine if volume %q need to be resized, error: %v", volumeID, err)
 			}
 			log.Infof("Need resize for filesystem: %v", needResize)
 
 			if needResize {
-				log.Infof("Resize of target path %s is required ", device.AltFullPathName)
-				if _, err := r.Resize(device.AltFullPathName, stagingMountPoint); err != nil {
+				log.Infof("Resize of target path %s is required ", resizeDevicePath)
+				if _, err := r.Resize(resizeDevicePath, stagingMountPoint); err != nil {
 					return nil, status.Errorf(codes.Internal, "Could not resize volume %q, error :  %v", volumeID, err)
 				}
-				log.Infof("Resize of target path %s is successful", device.AltFullPathName)
+				log.Infof("Resize of target path %s is successful", resizeDevicePath)
 			}
 		}
 	}
