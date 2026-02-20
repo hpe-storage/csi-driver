@@ -576,7 +576,7 @@ func (driver *Driver) createVolume(
 			}
 			log.Tracef("Found parent volume: %+v", existingParentVolume)
 
-			// CON-3010 If requested size for clone volume is less than parent volume size 
+			// CON-3010 If requested size for clone volume is less than parent volume size
 			// then report error
 			if size < existingParentVolume.Size {
 				return nil,
@@ -910,21 +910,21 @@ func (driver *Driver) controllerPublishVolume(
 	existingNode, err := storageProvider.GetNodeContext(node.UUID)
 	if err != nil {
 		log.Errorf("Error retrieving the node info from the CSP. err: %s", err.Error())
-		return nil, status.Error(codes.Unavailable, 
-		fmt.Sprintf("Error retrieving the node info for ID %s from the CSP, err: %s", node.UUID, err.Error()))
+		return nil, status.Error(codes.Unavailable,
+			fmt.Sprintf("Error retrieving the node info for ID %s from the CSP, err: %s", node.UUID, err.Error()))
 	}
 
 	// Configure access protocol defaulting to iSCSI when unspecified
-        var requestedAccessProtocol = volumeContext[accessProtocolKey]
-        if requestedAccessProtocol == "" {
-                // by default when no protocol specified make iscsi as default
-                requestedAccessProtocol = iscsi
-                log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
-        } else if requestedAccessProtocol == "iscsi" {
-                requestedAccessProtocol = iscsi
-        } else if requestedAccessProtocol == "fc" {
-                requestedAccessProtocol = fc
-        }
+	var requestedAccessProtocol = strings.ToLower(volumeContext[accessProtocolKey])
+	if requestedAccessProtocol == "" {
+		// by default when no protocol specified make iscsi as default
+		requestedAccessProtocol = iscsi
+		log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
+	} else if requestedAccessProtocol == "iscsi" {
+		requestedAccessProtocol = iscsi
+	} else if requestedAccessProtocol == "fc" {
+		requestedAccessProtocol = fc
+	}
 
 	if existingNode != nil {
 		log.Tracef("CSP has already been notified about the node with ID %s and UUID %s", existingNode.ID, existingNode.UUID)
