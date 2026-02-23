@@ -932,7 +932,7 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	// Configure access protocol defaulting to iSCSI when unspecified
-	var requestedAccessProtocol = volumeContext[accessProtocolKey]
+	var requestedAccessProtocol = strings.ToLower(volumeContext[accessProtocolKey])
 	if requestedAccessProtocol == "" {
 		// by default when no protocol specified make iscsi as default
 		requestedAccessProtocol = iscsi

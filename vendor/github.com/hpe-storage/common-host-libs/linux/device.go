@@ -1237,7 +1237,7 @@ func CreateLinuxDevices(vols []*model.Volume) (devs []*model.Device, err error) 
 	var devices []*model.Device
 	for _, vol := range vols {
 		log.Tracef("create request with serialnumber :%s, accessprotocol %s discoveryip %s, iqn %s ", vol.SerialNumber, vol.AccessProtocol, vol.DiscoveryIP, vol.Iqn)
-		if vol.AccessProtocol == iscsi && (vol.DiscoveryIP == "" || vol.Iqn == "") && len(vol.DiscoveryIPs) == 0 {
+		if strings.EqualFold(vol.AccessProtocol, iscsi) && (vol.DiscoveryIP == "" || vol.Iqn == "") && len(vol.DiscoveryIPs) == 0 {
 			return nil, fmt.Errorf("cannot discover without IP. Please sanity check host OS and array IP configuration, network, netmask and gateway")
 		}
 		device, err := createLinuxDevice(vol)
