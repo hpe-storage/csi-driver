@@ -675,7 +675,7 @@ func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, e
 
 // GetVolumeByName will return information about the given volume
 func (provider *ContainerStorageProvider) GetVolumeByName(name string) (*model.Volume, error) {
-	response := make([]*model.Volume, 0)
+	var rawResponse map[string]interface{}
 	var errorResponse *ErrorsPayload
 
 	status, err := provider.invoke(
@@ -683,7 +683,7 @@ func (provider *ContainerStorageProvider) GetVolumeByName(name string) (*model.V
 			Action:        "GET",
 			Path:          fmt.Sprintf("/containers/v1/volumes?name=%s", name),
 			Payload:       nil,
-			Response:      &response,
+			Response:      &rawResponse,
 			ResponseError: &errorResponse,
 		},
 	)
@@ -694,22 +694,37 @@ func (provider *ContainerStorageProvider) GetVolumeByName(name string) (*model.V
 	if errorResponse != nil {
 		return nil, handleError(status, errorResponse)
 	}
+	// Detect response format and extract volume
+	if dataArray, hasData := rawResponse["data"].([]interface{}); hasData {
+		log.Trace("Detected CSP response format with data array")
+		if len(dataArray) == 0 {
+			log.Errorf("Could not find volume %s in json response", name)
+			return nil, fmt.Errorf("Could not find volume named %s in json response", name)
+		}
 
-	// there should only be one volume
-	values := reflect.ValueOf(response)
-	if values.Len() == 0 {
+		volume := &model.Volume{}
+		err = jsonutil.Decode(dataArray[0], volume)
+		if err != nil {
+			return nil, fmt.Errorf("Error while decoding the volume response, err: %s", err.Error())
+		}
+		log.Tracef("Found volume: %s with ID: %s", volume.Name, volume.ID)
+		return volume, nil
+	}
+
+	log.Trace("Attempting to parse as direct array response")
+	response := make([]*model.Volume, 0)
+	err = jsonutil.Decode(rawResponse, &response)
+	if err != nil {
+		return nil, fmt.Errorf("Error while decoding volume response, unsupported format, err: %s", err.Error())
+	}
+
+	if len(response) == 0 {
 		log.Errorf("Could not find volume %s in json response", name)
 		return nil, fmt.Errorf("Could not find volume named %s in json response", name)
 	}
-	log.Tracef("Found %d volumes", values.Len())
 
-	volume := &model.Volume{}
-	err = jsonutil.Decode(values.Index(0).Interface(), volume)
-	if err != nil {
-		return nil, fmt.Errorf("Error while decoding the volume response, err: %s", err.Error())
-	}
-
-	return volume, err
+	log.Tracef("Found %d volumes", len(response))
+	return response[0], nil
 }
 
 // GetVolumes returns all of the volumes from the CSP

@@ -871,11 +871,24 @@ func (driver *Driver) controllerPublishVolume(
 			return nil, status.Error(codes.Unavailable,
 				fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
 		}
-		_, err = storageProvider.PublishVolume(volumeID, nodeID, volumeContext[accessProtocolKey])
+		// For file volumes, volumeID might be a name, so get the actual volume object first
+		volume, err := storageProvider.GetVolumeByName(volumeID)
 		if err != nil {
-			log.Errorf("Failed to publish volume %s, err: %s", volumeID, err.Error())
+			log.Errorf("Failed to get file volume by name %s, err: %s", volumeID, err.Error())
 			return nil, status.Error(codes.Internal,
-				fmt.Sprintf("Failed to add file share settings access for volume %s for node %s via File CSP, err: %s", volumeID, nodeID, err.Error()))
+				fmt.Sprintf("Failed to get file volume %s, err: %s", volumeID, err.Error()))
+		}
+		if volume == nil {
+			return nil, status.Error(codes.NotFound,
+				fmt.Sprintf("File volume with name %s not found", volumeID))
+		}
+
+		// Use the actual volume ID (not the name) for publishing
+		_, err = storageProvider.PublishVolume(volume.ID, nodeID, volumeContext[accessProtocolKey])
+		if err != nil {
+			log.Errorf("Failed to publish file volume %s (ID: %s), err: %s", volumeID, volume.ID, err.Error())
+			return nil, status.Error(codes.Internal,
+				fmt.Sprintf("Failed to add file share settings access for volume %s (ID: %s) for node %s via File CSP, err: %s", volumeID, volume.ID, nodeID, err.Error()))
 		}
 		log.Info("ControllerPublish requested with file resources, returning success")
 		return map[string]string{
@@ -885,7 +898,7 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	// Get Volume using secrets
-	volume, err := driver.GetVolumeByID(volumeID, secrets)
+	volume, err := driver.GetVolumeByName(volumeID, secrets)
 	if err != nil {
 		log.Errorf("Failed to get volume %s, err: %s", volumeID, err.Error())
 		return nil, err
