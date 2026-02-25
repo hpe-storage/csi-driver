@@ -895,7 +895,7 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	// Check if volume is requested with File resources and intercept here
 	if driver.IsFileRequest(request.VolumeContext) {
 		log.Infof("NodePublish requested with file resources for %s", request.VolumeId)
-		existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
+		existingVolume, err := driver.GetVolumeByName(request.VolumeId, request.Secrets)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get volume %s, err: %s", request.VolumeId, err.Error())
 		}
@@ -913,6 +913,21 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 			} else {
 				log.Errorf("hostIP key not found or value is nil in config for volume %s", request.VolumeId)
 				return nil, fmt.Errorf("hostIP key not found or value is nil in config for volume %s", request.VolumeId)
+			}
+			// Also extract mountPath from Config
+			mountPathVal, ok := existingVolume.Config["mountPath"]
+			if ok && mountPathVal != nil {
+				mountPath, ok := mountPathVal.(string)
+				if ok && mountPath != "" {
+					log.Infof("Adding mountPath %s to volume context for volume %s", mountPath, request.VolumeId)
+					request.VolumeContext["mountPath"] = mountPath
+				} else {
+					log.Errorf("failed to get mountPath for volume %s", request.VolumeId)
+					return nil, fmt.Errorf("failed to get mountPath for volume %s", request.VolumeId)
+				}
+			} else {
+				log.Errorf("mountPath key not found or value is nil in config for volume %s", request.VolumeId)
+				return nil, fmt.Errorf("mountPath key not found or value is nil in config for volume %s", request.VolumeId)
 			}
 		} else {
 			log.Errorf("config is nil for volume %s", request.VolumeId)
