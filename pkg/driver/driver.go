@@ -834,7 +834,7 @@ func (driver *Driver) ScrubEphemeralPods(podsDirPath string) error {
 
 func (driver *Driver) IsFileRequest(parameters map[string]string) bool {
 	accessProtocol, ok := parameters[accessProtocolKey]
-	return ok && accessProtocol == nfsFileSystem
+	return ok && strings.EqualFold(accessProtocol, nfsFileSystem)
 }
 
 /******************************************************************************************/
