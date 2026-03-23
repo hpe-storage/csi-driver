@@ -104,6 +104,8 @@ func ConnectNvmeTarget(target *model.NvmeTarget) error {
     var success bool
 
     for _, ip := range discoveryIPs {
+        // Sanitize IP address (remove whitespace,* and other invalid format)
+        ip = util.SanitizeIPAddress(ip)
         args := []string{
             "connect",
             "-t", "tcp",
@@ -234,6 +236,8 @@ func discoverNvmeEndpoints(nqn string, discoveryIPs []string) ([]nvmeEndpoint, e
         return eps, fmt.Errorf("no discovery IPs provided")
     }
     for _, ip := range discoveryIPs {
+        // Sanitize IP address (remove whitespace,* and other invalid format)
+        ip = util.SanitizeIPAddress(ip)       
         args := []string{
             "discover",
             "-t", "tcp",
