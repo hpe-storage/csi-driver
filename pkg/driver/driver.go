@@ -747,6 +747,18 @@ func (driver *Driver) ScrubEphemeralPods(podsDirPath string) error {
 	log.Trace(">>>>> ScrubEphemeralPods")
 	defer log.Trace("<<<<< ScrubEphemeralPods")
 
+	const (
+		// Expected relative path shape under podsDirPath:
+		// <pod-uid>/volumes/kubernetes.io~csi/<pvc-id>/ephemeral_data.json
+		// This puts ephemeral_data.json at depth 5 from podsDirPath.
+		// Valid absolute example:
+		// /var/lib/kubelet/pods/109086aa-0d13-4d64-a5f9-72187f683b5d/volumes/kubernetes.io~csi/pvc-b53ab2fe-614c-4b45-bb24-4c7a629037b1/ephemeral_data.json
+		// Deeper mount-content example (intentionally ignored by depth pruning):
+		// /var/lib/kubelet/pods/109086aa-0d13-4d64-a5f9-72187f683b5d/volumes/kubernetes.io~csi/pvc-b53ab2fe-614c-4b45-bb24-4c7a629037b1/mount/000-scrubber-blocked
+		maxEphemeralDataFilePathDepth = 5
+		maxEphemeralDirPathDepth      = maxEphemeralDataFilePathDepth - 1
+	)
+
 	// Check if pods path exists
 	exists, isDir, err := util.FileExists(podsDirPath)
 	if err != nil {
@@ -760,20 +772,68 @@ func (driver *Driver) ScrubEphemeralPods(podsDirPath string) error {
 	//ephemeralPods := map[string][]*StagingDeviceEphemeralData{}
 	ephemeralPods := map[string][]*VolumeHandleTargetPath{}
 	err = filepath.Walk(podsDirPath, func(fileFullPath string, info os.FileInfo, walkErr error) error {
+		// Handle walk errors first — before any other work — to avoid unnecessary computation
 		if walkErr != nil {
 			log.Errorf("Error while processing the path [%s], %s", fileFullPath, walkErr.Error())
-			return walkErr
+			// Earlier behavior returned walkErr here, which aborted traversal and caused
+			// ScrubEphemeralPods to exit on the first inaccessible path.
+			// Current behavior is best-effort by design:
+			// - Directory error: return filepath.SkipDir to skip that subtree and continue.
+			// - File error: log the error and return nil, because there is no subtree to
+			//   descend into and returning walkErr would abort the whole scrubber run.
+			if info != nil && info.IsDir() {
+				// Skip processing current directory and continue processing other directories
+				return filepath.SkipDir
+			}
+			return nil
 		}
+
 		if info == nil {
+			// Skip processing current directory and continue processing other directories
 			log.Warnf("FileInfo is nil, Skipping directory path [%s]", fileFullPath)
-			return filepath.SkipDir /* Skip processing current directory and continue processing other directories */
+			return filepath.SkipDir
+		}
+
+		relPath, relErr := filepath.Rel(podsDirPath, fileFullPath)
+		if relErr != nil {
+			log.Errorf("Failed to evaluate relative path from pods path [%s] to [%s], %s", podsDirPath, fileFullPath, relErr.Error())
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		pathDepth := 0
+		if relPath != "." {
+			pathDepth = len(strings.Split(relPath, string(os.PathSeparator)))
+		}
+		log.Tracef("Scrubber evaluating path [%s], relPath [%s], depth [%d]", fileFullPath, relPath, pathDepth)
+
+		if info.IsDir() {
+			// Depth check first: avoids opening/listing directories we will never use
+			if pathDepth > maxEphemeralDirPathDepth {
+				return filepath.SkipDir
+			}
+			log.Tracef("Scrubber processing directory [%s], relPath [%s], depth [%d]", fileFullPath, relPath, pathDepth)
+			// At depth 2 (example: <pod-uid>/volumes), only the "volumes" directory can lead
+			// to inline CSI metadata. Skip siblings like <pod-uid>/containers or <pod-uid>/plugins.
+			if pathDepth == 2 && info.Name() != "volumes" {
+				return filepath.SkipDir
+			}
+			// At depth 3 under volumes (example: <pod-uid>/volumes/kubernetes.io~csi), only the
+			// CSI plugin directory contains ephemeral_data.json. Skip other plugins (for example,
+			// <pod-uid>/volumes/kubernetes.io~secret).
+			if pathDepth == 3 && info.Name() != "kubernetes.io~csi" {
+				return filepath.SkipDir
+			}
+			return nil
 		}
 
 		// Process only 'ephemeral_data.json' files
-		if !info.IsDir() && info.Name() == ephemeralDataFileName {
+		if info.Name() == ephemeralDataFileName && pathDepth == maxEphemeralDataFilePathDepth {
 			log.Tracef("Found Ephemeral data file [%s]", fileFullPath)
 			targetDirPath := filepath.Dir(fileFullPath)
-			targetPath := fmt.Sprintf("%s/%s", targetDirPath, "mount")
+			targetPath := filepath.Join(targetDirPath, "mount")
 
 			// Load Ephemeral Data
 			ephemeralData, err := loadEphemeralData(targetDirPath, ephemeralDataFileName)
