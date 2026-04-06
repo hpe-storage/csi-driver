@@ -27,7 +27,6 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/stringformat"
 	"github.com/hpe-storage/common-host-libs/util"
-	"github.com/hpe-storage/csi-driver/pkg/flavor/kubernetes"
 	mountutil "k8s.io/mount-utils"
 	"k8s.io/utils/exec"
 
@@ -897,24 +896,6 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 		log.Infof("NodePublish requested with file resources for %s", request.VolumeId)
 		if request.PublishContext == nil {
 			return nil, fmt.Errorf("publish context is nil for file volume %s", request.VolumeId)
-		}
-
-		// Validate required keys in publish context
-		requiredKeys := []string{fileHostIPKey, mountPathKey}
-		for _, key := range requiredKeys {
-			if _, ok := request.PublishContext[key]; !ok {
-				return nil, fmt.Errorf("%s key not found in publish context for file volume %s", key, request.VolumeId)
-			}
-			request.VolumeContext[key] = request.PublishContext[key]
-		}
-
-		if request.Secrets != nil && request.Secrets[serviceNameKey] == homeFleetNFSCSPServiceName {
-			if _, hasCloneKey := request.VolumeContext[homeFleetNFSCSPServiceName]; hasCloneKey {
-				// Validate homefleet-clone access before allowing mount
-				if err := driver.validateHomeFleetCloneAccess(request.VolumeId, request.VolumeContext); err != nil {
-					return nil, err
-				}
-			}
 		}
 		return driver.flavor.HandleFileNodePublish(request)
 	}
@@ -2413,84 +2394,4 @@ func loadVolumeData(dir string, fileName string) (map[string]string, error) {
 	}
 	log.Tracef("Data file [%s] loaded successfully", dataFilePath)
 	return data, nil
-}
-
-// validateHomeFleetCloneAccess checks if a pod is allowed to access a volume with alletrastoragemp-x10000-nfs-csp-svc annotation
-// Returns nil if access is allowed, error otherwise
-func (driver *Driver) validateHomeFleetCloneAccess(volumeID string, volumeContext map[string]string) error {
-	log.Tracef(">>>>> validateHomeFleetCloneAccess, volumeID: %s", volumeID)
-	defer log.Trace("<<<<< validateHomeFleetCloneAccess")
-
-	// Check if volumeContext is nil
-	if volumeContext == nil {
-		return status.Error(codes.FailedPrecondition, "volumeContext is nil")
-	}
-
-	// Get pod information from volumeContext (when podInfoOnMount is enabled)
-	podName := volumeContext[csiEphemeralPodName]
-	podNamespace := volumeContext[csiEphemeralPodNamespace]
-
-	if podName == "" || podNamespace == "" {
-		return status.Error(codes.FailedPrecondition, "pod information not available in volumeContext. Ensure podInfoOnMount is set to true in CSI driver deployment")
-	}
-
-	// Get PVC information from volumeContext
-	pvcName := volumeContext[pvcNameAttribute]
-	pvcNamespace := volumeContext[pvcNamespaceAttribute]
-	if pvcName == "" || pvcNamespace == "" {
-		log.Warnf("PVC name or namespace not available in volumeContext for volume %s", volumeID)
-		return status.Error(codes.FailedPrecondition, "PVC information not available in volumeContext")
-	}
-
-	// Cast to kubernetes flavor to access K8s API
-	k8sFlavor, ok := driver.flavor.(*kubernetes.Flavor)
-	if !ok {
-		return status.Error(codes.Internal, "kubernetes flavor not available to verify PVC annotations")
-	}
-
-	// Get PVC object
-	pvc, err := k8sFlavor.GetPVCByName(pvcName, pvcNamespace)
-	if err != nil {
-		log.Warnf("Failed to get PVC %s/%s: %v", pvcNamespace, pvcName, err)
-		return status.Errorf(codes.Internal, "failed to get PVC: %v", err)
-	}
-
-	// Check if PVC has alletrastoragemp-x10000-nfs-csp-svc annotation
-	// Handle both nil annotations map and missing annotation key
-	var annotationValue string
-	var annotationExists bool
-	if pvc.Annotations != nil {
-		annotationValue, annotationExists = pvc.Annotations[homeFleetNFSCSPServiceName]
-	}
-
-	if annotationExists && annotationValue == trueKey {
-		// Annotation is set, clone operation is complete - allow mount for any pod
-		log.Infof("PVC %s/%s has alletrastoragemp-x10000-nfs-csp-svc annotation set to true, allowing mount for pod %s/%s", pvcNamespace, pvcName, podNamespace, podName)
-		return nil
-	}
-
-	// Annotation not set or annotations map is nil - only allow pods with alletrastoragemp-x10000-nfs-csp-svc label
-	if !annotationExists {
-		log.Infof("PVC %s/%s does not have alletrastoragemp-x10000-nfs-csp-svc annotation, checking pod label for %s/%s", pvcNamespace, pvcName, podNamespace, podName)
-
-		podLabels, err := k8sFlavor.GetPodLabels(podName, podNamespace)
-		if err != nil {
-			log.Warnf("Failed to get pod labels for %s/%s: %v", podNamespace, podName, err)
-			return status.Errorf(codes.Internal, "failed to get pod labels: %v", err)
-		}
-
-		// Check if pod has the alletrastoragemp-x10000-nfs-csp-svc label
-		if cloneLabel, exists := podLabels[homeFleetNFSCSPServiceName]; exists && cloneLabel == trueKey {
-			log.Infof("Pod %s/%s has alletrastoragemp-x10000-nfs-csp-svc label, allowing mount while clone operation in progress", podNamespace, podName)
-			return nil
-		}
-
-		// Pod doesn't have the required label, block the mount
-		log.Warnf("Pod %s/%s does not have alletrastoragemp-x10000-nfs-csp-svc label, clone operation still in progress", podNamespace, podName)
-		return status.Error(codes.Unavailable, "clone operation is in progress, please wait for some time")
-	}
-
-	// Annotation exists but value is not "true" - this is an error state
-	log.Warnf("PVC %s/%s has alletrastoragemp-x10000-nfs-csp-svc annotation but value is '%s' (expected 'true'), blocking mount for pod %s/%s", pvcNamespace, pvcName, annotationValue, podNamespace, podName)
-	return status.Error(codes.Unavailable, "clone operation is in progress, please wait for some time")
 }

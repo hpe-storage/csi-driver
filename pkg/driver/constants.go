@@ -133,19 +133,10 @@ const (
 	fsRepairKey = "fsRepair"
 
 	// File volume constants
-	fileHostIPKey                   = "hostIP"
-	accessIPKey                     = "accessIP"
-	mountPathKey                    = "mountPath"
-	serviceNameKey                  = "serviceName"
-	homeFleetNFSCSPServiceName      = "alletrastoragemp-x10000-nfs-csp-svc"
-	alletraStorageNFSCSPServiceName = "alletrastoragemp-b10000-nfs-csp-svc"
-	fileVolumeNameKey               = "csi.storage.k8s.io/pv/name"
-	hostIPAnnotationKey             = "csi.hpe.com/hostIP"
+	fileExportIPKey      = "exportIP"
+	accessIPKey          = "accessIP"
+	mountPathKey         = "mountPath"
+	fileVolumeNameKey    = "csi.storage.k8s.io/pv/name"
+	accessControlListKey = "accessControlList"
+	defaultAccessControl = "*"
 )
-
-// snapshotUnsupportedCSPs contains CSP service names that do not support snapshot operations
-var snapshotUnsupportedCSPs = map[string]bool{
-	homeFleetNFSCSPServiceName: true,
-	// Add more CSPs that don't support snapshots here as needed
-	// Example: "alletra-storage-light-csp-svc": true,
-}

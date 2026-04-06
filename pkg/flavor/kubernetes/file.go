@@ -14,7 +14,7 @@ import (
 const (
 	NFS              = "nfs"
 	shareNfsVersion  = "shareNfsVersion"
-	fileHostIPKey    = "hostIP"
+	fileExportIPKey  = "exportIP"
 	fileMountPathKey = "mountPath"
 )
 
@@ -41,10 +41,10 @@ func (flavor *Flavor) HandleFileNodePublish(req *csi.NodePublishVolumeRequest) (
 	defer log.Tracef("<<<<< HandleFileNodePublish")
 	var mountOptions []string
 	var clusterIP, exportPath string
-	var existHostIP, existExportPath bool
-	clusterIP, existHostIP = req.VolumeContext[fileHostIPKey]
-	exportPath, existExportPath = req.VolumeContext[fileMountPathKey]
-	if !existHostIP || !existExportPath {
+	var existExportIP, existExportPath bool
+	clusterIP, existExportIP = req.PublishContext[fileExportIPKey]
+	exportPath, existExportPath = req.PublishContext[fileMountPathKey]
+	if !existExportIP || !existExportPath {
 		errStr := fmt.Sprintf("failed to create file provisioned volume with hostip: %s, and mount path: %s, host ip or mount path should not be empty ", clusterIP, exportPath)
 		log.Errorln(errStr)
 		return nil, status.Error(codes.Internal, errStr)
