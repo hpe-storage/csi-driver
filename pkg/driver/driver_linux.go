@@ -15,6 +15,5 @@ func getDriver(name, version, endpoint string) *Driver {
 		endpoint:         endpoint,
 		storageProviders: make(map[string]storageprovider.StorageProvider),
 		chapiDriver:      &chapi.LinuxDriver{},
-		pvMutexManager:   NewPVMutexManager(),
 	}
 }
