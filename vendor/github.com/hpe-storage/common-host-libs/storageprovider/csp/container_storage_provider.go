@@ -529,15 +529,15 @@ func (provider *ContainerStorageProvider) PublishVolume(id, hostUUID, accessProt
 	return response, err
 }
 
-// PublishFileVolume will make a volume visible (add an ACL) to the given host
-func (provider *ContainerStorageProvider) PublishFileVolume(publishFileOptions *model.PublishFileOptions) (*model.PublishFileInfo, error) {
+// PublishFileVolume will make a file volume visible (add an ACL) to the given host
+func (provider *ContainerStorageProvider) PublishFileVolume(id string, publishFileOptions *model.PublishFileOptions) (*model.PublishFileInfo, error) {
 	response := &model.PublishFileInfo{}
 	var errorResponse *ErrorsPayload
 
 	status, err := provider.invoke(
 		&connectivity.Request{
 			Action:        "PUT",
-			Path:          fmt.Sprintf("/containers/v1/volumes/%s/actions/publish", publishFileOptions.VolumeID),
+			Path:          fmt.Sprintf("/containers/v1/volumes/%s/actions/publish", id),
 			Payload:       publishFileOptions,
 			Response:      &response,
 			ResponseError: &errorResponse,
@@ -568,6 +568,27 @@ func (provider *ContainerStorageProvider) UnpublishVolume(id, hostUUID string) e
 	}
 
 	return err
+}
+
+// UnPublishFileVolume will remove the access_control_list from the file export
+func (provider *ContainerStorageProvider) UnPublishFileVolume(id string, unPublishFileOptions *model.UnPublishFileOptions) (*model.PublishFileInfo, error) {
+	response := &model.PublishFileInfo{}
+	var errorResponse *ErrorsPayload
+
+	status, err := provider.invoke(
+		&connectivity.Request{
+			Action:        "PUT",
+			Path:          fmt.Sprintf("/containers/v1/volumes/%s/actions/unpublish", id),
+			Payload:       unPublishFileOptions,
+			Response:      &response,
+			ResponseError: &errorResponse,
+		},
+	)
+	if errorResponse != nil {
+		return nil, handleError(status, errorResponse)
+	}
+
+	return response, err
 }
 
 // ExpandVolume will expand the volume to reqeusted size
