@@ -76,7 +76,7 @@ const (
 	fsext3command  = "mkfs.ext3"
 	fsext4command  = "mkfs.ext4"
 	fsbtrfscommand = "mkfs.btrfs"
-	defaultNFSType = "nfs4"
+	defaultNFSType = "nfs"
 )
 
 // HashMountID : get hash of the string
@@ -434,29 +434,29 @@ func UnmountFileSystem(mountPoint string) (*model.Mount, error) {
 }
 
 func IsLastNamespaceForNQN(nqn string) bool {
-    files, err := ioutil.ReadDir(nvmeClassDir)
-    if err != nil {
-        log.Errorf("Failed to read %s: %v", nvmeClassDir, err)
-        return false
-    }
-    nsCount := 0
-    for _, f := range files {
-        // Only consider controller directories (e.g., nvme0, nvme1)
-        if !strings.HasPrefix(f.Name(), "nvme") || strings.Contains(f.Name(), "nvme-subsys") {
-            continue
-        }
-        subsysnqnPath := fmt.Sprintf("%s%s/subsysnqn", nvmeClassDir, f.Name())
-        subsysNqn, nqnErr := util.FileReadFirstLine(subsysnqnPath)
-        if nqnErr != nil || strings.TrimSpace(subsysNqn) != nqn {
-            continue
-        }
-        // Count namespaces for this controller
-        ctrlDir := fmt.Sprintf("%s%s/", nvmeClassDir, f.Name())
-        ctrlFiles, err := ioutil.ReadDir(ctrlDir)
-        if err != nil {
-            continue
-        }
-        for _, cf := range ctrlFiles {
+	files, err := ioutil.ReadDir(nvmeClassDir)
+	if err != nil {
+		log.Errorf("Failed to read %s: %v", nvmeClassDir, err)
+		return false
+	}
+	nsCount := 0
+	for _, f := range files {
+		// Only consider controller directories (e.g., nvme0, nvme1)
+		if !strings.HasPrefix(f.Name(), "nvme") || strings.Contains(f.Name(), "nvme-subsys") {
+			continue
+		}
+		subsysnqnPath := fmt.Sprintf("%s%s/subsysnqn", nvmeClassDir, f.Name())
+		subsysNqn, nqnErr := util.FileReadFirstLine(subsysnqnPath)
+		if nqnErr != nil || strings.TrimSpace(subsysNqn) != nqn {
+			continue
+		}
+		// Count namespaces for this controller
+		ctrlDir := fmt.Sprintf("%s%s/", nvmeClassDir, f.Name())
+		ctrlFiles, err := ioutil.ReadDir(ctrlDir)
+		if err != nil {
+			continue
+		}
+		for _, cf := range ctrlFiles {
 			// Match namespace files like nvme1n1, nvme1c1n1, nvme1c2n1, etc.
 			nsPattern := fmt.Sprintf(`^%sc\d+n\d+$|^%sn\d+$`, f.Name(), f.Name())
 			matched, _ := regexp.MatchString(nsPattern, cf.Name())
@@ -464,10 +464,10 @@ func IsLastNamespaceForNQN(nqn string) bool {
 				nsCount++
 			}
 		}
-    }
-    log.Tracef("Found %d active namespaces for NQN %s", nsCount, nqn)
-    // If only one namespace left for this NQN, it's safe to disconnect
-    return nsCount <= 1
+	}
+	log.Tracef("Found %d active namespaces for NQN %s", nsCount, nqn)
+	// If only one namespace left for this NQN, it's safe to disconnect
+	return nsCount <= 1
 }
 
 // UnmountDevice : unmount device from host
@@ -478,24 +478,24 @@ func UnmountDevice(device *model.Device, mountPoint string) (*model.Mount, error
 	}
 	mount, err := UnmountFileSystem(mountPoint)
 	if err != nil {
-        	return mount, err
-    	}
+		return mount, err
+	}
 	// Disconnect and delete NVMe subsystem after unmount
 	log.Debugf("Nvme targets %v+", device.NvmeTargets)
-    if device.NvmeTargets != nil && len(device.NvmeTargets) > 0 {
-        for _, target := range device.NvmeTargets {
+	if device.NvmeTargets != nil && len(device.NvmeTargets) > 0 {
+		for _, target := range device.NvmeTargets {
 			log.Debugf("Nvme NQN %v+", target.NQN)
-            if target.NQN != "" && IsLastNamespaceForNQN(target.NQN) {
-                // Disconnect the device
-                err = DisconnectNVMeTargetByNQN(target.NQN)
+			if target.NQN != "" && IsLastNamespaceForNQN(target.NQN) {
+				// Disconnect the device
+				err = DisconnectNVMeTargetByNQN(target.NQN)
 				if err != nil {
 					log.Errorf("Failed to disconnect NVMe target for device %s: %v", device.AltFullPathName, err)
 				}
-            }else{
+			} else {
 				log.Infof("Skipping disconnect for NQN %s as other namespaces are present", target.NQN)
 			}
-        }
-    }
+		}
+	}
 	return mount, nil
 }
 
@@ -641,7 +641,7 @@ func MountNFSShare(source string, targetPath string, options []string, nfsType s
 	log.Tracef(">>>>> MountNFSShare called with source %s target %s type %s", source, targetPath, nfsType)
 	defer log.Tracef("<<<<< MountNFSShare")
 
-	// default type as nfs4
+	// default type as nfs
 	if nfsType == "" {
 		nfsType = defaultNFSType
 	}
