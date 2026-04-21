@@ -41,7 +41,6 @@ var (
 )
 
 const (
-	fileHostIPKey = "hostIP"
 	targetPortKey = "targetPort"
 )
 
@@ -895,31 +894,12 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 	// Check if volume is requested with File resources and intercept here
 	if driver.IsFileRequest(request.VolumeContext) {
 		log.Infof("NodePublish requested with file resources for %s", request.VolumeId)
-		existingVolume, err := driver.GetVolumeByID(request.VolumeId, request.Secrets)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get volume %s, err: %s", request.VolumeId, err.Error())
+		if request.PublishContext == nil {
+			return nil, status.Error(codes.InvalidArgument,
+				fmt.Sprintf("publish context is nil for file volume %s", request.VolumeId))
 		}
-		if existingVolume.Config != nil {
-			hostIPVal, ok := existingVolume.Config[fileHostIPKey]
-			if ok && hostIPVal != nil {
-				hostIP, ok := hostIPVal.(string)
-				if ok && hostIP != "" && isValidIP(hostIP) {
-					log.Infof("Adding hostIP %s to volume context for volume %s", hostIP, request.VolumeId)
-					request.VolumeContext[fileHostIPKey] = hostIP
-				} else {
-					log.Errorf("failed to get hostIP for volume %s", request.VolumeId)
-					return nil, fmt.Errorf("failed to get hostIP for volume %s", request.VolumeId)
-				}
-			} else {
-				log.Errorf("hostIP key not found or value is nil in config for volume %s", request.VolumeId)
-				return nil, fmt.Errorf("hostIP key not found or value is nil in config for volume %s", request.VolumeId)
-			}
-		} else {
-			log.Errorf("config is nil for volume %s", request.VolumeId)
-			return nil, fmt.Errorf("config is nil for volume %s", request.VolumeId)
-		}
-
-		return driver.flavor.HandleFileNodePublish(request)
+		mountOptions := getMountOptionsFromVolCap(request.VolumeCapability)
+		return driver.flavor.HandleFileNodePublish(request, mountOptions)
 	}
 	// If ephemeral volume request, then create new volume, add ACL and NodeStage/NodePublish
 	if ephemeral {

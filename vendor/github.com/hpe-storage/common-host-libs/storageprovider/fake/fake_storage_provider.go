@@ -288,8 +288,18 @@ func (provider *StorageProvider) EditVolume(id string, parameters map[string]int
 	return &fakeVolume, nil
 }
 
-func (provider *StorageProvider) PublishFileVolume(publishOptions *model.PublishFileOptions) (*model.PublishFileInfo, error) {
+// PublishFileVolume will return fake publish data for a file volume
+func (provider *StorageProvider) PublishFileVolume(id string, publishOptions *model.PublishFileOptions) (*model.PublishFileInfo, error) {
 	return &model.PublishFileInfo{
-		HostIP: "eui.fake",
+		ExportIP:  "eui.fake",
+		MountPath: "eui.fake",
+	}, nil
+}
+
+// UnPublishFileVolume will make a file volume invisible (remove an ACL) from the given host
+func (provider *StorageProvider) UnPublishFileVolume(id string, unPublishFileOptions *model.UnPublishFileOptions) (*model.PublishFileInfo, error) {
+	return &model.PublishFileInfo{
+		ExportIP:  "eui.fake",
+		MountPath: "eui.fake",
 	}, nil
 }

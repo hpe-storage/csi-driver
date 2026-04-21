@@ -4,11 +4,11 @@ package driver
 
 const (
 	// Protocol types
-	iscsi = "iscsi"
-	fc    = "fc"
-	nvmeotcp = "nvmeotcp"
+	iscsi           = "iscsi"
+	fc              = "fc"
+	nvmeotcp        = "nvmeotcp"
 	defaultNvmePort = "4420"
-	nvmetcp = "nvmetcp"
+	nvmetcp         = "nvmetcp"
 
 	// defaultFileSystem is the implemenation-specific default value
 	defaultFileSystem = "xfs"
@@ -127,5 +127,11 @@ const (
 
 	defaultCSITopologyKey = "csi.hpe.com/zone"
 	// FileSystem Corruption parameters
-	fsRepairKey          = "fsRepair"
+	fsRepairKey = "fsRepair"
+
+	// File volume constants
+	fileExportIPKey      = "exportIP"
+	mountPathKey         = "mountPath"
+	fileVolumeNameKey    = "csi.storage.k8s.io/pv/name"
+	accessControlListKey = "accessControlList"
 )

@@ -155,6 +155,6 @@ func (flavor *Flavor) CheckConnection() bool {
 }
 
 //nolint:revive
-func (flavor *Flavor) HandleFileNodePublish(request *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+func (flavor *Flavor) HandleFileNodePublish(request *csi.NodePublishVolumeRequest, mountOptions []string) (*csi.NodePublishVolumeResponse, error) {
 	return nil, status.Error(codes.Internal, "File provisioned volume is not supported for non-k8s environments")
 }
