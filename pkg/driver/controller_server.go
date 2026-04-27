@@ -869,11 +869,22 @@ func (driver *Driver) controllerPublishVolume(
 	}
 
 	if driver.IsFileRequest(volumeContext) {
+		accessControlList := ""
+
+		if pv, err := driver.flavor.GetVolumeById(volumeID); err == nil && pv != nil {
+			if acl := pv.Annotations[accessControlListAnnotationKey]; acl != "" {
+				accessControlList = acl
+			}
+		}
+
+		if accessControlList == "" {
+			accessControlList = volumeContext[accessControlListKey]
+		}
 
 		publishOptions := &model.PublishFileOptions{
 			Name:              volumeContext[fileVolumeNameKey],
 			AccessProtocol:    volumeContext[accessProtocolKey],
-			AccessControlList: volumeContext[accessControlListKey],
+			AccessControlList: accessControlList,
 		}
 
 		storageProvider, err := driver.GetStorageProvider(secrets)

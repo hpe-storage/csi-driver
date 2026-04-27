@@ -134,4 +134,5 @@ const (
 	mountPathKey         = "mountPath"
 	fileVolumeNameKey    = "csi.storage.k8s.io/pv/name"
 	accessControlListKey = "accessControlList"
+	accessControlListAnnotationKey = "csi.hpe.com/accessControlList"
 )
