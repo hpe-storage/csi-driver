@@ -894,10 +894,45 @@ func (driver *Driver) controllerPublishVolume(
 				fmt.Sprintf("File volume with name %s not found", volumeID))
 		}
 
+		// Check if volume already has export info in Config (e.g., Unified File static provisioning)
+		if volume.Config != nil {
+			exportIP, hasExportIP := volume.Config["hostIP"]
+			mountPath, hasMountPath := volume.Config["mountPath"]
+			if hasExportIP && hasMountPath {
+				log.Infof("Volume %s (ID: %s) already has export info, skipping PublishFileVolume", volumeID, volume.ID)
+				return map[string]string{
+					readOnlyKey:     strconv.FormatBool(readOnlyAccessMode),
+					fileExportIPKey: fmt.Sprintf("%v", exportIP),
+					mountPathKey:    fmt.Sprintf("%v", mountPath),
+				}, nil
+			}
+		}
+
 		// Use the actual volume ID (not the name) for publishing
 		publishFileVol, err := storageProvider.PublishFileVolume(volume.ID, publishOptions)
 		if err != nil {
-			log.Errorf("Failed to publish file volume %s (ID: %s), err: %s", volumeID, volume.ID, err.Error())
+			log.Warnf("PublishFileVolume failed for volume %s (ID: %s), err: %s. Attempting to get volume info directly.", volumeID, volume.ID, err.Error())
+			// Fallback: for Unified File volumes, PublishFileVolume may not be supported.
+			// Try to get the volume info directly which may contain hostip and mountpath.
+			fallbackVol, getErr := storageProvider.GetVolume(volume.ID)
+			if getErr != nil || fallbackVol == nil {
+				log.Errorf("Fallback GetVolume also failed for volume %s (ID: %s), err: %v", volumeID, volume.ID, getErr)
+				return nil, status.Error(codes.Internal,
+					fmt.Sprintf("Failed to add file share settings access for volume %s (ID: %s) for node %s via File CSP, err: %s", volumeID, volume.ID, nodeID, err.Error()))
+			}
+			if fallbackVol.Config != nil {
+				exportIP, hasExportIP := fallbackVol.Config["hostIP"]
+				mountPath, hasMountPath := fallbackVol.Config["mountPath"]
+				if hasExportIP && hasMountPath {
+					log.Infof("Fallback succeeded: got exportIP and mountPath for volume %s (ID: %s)", volumeID, volume.ID)
+					return map[string]string{
+						readOnlyKey:     strconv.FormatBool(readOnlyAccessMode),
+						fileExportIPKey: fmt.Sprintf("%v", exportIP),
+						mountPathKey:    fmt.Sprintf("%v", mountPath),
+					}, nil
+				}
+			}
+			log.Errorf("Fallback GetVolume did not return exportIP/mountPath for volume %s (ID: %s)", volumeID, volume.ID)
 			return nil, status.Error(codes.Internal,
 				fmt.Sprintf("Failed to add file share settings access for volume %s (ID: %s) for node %s via File CSP, err: %s", volumeID, volume.ID, nodeID, err.Error()))
 		}

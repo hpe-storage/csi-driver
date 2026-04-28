@@ -899,7 +899,7 @@ func (driver *Driver) NodePublishVolume(ctx context.Context, request *csi.NodePu
 			return nil, fmt.Errorf("failed to get volume %s, err: %s", request.VolumeId, err.Error())
 		}
 		if existingVolume.Config != nil {
-			hostIPVal, ok := existingVolume.Config[fileExportIPKey]
+			hostIPVal, ok := existingVolume.Config["hostIP"]
 			if ok && hostIPVal != nil {
 				hostIP, ok := hostIPVal.(string)
 				if ok && hostIP != "" && isValidIP(hostIP) {

@@ -665,7 +665,7 @@ func (provider *ContainerStorageProvider) EditVolume(id string, opts map[string]
 
 // GetVolume will return information about the given volume
 func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, error) {
-	response := &model.Volume{}
+	var rawResponse map[string]interface{}
 	var errorResponse *ErrorsPayload
 	var status int
 	var err error
@@ -674,14 +674,10 @@ func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, e
 			Action:        "GET",
 			Path:          fmt.Sprintf("/containers/v1/volumes/%s", id),
 			Payload:       nil,
-			Response:      &response,
+			Response:      &rawResponse,
 			ResponseError: &errorResponse,
 		},
 	)
-
-	if status == http.StatusOK {
-		return response, nil
-	}
 
 	if status == http.StatusNotFound {
 		return nil, nil
@@ -691,7 +687,17 @@ func (provider *ContainerStorageProvider) GetVolume(id string) (*model.Volume, e
 		return nil, handleError(status, errorResponse)
 	}
 
-	return nil, err
+	if err != nil {
+		return nil, err
+	}
+
+	volume := &model.Volume{}
+	err = jsonutil.Decode(rawResponse, volume)
+	if err != nil {
+		return nil, fmt.Errorf("Error while decoding volume response, err: %s", err.Error())
+	}
+
+	return volume, nil
 }
 
 // GetVolumeByName will return information about the given volume
@@ -715,6 +721,7 @@ func (provider *ContainerStorageProvider) GetVolumeByName(name string) (*model.V
 	if errorResponse != nil {
 		return nil, handleError(status, errorResponse)
 	}
+
 	// Detect response format and extract volume
 	if dataArray, hasData := rawResponse["data"].([]interface{}); hasData {
 		log.Trace("Detected CSP response format with data array")
@@ -727,6 +734,48 @@ func (provider *ContainerStorageProvider) GetVolumeByName(name string) (*model.V
 		err = jsonutil.Decode(dataArray[0], volume)
 		if err != nil {
 			return nil, fmt.Errorf("Error while decoding the volume response, err: %s", err.Error())
+		}
+		log.Tracef("Found volume: %s with ID: %s", volume.Name, volume.ID)
+		return volume, nil
+	}
+
+	// Check for "members" map format (e.g., Unified File CSP response)
+	if membersRaw, hasMembers := rawResponse["members"]; hasMembers {
+		log.Trace("Detected members map response format")
+		membersMap, ok := membersRaw.(map[string]interface{})
+		if ok {
+			for uid, memberRaw := range membersMap {
+				memberData, ok := memberRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				memberName, _ := memberData["name"].(string)
+				if memberName == name {
+					log.Tracef("Found matching volume %s with uid %s in members map", name, uid)
+					volume := &model.Volume{}
+					err = jsonutil.Decode(memberData, volume)
+					if err != nil {
+						return nil, fmt.Errorf("Error while decoding member volume response, err: %s", err.Error())
+					}
+					if volume.ID == "" {
+						volume.ID = uid
+					}
+					log.Tracef("Found volume: %s with ID: %s", volume.Name, volume.ID)
+					return volume, nil
+				}
+			}
+			log.Errorf("Could not find volume %s in members map", name)
+			return nil, fmt.Errorf("Could not find volume named %s in members map", name)
+		}
+	}
+
+	// Try parsing as a direct single volume object
+	if _, hasID := rawResponse["id"]; hasID {
+		log.Trace("Detected single volume object response")
+		volume := &model.Volume{}
+		err = jsonutil.Decode(rawResponse, volume)
+		if err != nil {
+			return nil, fmt.Errorf("Error while decoding single volume response, err: %s", err.Error())
 		}
 		log.Tracef("Found volume: %s with ID: %s", volume.Name, volume.ID)
 		return volume, nil
