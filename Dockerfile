@@ -1,8 +1,8 @@
 # throw away builder image
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.7-1776834047 AS build
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.7-1777392539 AS build
 
 # pick golang build version from https://go.dev/dl
-ENV BUILDGO=1.25.7
+ENV BUILDGO=1.25.9
 
 # install prereqs
 RUN dnf install -y make wget
