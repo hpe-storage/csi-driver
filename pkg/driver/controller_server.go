@@ -369,6 +369,12 @@ func (driver *Driver) createVolume(
 		createParameters[hostEncryptionKey] = hostEncryption
 	}
 
+	// Validate the fsRepair parameters
+	if err := driver.validateFsRepairParameter(createParameters); err != nil {
+		log.Error("err: ", err.Error())
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
 	// TODO: use additional properties here to configure the volume further... these might come in from doryd
 	createOptions := make(map[string]interface{})
 	for k, v := range createParameters {
@@ -1895,4 +1901,18 @@ func (driver *Driver) ControllerModifyVolume(
 ) (*csi.ControllerModifyVolumeResponse, error) {
 	// This driver does not support ControllerModifyVolume, return Unimplemented.
 	return nil, status.Error(codes.Unimplemented, "ControllerModifyVolume is not implemented")
+}
+
+// validateFsRepairParameter validates that the fsRepair StorageClass parameter,
+// if specified, is strictly "true" or "false" (lowercase only).
+func (driver *Driver) validateFsRepairParameter(createParameters map[string]string) error {
+	log.Tracef(">>>>> validateFsRepairParameter, createParameters: %+v", createParameters)
+	defer log.Trace("<<<<< validateFsRepairParameter")
+
+	if fsRepairVal, ok := createParameters[fsRepairKey]; ok && fsRepairVal != "" {
+		if fsRepairVal != trueKey && fsRepairVal != falseKey {
+			return fmt.Errorf("invalid value %q for the fsRepair parameter, it must be either [true, false] (lowercase only)", fsRepairVal)
+		}
+	}
+	return nil
 }
