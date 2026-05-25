@@ -316,12 +316,21 @@ NFS_Core_Param
   NFS_Protocols= 4;
   NFS_Port = 2049;
   fsid_device = false;
+  fsid_type = UUID;
 }
 NFSv4
 {
   Graceless = true;
   UseGetpwnam = true;
   DomainName = "REPLACE_DOMAIN";
+}
+MDCACHE
+{
+  Dir_Chunk = 0;
+  Entries_HWMark = 50000;
+  LRU_Run_Interval = 90;
+  Cache_FDs = false;
+  Use_Getattr_Directory_Invalidation = true;
 }
 EXPORT
 {
@@ -333,6 +342,8 @@ EXPORT
   Transports = TCP;
   Protocols = 4;
   SecType = "sys";
+  Delegations = false;
+  Attr_Expiration_Time = -1;
   FSAL {
       Name = VFS;
   }

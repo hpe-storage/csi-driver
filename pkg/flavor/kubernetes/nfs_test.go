@@ -102,6 +102,22 @@ func TestCreateConfigMap(t *testing.T) {
 	configMap, err := flavor.kubeClient.CoreV1().ConfigMaps(defaultNFSNamespace).Get(context.Background(), nfsConfigMap, metav1.GetOptions{})
 	assert.Nil(t, err)
 	assert.Equal(t, configMap.ObjectMeta.Name, nfsConfigMap)
+	ganeshaConfig, ok := configMap.Data[nfsConfigFile]
+	assert.True(t, ok)
+	assert.NotEmpty(t, ganeshaConfig)
+
+	// Validate domain substitution
+	assert.Contains(t, ganeshaConfig, `DomainName = "testdomain.com";`)
+	assert.NotContains(t, ganeshaConfig, "REPLACE_DOMAIN")
+
+	// Validate key NFS and MDCACHE defaults
+	assert.Contains(t, ganeshaConfig, "NFS_Protocols= 4;")
+	assert.Contains(t, ganeshaConfig, "MDCACHE")
+	assert.Contains(t, ganeshaConfig, "Dir_Chunk = 0;")
+	assert.Contains(t, ganeshaConfig, "Entries_HWMark = 50000;")
+	assert.Contains(t, ganeshaConfig, "LRU_Run_Interval = 90;")
+	assert.Contains(t, ganeshaConfig, "Cache_FDs = false;")
+	assert.Contains(t, ganeshaConfig, "Use_Getattr_Directory_Invalidation = true;")
 }
 
 func TestGetNFSSpec(t *testing.T) {
