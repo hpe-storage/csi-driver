@@ -304,6 +304,10 @@ func (driver *Driver) createVolume(
 			filesystem = defaultFileSystem
 			log.Trace("Using default filesystem type: ", filesystem)
 		}
+		// Validate nfsResources value if present - provide a clear error for invalid values
+		if nfsResourcesVal, ok := createParameters[nfsResourcesKey]; ok && !strings.EqualFold(nfsResourcesVal, trueKey) {
+			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("invalid value '%s' for StorageClass parameter %s, the only valid value is '%s'", nfsResourcesVal, nfsResourcesKey, trueKey))
+		}
 		if driver.IsSupportedMultiNodeAccessMode(volumeCapabilities) && !(driver.IsNFSResourceRequest(createParameters) || driver.IsFileRequest(createParameters)) {
 			return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("StorageClass parameter %s=%s is missing for creation of volumes with multi-node access for NFS or  StorageClass parameter %s=%s is missing for creation of volumes with multi-node access File", nfsResourcesKey, trueKey, accessProtocolKey, nfsFileSystem))
 		}
