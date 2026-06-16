@@ -801,6 +801,11 @@ func (flavor *Flavor) createNFSPVC(claim *core_v1.PersistentVolumeClaim, nfsName
 	log.Tracef(">>>>> createNFSPVC with claim %s", claim.ObjectMeta.Name)
 	defer log.Tracef("<<<<< createNFSPVC")
 
+	// remove ownerReferences as they're managed elsewhere
+	if claim.ObjectMeta.OwnerReferences != nil {
+		claim.ObjectMeta.OwnerReferences = []meta_v1.OwnerReference{}
+	}
+
 	// create new underlying nfs claim
 	newClaim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(nfsNamespace).Create(context.Background(), claim, meta_v1.CreateOptions{})
 	if err != nil {
