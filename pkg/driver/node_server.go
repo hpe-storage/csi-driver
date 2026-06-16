@@ -184,6 +184,7 @@ func (driver *Driver) NodeStageVolume(ctx context.Context, request *csi.NodeStag
 		request.VolumeContext,
 	)
 	if err != nil {
+		log.Errorf("Failed to stage volume %s, err: %s", request.VolumeId, err.Error())
 		return nil, err
 	}
 
@@ -472,7 +473,7 @@ func (driver *Driver) stageVolume(
 	// Validate fsRepair value from volumeContext -- catches PVs that may have been
 	// created before this validation existed and have an invalid (non-boolean) value.
 	if fsRepairVal := volumeContext[fsRepairKey]; fsRepairVal != "" && fsRepairVal != trueKey && fsRepairVal != falseKey {
-		return nil, fmt.Errorf("invalid value %q for fsRepair parameter on volume %s, it must be either [true, false] (lowercase only)", fsRepairVal, volumeID)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid value %q for fsRepair parameter on volume %s, it must be either [true, false] (lowercase only)", fsRepairVal, volumeID)
 	}
 
 	if mountInfo.FilesystemOptions != nil && (mountInfo.FilesystemOptions.Type == "ext2" || mountInfo.FilesystemOptions.Type == "ext3" || mountInfo.FilesystemOptions.Type == "ext4") {
@@ -760,21 +761,19 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 				stagingDev.EncKeySecretInfo.Namespace)
 			if err != nil {
 				log.Errorln(err.Error())
-				return err
+				return status.Errorf(codes.Internal, "failed to retrieve encryption passphrase for volume: %s", err.Error())
 			}
 			_, _, err = util.ExecCommandOutputWithStdinArgs("cryptsetup",
 				[]string{"luksClose", device.LuksPathname},
 				[]string{passPhrase})
 			if err != nil {
-				err = fmt.Errorf("luksClose command failed with error %v", err)
-				log.Error(err.Error())
-				return err
+				log.Errorf("luksClose command failed with error %v", err)
+				return status.Errorf(codes.Internal, "luksClose command failed with error %v", err)
 			}
 			log.Infof("Device %s closed successfully by luksClose command", device.LuksPathname)
 		} else {
-			err := fmt.Errorf("secret not present in the device-info file %s for encrypted volume", deviceFilePath)
-			log.Errorln(err.Error())
-			return err
+			log.Errorf("secret not present in the device-info file %s for encrypted volume", deviceFilePath)
+			return status.Errorf(codes.Internal, "secret not present in the device-info file %s for encrypted volume", deviceFilePath)
 		}
 	}
 
