@@ -363,10 +363,35 @@ func (driver *Driver) createVolume(
 		return nil, status.Error(codes.InvalidArgument, fmt.Sprintf("Invalid arguments for host encryption, %s", err.Error()))
 	}
 
+	// Reject unsupported protocol/replication combinations before forwarding the
+	// request to the CSP. NVMe/TCP is supported on standalone arrays only, so
+	// combining it with array-based replication (remoteCopyGroup,
+	// replicationDevices, oneRcgPerPvc, allowBatchReplicatedVolumeCreation) must
+	// fail fast with a clear message rather than partially succeeding on the
+	// backend (CROSS-2).
+	if err := validateReplicationProtocolCompatibility(createParameters); err != nil {
+		log.Errorf("Rejecting volume %s: %s", name, err.Error())
+		return nil, err
+	}
+
 	// hostEncryption can be true and false after validation which can be used during Publish and Stage workflows.
 	// csi-sanity tests fails(panic) if the createParameters are nil.
 	if createParameters != nil {
 		createParameters[hostEncryptionKey] = hostEncryption
+	}
+
+	// Canonicalize the access protocol once, here at the first point where it has
+	// been fully validated, so that the value forwarded to the CSP and persisted
+	// into the PV's volumeAttributes is always the canonical constant. This keeps
+	// the "nvmeotcp" synonym and the canonical "nvmetcp" from diverging across
+	// the driver/CSP boundary and across later node-side reads (CROSS-3). Only a
+	// present, non-empty, non-NFS value is rewritten so File/NFS requests and the
+	// unspecified-protocol default are left untouched.
+	if createParameters != nil {
+		if raw, ok := createParameters[accessProtocolKey]; ok && strings.TrimSpace(raw) != "" &&
+			!strings.EqualFold(strings.TrimSpace(raw), nfsFileSystem) {
+			createParameters[accessProtocolKey] = normalizeAccessProtocol(raw)
+		}
 	}
 
 	// TODO: use additional properties here to configure the volume further... these might come in from doryd
@@ -566,7 +591,7 @@ func (driver *Driver) createVolume(
 			volume, err := storageProvider.CloneVolume(name, description, "", existingSnap.ID, size, createOptions)
 			if err != nil {
 				log.Tracef("Clone creation failed, err: %s", err.Error())
-				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
+				return nil, MapCSPError(err, cspOpCreate, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
 			}
 			_, err = checkBackgroundOperationStatus(volume)
 			if err != nil {
@@ -613,7 +638,7 @@ func (driver *Driver) createVolume(
 			volume, err := storageProvider.CloneVolume(name, description, existingParentVolume.ID, "", size, createOptions)
 			if err != nil {
 				log.Tracef("Clone creation failed, err: %s", err.Error())
-				return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
+				return nil, MapCSPError(err, cspOpCreate, fmt.Sprintf("Failed to clone-create volume %s, %s", name, err.Error()))
 			}
 			_, err = checkBackgroundOperationStatus(volume)
 			if err != nil {
@@ -639,7 +664,9 @@ func (driver *Driver) createVolume(
 	volume, err := storageProvider.CreateVolume(name, description, size, createOptions)
 	if err != nil {
 		log.Trace("Volume creation failed, err: " + err.Error())
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create volume %s, %s", name, err.Error()))
+		// Propagate the CSP's HTTP status as the correct gRPC code instead of a
+		// blanket Internal, so the external-provisioner retries/aborts correctly (CROSS-4).
+		return nil, MapCSPError(err, cspOpCreate, fmt.Sprintf("Failed to create volume %s, %s", name, err.Error()))
 	}
 	// update volume context with volume parameters
 	updateVolumeContext(respVolContext, volume)
@@ -714,9 +741,11 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	// Check if volume still in published state or ACL exists
 	if existingVolume.Published {
 		log.Errorf("Volume %s with ID %s still in use", existingVolume.Name, existingVolume.ID)
-		// TODO: Return correct error code 'FailedPrecondition' as per CSI spec.
-		//       Here, we return 'internal' error code so that the external provisioner performs enough retries to cleanup the volume.
-		return status.Errorf(codes.Internal, "Volume %s with ID %s is still in use", existingVolume.Name, existingVolume.ID)
+		// Per the CSI spec, DeleteVolume MUST return FailedPrecondition when the
+		// volume is still in use (published). This tells the external provisioner
+		// the condition will not resolve from retries alone, so it stops retrying
+		// immediately instead of treating it as a transient Internal error (DRV-D2).
+		return status.Errorf(codes.FailedPrecondition, "Volume %s with ID %s is still in use (published)", existingVolume.Name, existingVolume.ID)
 	}
 
 	// Get Storage Provider
@@ -743,7 +772,9 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	log.Infof("About to delete volume %s with force=%v", volumeID, force)
 	if err := storageProvider.DeleteVolume(volumeID, force); err != nil {
 		log.Error("err: ", err.Error())
-		return status.Error(codes.Internal,
+		// Map the CSP HTTP status to the correct gRPC code (e.g. 409 -> FailedPrecondition
+		// for a still-in-use volume) instead of a blanket Internal (CROSS-4).
+		return MapCSPError(err, cspOpDelete,
 			fmt.Sprintf("Error while deleting volume %s, err: %s", existingVolume.Name, err.Error()))
 	}
 	// Delete DB entry
@@ -812,6 +843,63 @@ func (driver *Driver) ControllerPublishVolume(ctx context.Context, request *csi.
 	}, nil
 }
 
+// normalizeAccessProtocol maps any accepted spelling/casing of a block access
+// protocol to its canonical constant so that every downstream comparison uses a
+// single value (CROSS-3). NVMe/TCP has two accepted spellings — the canonical
+// "nvmetcp" and the "nvmeotcp" synonym — both of which normalize to nvmetcp.
+// iSCSI and FC are lowercased to their canonical constants. Any other value is
+// returned trimmed and lowercased without further change; callers that must
+// reject unsupported protocols should use resolveAccessProtocol, which
+// validates in addition to normalizing.
+//
+// Note: this concerns the StorageClass/publish access-protocol namespace only.
+// It is intentionally distinct from the host initiator type reported by CHAPI
+// (common-host-libs), where the canonical NVMe/TCP value is "nvmeotcp".
+func normalizeAccessProtocol(proto string) string {
+	normalized := strings.ToLower(strings.TrimSpace(proto))
+	switch normalized {
+	case nvmetcp, nvmeotcp:
+		return nvmetcp
+	case iscsi:
+		return iscsi
+	case fc:
+		return fc
+	default:
+		return normalized
+	}
+}
+
+// resolveAccessProtocol normalizes and validates a requested block access
+// protocol for volume publish. An empty value defaults to iSCSI. Only the block
+// protocols supported by the driver (iscsi, fc, nvmetcp) are accepted; any other
+// value is rejected with an InvalidArgument error so that a misconfigured
+// StorageClass fails fast with a clear, actionable message rather than being
+// silently forwarded to the CSP (DRV-D6).
+//
+// The "nvmeotcp" spelling is accepted as a synonym for NVMe/TCP and normalized
+// to the canonical "nvmetcp" value so downstream code only ever sees a single
+// constant (see CROSS-3). Normalization is delegated to normalizeAccessProtocol
+// so the synonym/casing rules have a single source of truth.
+//
+// NFS/File access protocols are intentionally not handled here because those
+// requests are intercepted earlier in controllerPublishVolume and never reach
+// the block-protocol selection logic.
+func resolveAccessProtocol(requested string) (string, error) {
+	protocol := normalizeAccessProtocol(requested)
+	switch protocol {
+	case "":
+		// No protocol specified: default to iSCSI to preserve existing behavior.
+		log.Tracef("Defaulting to access protocol %s", iscsi)
+		return iscsi, nil
+	case iscsi, fc, nvmetcp:
+		return protocol, nil
+	default:
+		return "", status.Error(codes.InvalidArgument,
+			fmt.Sprintf("Unsupported access protocol %q; supported protocols are %s, %s, and %s",
+				requested, iscsi, fc, nvmetcp))
+	}
+}
+
 // nolint : gcyclo
 func (driver *Driver) controllerPublishVolume(
 	volumeID string,
@@ -860,8 +948,21 @@ func (driver *Driver) controllerPublishVolume(
 
 	// Check if volume is requested with NFS resources and intercept here
 	if driver.IsNFSResourceRequest(volumeContext) {
-		// TODO: check and add client ACL here
-		log.Info("ControllerPublish requested with NFS resources, returning success")
+		log.Infof("ControllerPublish NFS volume %s to node %s", volumeID, nodeID)
+
+		// Validate the NFS resource still exists before claiming success, so a
+		// publish against a deleted or half-provisioned NFS volume surfaces as
+		// NotFound (and gets retried) instead of a misleading success that
+		// leaves the workload unable to mount (CROSS-5).
+		if !driver.flavor.IsNFSVolume(volumeID) {
+			return nil, status.Errorf(codes.NotFound,
+				"NFS volume %s not found, cannot publish", volumeID)
+		}
+
+		// Track the publish so ControllerUnpublish has symmetric state to clean
+		// up and the published state is observable for idempotency (CROSS-5).
+		driver.flavor.TrackNFSPublish(volumeID, nodeID)
+
 		return map[string]string{
 			readOnlyKey:        strconv.FormatBool(readOnlyAccessMode),
 			nfsMountOptionsKey: volumeContext[nfsMountOptionsKey],
@@ -897,7 +998,7 @@ func (driver *Driver) controllerPublishVolume(
 		publishFileVol, err := storageProvider.PublishFileVolume(volumeID, publishOptions)
 		if err != nil {
 			log.Errorf("Failed to publish volume %s, err: %s", volumeID, err.Error())
-			return nil, status.Error(codes.Internal,
+			return nil, MapCSPError(err, cspOpPublish,
 				fmt.Sprintf("Failed to add file share settings access for volume %s for node %s via File CSP, err: %s", volumeID, nodeID, err.Error()))
 		}
 
@@ -956,18 +1057,16 @@ func (driver *Driver) controllerPublishVolume(
 			fmt.Sprintf("Error retrieving the node info for ID %s from the CSP, err: %s", node.UUID, err.Error()))
 	}
 
-	// Configure access protocol defaulting to iSCSI when unspecified
-	var requestedAccessProtocol = strings.ToLower(volumeContext[accessProtocolKey])
-	if requestedAccessProtocol == "" {
-		// by default when no protocol specified make iscsi as default
-		requestedAccessProtocol = iscsi
-		log.Tracef("Defaulting to access protocol %s", requestedAccessProtocol)
-	} else if requestedAccessProtocol == "iscsi" {
-		requestedAccessProtocol = iscsi
-	} else if requestedAccessProtocol == "fc" {
-		requestedAccessProtocol = fc
-	} else if requestedAccessProtocol == "nvmetcp" {
-		requestedAccessProtocol = nvmetcp
+	// Configure access protocol, defaulting to iSCSI when unspecified.
+	// Only block access protocols are valid here; NFS/File requests are
+	// intercepted earlier and never reach this point. Reject any protocol
+	// that is not explicitly supported so that a misconfigured StorageClass
+	// fails fast with a clear error instead of being silently passed through
+	// to the CSP as an unsupported value (DRV-D6).
+	requestedAccessProtocol, err := resolveAccessProtocol(volumeContext[accessProtocolKey])
+	if err != nil {
+		log.Errorf("Invalid access protocol requested for volume %s: %s", volume.ID, err.Error())
+		return nil, err
 	}
 
 	if existingNode != nil {
@@ -988,10 +1087,26 @@ func (driver *Driver) controllerPublishVolume(
 	publishInfo, err := storageProvider.PublishVolume(volume.ID, node.UUID, requestedAccessProtocol)
 	if err != nil {
 		log.Errorf("Failed to publish volume %s, err: %s", volume.ID, err.Error())
-		return nil, status.Error(codes.Internal,
+		return nil, MapCSPError(err, cspOpPublish,
 			fmt.Sprintf("Failed to add ACL to volume %s for node %s via CSP, err: %s", volume.ID, node.ID, err.Error()))
 	}
 	log.Tracef("PublishInfo response from CSP: %+v", publishInfo)
+
+	// Enforce single address-family (no dual-stack) and protocol-specific IP
+	// family constraints on the discovery addresses returned by the CSP
+	// (CROSS-1). Dual-stack (mixed IPv4/IPv6) is not supported, and NVMe/TCP
+	// only supports IPv4 discovery addresses. Reject early with a clear
+	// InvalidArgument so the node never attempts to connect using an
+	// unsupported address-family combination.
+	discoveryIPs := publishInfo.AccessInfo.BlockDeviceAccessInfo.DiscoveryIPs
+	if err := validateNoDualStack(discoveryIPs); err != nil {
+		log.Errorf("Dual-stack discovery addresses rejected for volume %s: %s", volume.ID, err.Error())
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if err := validateProtocolDiscoveryIPs(requestedAccessProtocol, discoveryIPs); err != nil {
+		log.Errorf("Unsupported discovery address family for volume %s: %s", volume.ID, err.Error())
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	// target scope is nimble specific therefore extract it from the volume config
 	var requestedTargetScope = targetScopeGroup
@@ -1003,7 +1118,11 @@ func (driver *Driver) controllerPublishVolume(
 	publishContext := map[string]string{}
 
 	publishContext[serialNumberKey] = publishInfo.SerialNumber
-	publishContext[accessProtocolKey] = publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol
+	// Normalize the CSP-returned access protocol to its canonical constant so the
+	// node side only ever compares against a single value. Without this, a CSP
+	// that reports the "nvmeotcp" synonym would defeat the node's case-sensitive
+	// "== nvmetcp" checks (CROSS-3).
+	publishContext[accessProtocolKey] = normalizeAccessProtocol(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol)
 	publishContext[targetNamesKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.TargetNames, ",")
 	publishContext[targetScopeKey] = requestedTargetScope
 	publishContext[lunIDKey] = strconv.Itoa(int(publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID))
@@ -1022,11 +1141,13 @@ func (driver *Driver) controllerPublishVolume(
 
 	}
 
-	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, iscsi) {
+	if strings.EqualFold(publishContext[accessProtocolKey], iscsi) {
 		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.DiscoveryIPs, ",")
 	}
 
-	if strings.EqualFold(publishInfo.AccessInfo.BlockDeviceAccessInfo.AccessProtocol, nvmetcp) {
+	// Use the normalized access protocol so the canonical "nvmetcp" and its
+	// "nvmeotcp" synonym both set the NVMe/TCP target port (CROSS-3).
+	if publishContext[accessProtocolKey] == nvmetcp {
 		publishContext[targetPortKey] = defaultNvmePort // default NVMe/TCP port
 		publishContext[discoveryIPsKey] = strings.Join(publishInfo.AccessInfo.BlockDeviceAccessInfo.DiscoveryIPs, ",")
 	}
@@ -1106,8 +1227,8 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 
 	// Check if volume is requested with RWX or ROX modes with NFS services and intercept here
 	if driver.flavor.IsNFSVolume(volumeID) {
-		// TODO: check and add client ACL here
-		log.Info("ControllerUnpublish requested with multi-node access-mode, returning success")
+		log.Infof("ControllerUnpublish NFS volume %s from node %s", volumeID, nodeID)
+		driver.flavor.UntrackNFSPublish(volumeID, nodeID)
 		return nil
 	}
 
@@ -1151,7 +1272,9 @@ func (driver *Driver) controllerUnpublishVolume(volumeID string, nodeID string, 
 	err = storageProvider.UnpublishVolume(existingVolume.ID, nodeID)
 	if err != nil {
 		log.Trace("err: ", err.Error())
-		return status.Error(codes.Aborted,
+		// Map the CSP HTTP status to the correct gRPC code; falls back to Aborted
+		// (a retryable code for external-attacher) when no HTTP status is present (CROSS-4).
+		return MapCSPError(err, cspOpUnpublish,
 			fmt.Sprintf("Failed to remove ACL via CSP, err: %s", err.Error()))
 	}
 	return nil
@@ -1233,7 +1356,7 @@ func (driver *Driver) ListVolumes(ctx context.Context, request *csi.ListVolumesR
 	// volumes it knows about.  This can be implemented by reading all volumes from every array known to the driver.  We can do this
 	// at initialization time and keep them in memory.
 	var allVolumes []*model.Volume
-	for _, storageProvider := range driver.storageProviders {
+	for _, storageProvider := range driver.getStorageProviders() {
 		// TODO: skip storage providers that are not of the same vendor... or not.  Need to think through this
 		volumes, err := storageProvider.GetVolumes()
 		if err != nil {
@@ -1357,7 +1480,10 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 	if err := driver.AddToDB(dbKey, Pending); err != nil {
 		return nil, err
 	}
-	defer driver.RemoveFromDBIfPending(key)
+	// Clean up the DB entry that was created with dbKey. Using 'key' here would
+	// leave the dbKey entry stuck in PENDING forever, causing subsequent
+	// snapshot creation for the same name to fail (DRV-D1).
+	defer driver.RemoveFromDBIfPending(dbKey)
 
 	// Secrets
 	storageProvider, err := driver.GetStorageProvider(request.Secrets)
@@ -1442,7 +1568,7 @@ func (driver *Driver) CreateSnapshot(ctx context.Context, request *csi.CreateSna
 	// Create a new snapshot
 	snapshot, err := storageProvider.CreateSnapshot(request.Name, description, request.SourceVolumeId, createOptions)
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to create snapshot %s for volume %s, err: %s", request.Name, request.SourceVolumeId, err.Error()))
+		return nil, MapCSPError(err, cspOpSnapshot, fmt.Sprintf("Failed to create snapshot %s for volume %s, err: %s", request.Name, request.SourceVolumeId, err.Error()))
 	}
 	log.Tracef("Snapshot: %#v", snapshot)
 	log.Tracef("Created new snapshot %s from source volume %s (Name: %s) successfully", snapshot.Name, snapshot.VolumeID, snapshot.VolumeName)
@@ -1516,7 +1642,7 @@ func (driver *Driver) DeleteSnapshot(ctx context.Context, request *csi.DeleteSna
 
 	// Delete the snapshot from the array
 	if err := storageProvider.DeleteSnapshot(request.SnapshotId); err != nil {
-		return nil, status.Error(codes.Internal, "Error while deleting snapshot "+request.SnapshotId)
+		return nil, MapCSPError(err, cspOpDelete, "Error while deleting snapshot "+request.SnapshotId)
 	}
 
 	// Delete DB entry
@@ -1563,14 +1689,14 @@ func (driver *Driver) ListSnapshots(ctx context.Context, request *csi.ListSnapsh
 		// at initialization time and keep them in memory.
 
 		// If driver doesn't know any storage providers yet, then return empty list with success
-		if len(driver.storageProviders) == 0 {
+		if driver.getStorageProviderCount() == 0 {
 			log.Info("No storage providers are known to the CSI driver yet.")
 			return &csi.ListSnapshotsResponse{
 				Entries: []*csi.ListSnapshotsResponse_Entry{},
 			}, nil
 		}
 
-		for _, storageProvider := range driver.storageProviders {
+		for _, storageProvider := range driver.getStorageProviders() {
 			snapshots, err := getSnapshotsForStorageProvider(ctx, request, storageProvider)
 			if err != nil {
 				return nil, err
@@ -1709,6 +1835,18 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 		}, nil
 	}
 
+	// At this point the request is for a regular block (non-NFS) volume. The
+	// NFS/foreign-UUID path above always returns, and the only way to reach here
+	// is with err == nil. Guard against a nil volume defensively so that a
+	// not-found volume (or any future change to the lookup semantics) results in
+	// a clear NotFound error instead of a nil-pointer dereference when accessing
+	// existingVolume fields below (DRV-E4).
+	if existingVolume == nil {
+		log.Errorf("Volume %s not found for expansion", request.VolumeId)
+		return nil, status.Error(codes.NotFound,
+			fmt.Sprintf("Volume %s not found for expansion", request.VolumeId))
+	}
+
 	// Set node expansion required to 'true' for mount type as fs resize is always required in that case
 	nodeExpansionRequired := true
 	if request.GetVolumeCapability() != nil {
@@ -1758,7 +1896,7 @@ func (driver *Driver) ControllerExpandVolume(ctx context.Context, request *csi.C
 		updatedVolume, err = storageProvider.ExpandVolume(request.VolumeId, request.CapacityRange.GetLimitBytes())
 	}
 	if err != nil {
-		return nil, status.Error(codes.Internal, fmt.Sprintf("Failed to expand volume to requested size, %s", err.Error()))
+		return nil, MapCSPError(err, cspOpExpand, fmt.Sprintf("Failed to expand volume to requested size, %s", err.Error()))
 	}
 
 	return &csi.ControllerExpandVolumeResponse{

@@ -4,7 +4,6 @@ package driver
 
 import (
 	"github.com/hpe-storage/common-host-libs/chapi"
-	"github.com/hpe-storage/common-host-libs/storageprovider"
 )
 
 // returns csi driver for linux
@@ -13,7 +12,7 @@ func getDriver(name, version, endpoint string) *Driver {
 		name:             name,
 		version:          version,
 		endpoint:         endpoint,
-		storageProviders: make(map[string]storageprovider.StorageProvider),
+		storageProviders: make(map[string]*cachedProvider),
 		chapiDriver:      &chapi.LinuxDriver{},
 	}
 }

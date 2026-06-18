@@ -553,6 +553,47 @@ func (flavor *Flavor) IsNFSVolume(volumeID string) bool {
 	return true
 }
 
+// TrackNFSPublish records that the given NFS/File volume is published to the
+// given node. NFS/File publish bypasses the normal ACL flow, so this in-memory
+// tracking gives publish/unpublish symmetry and makes the published state
+// observable for idempotency (CROSS-5). It is safe for concurrent use.
+func (flavor *Flavor) TrackNFSPublish(volumeID, nodeID string) {
+	flavor.nfsPublishTrackerMu.Lock()
+	defer flavor.nfsPublishTrackerMu.Unlock()
+
+	if flavor.nfsPublishTracker == nil {
+		flavor.nfsPublishTracker = make(map[string]map[string]struct{})
+	}
+	nodes, ok := flavor.nfsPublishTracker[volumeID]
+	if !ok {
+		nodes = make(map[string]struct{})
+		flavor.nfsPublishTracker[volumeID] = nodes
+	}
+	nodes[nodeID] = struct{}{}
+	log.Tracef("tracking NFS publish for volume %s on node %s (nodes published: %d)", volumeID, nodeID, len(nodes))
+}
+
+// UntrackNFSPublish removes the publish record for the given NFS/File volume on
+// the given node, keeping the tracker symmetric with TrackNFSPublish (CROSS-5).
+// It is safe for concurrent use and is a no-op when nothing is tracked, so
+// repeated/idempotent unpublish calls are handled gracefully.
+func (flavor *Flavor) UntrackNFSPublish(volumeID, nodeID string) {
+	flavor.nfsPublishTrackerMu.Lock()
+	defer flavor.nfsPublishTrackerMu.Unlock()
+
+	nodes, ok := flavor.nfsPublishTracker[volumeID]
+	if !ok {
+		return
+	}
+	delete(nodes, nodeID)
+	if len(nodes) == 0 {
+		// Drop the volume entry entirely so the tracker does not grow without
+		// bound as volumes come and go.
+		delete(flavor.nfsPublishTracker, volumeID)
+	}
+	log.Tracef("untracking NFS publish for volume %s on node %s", volumeID, nodeID)
+}
+
 // GetNFSVolumeID returns underlying volume-id of RWO PV based on RWX PV volume-id, if one exists
 func (flavor *Flavor) GetNFSVolumeID(volumeID string) (string, error) {
 	log.Tracef(">>>>> GetNFSVolumeID with %s", volumeID)
@@ -800,11 +841,6 @@ func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim, nfsNamesp
 func (flavor *Flavor) createNFSPVC(claim *core_v1.PersistentVolumeClaim, nfsNamespace string) (*core_v1.PersistentVolumeClaim, error) {
 	log.Tracef(">>>>> createNFSPVC with claim %s", claim.ObjectMeta.Name)
 	defer log.Tracef("<<<<< createNFSPVC")
-
-	// remove ownerReferences as they're managed elsewhere
-	if claim.ObjectMeta.OwnerReferences != nil {
-		claim.ObjectMeta.OwnerReferences = []meta_v1.OwnerReference{}
-	}
 
 	// create new underlying nfs claim
 	newClaim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(nfsNamespace).Create(context.Background(), claim, meta_v1.CreateOptions{})

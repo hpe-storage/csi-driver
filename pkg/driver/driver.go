@@ -39,7 +39,41 @@ const (
 	primeraMaxClientTimeout = 360
 	alletra9000             = "alletra9000"
 	primera                 = "primera"
+
+	// inMemoryRequestTTL bounds how long an in-memory duplicate-request guard
+	// entry remains valid when DB locking is disabled. If the deferred
+	// ClearRequest never runs (e.g. a panic escapes the handler or the
+	// goroutine is otherwise lost), the entry self-heals after this TTL so the
+	// affected volume does not return ABORTED forever (DRV-B3).
+	inMemoryRequestTTL = 5 * time.Minute
+
+	// providerCacheTTL bounds how long an idle storage provider connection
+	// remains cached. Entries that are not accessed within this window are
+	// evicted by the background cleanup goroutine so stale CSP connections
+	// (e.g. left behind by password rotation or a backend going away) do not
+	// accumulate indefinitely along with their HTTP/TCP resources (DRV-C1).
+	providerCacheTTL = 1 * time.Hour
+
+	// providerCacheCleanupInterval is how often the background goroutine scans
+	// the storage provider cache looking for stale entries to evict (DRV-C1).
+	providerCacheCleanupInterval = 10 * time.Minute
 )
+
+// requestGuard is the value stored in requestCache for the in-memory
+// duplicate-request detection path. It records when the guard was created so a
+// stale entry (left behind by a panic or lost goroutine) can be reclaimed once
+// it exceeds inMemoryRequestTTL (DRV-B3).
+type requestGuard struct {
+	createdAt time.Time
+}
+
+// cachedProvider wraps a StorageProvider together with the last time it was
+// accessed. The driver uses lastAccess to evict idle CSP connections so the
+// storageProviders cache cannot grow without bound (DRV-C1).
+type cachedProvider struct {
+	provider   storageprovider.StorageProvider
+	lastAccess time.Time
+}
 
 // Driver is the object that implements the CSI interfaces
 type Driver struct {
@@ -48,7 +82,8 @@ type Driver struct {
 	endpoint string
 
 	chapiDriver      chapi.Driver
-	storageProviders map[string]storageprovider.StorageProvider
+	storageProviders map[string]*cachedProvider
+	spMutex          sync.RWMutex // Protects concurrent access to storageProviders map (DRV-A1)
 	flavor           flavor.Flavor
 	grpc             NonBlockingGRPCServer
 	podMonitor       *monitor.Monitor
@@ -62,6 +97,26 @@ type Driver struct {
 	requestCache   sync.Map
 	DBService      dbservice.DBService
 	KubeletRootDir string
+
+	// requestCacheTTL optionally overrides inMemoryRequestTTL for the in-memory
+	// duplicate-request guard. When zero, inMemoryRequestTTL is used. This is
+	// primarily a seam for tests to exercise stale-entry reclamation (DRV-B3)
+	// without waiting for the production TTL.
+	requestCacheTTL time.Duration
+
+	// providerCacheTTL optionally overrides the package-level providerCacheTTL
+	// used to evict idle storage providers. When zero, providerCacheTTL is
+	// used. This is primarily a seam for tests to exercise eviction (DRV-C1)
+	// without waiting for the production TTL.
+	providerCacheTTL time.Duration
+
+	// stopProviderCacheCleanup signals the background cache cleanup goroutine to
+	// exit. It is closed by Stop so the goroutine does not leak across driver
+	// shutdowns (DRV-C1).
+	stopProviderCacheCleanup chan struct{}
+	// stopProviderCacheCleanupOnce guards stopProviderCacheCleanup so Stop is
+	// safe to call more than once.
+	stopProviderCacheCleanupOnce sync.Once
 }
 
 // NewDriver returns a driver that implements the gRPC endpoints required to support CSI
@@ -166,6 +221,9 @@ func getDBClient(server string, port string) (*etcd.DBClient, error) {
 
 // Start starts the gRPC server
 func (driver *Driver) Start(nodeService bool) error {
+	// Begin periodic eviction of idle storage provider connections so the
+	// cache cannot grow without bound over the lifetime of the process (DRV-C1).
+	driver.startProviderCacheCleanup()
 	go func() {
 		driver.grpc = NewNonBlockingGRPCServer()
 		if nodeService {
@@ -187,6 +245,9 @@ func (driver *Driver) Start(nodeService bool) error {
 // Stop stops the gRPC server
 func (driver *Driver) Stop(nodeService bool) error {
 	driver.grpc.GracefulStop()
+	// Stop the background storage provider cache cleanup goroutine so it does
+	// not leak across driver shutdowns (DRV-C1).
+	driver.stopProviderCacheCleanupGoroutine()
 	if nodeService {
 		driver.flavor.UnloadNodeInfo()
 	}
@@ -339,16 +400,121 @@ func (driver *Driver) AddStorageProvider(credentials *storageprovider.Credential
 		return err
 	}
 
-	driver.storageProviders[driver.GenerateStorageProviderCacheKey(credentials)] = csp
-	log.Tracef("Number of cached/known storage providers: %d", len(driver.storageProviders))
+	driver.spMutex.Lock()
+	driver.storageProviders[driver.GenerateStorageProviderCacheKey(credentials)] = &cachedProvider{
+		provider:   csp,
+		lastAccess: time.Now(),
+	}
+	numProviders := len(driver.storageProviders)
+	driver.spMutex.Unlock()
+	log.Tracef("Number of cached/known storage providers: %d", numProviders)
 	return nil
 }
 
 // RemoveStorageProvider removes a storage provider from the driver
 func (driver *Driver) RemoveStorageProvider(credentials *storageprovider.Credentials) {
 	cacheKey := driver.GenerateStorageProviderCacheKey(credentials)
-	if _, ok := driver.storageProviders[cacheKey]; ok {
-		delete(driver.storageProviders, cacheKey)
+	driver.spMutex.Lock()
+	defer driver.spMutex.Unlock()
+	delete(driver.storageProviders, cacheKey)
+}
+
+// getStorageProviders returns a snapshot slice of the currently cached storage
+// providers. Taking a snapshot under a short-lived read lock lets callers
+// iterate over the providers (which may involve slow network calls) without
+// holding the lock, while still protecting the underlying map from concurrent
+// read/write access (DRV-A1).
+//
+// Iterating over the providers counts as access for cache-eviction purposes, so
+// each returned provider's lastAccess timestamp is refreshed to prevent an
+// in-use provider from being evicted out from under a long-running list/search
+// operation (DRV-C1).
+func (driver *Driver) getStorageProviders() []storageprovider.StorageProvider {
+	driver.spMutex.Lock()
+	defer driver.spMutex.Unlock()
+	now := time.Now()
+	providers := make([]storageprovider.StorageProvider, 0, len(driver.storageProviders))
+	for _, cp := range driver.storageProviders {
+		cp.lastAccess = now
+		providers = append(providers, cp.provider)
+	}
+	return providers
+}
+
+// getStorageProviderCount returns the number of cached storage providers in a
+// thread-safe manner (DRV-A1).
+func (driver *Driver) getStorageProviderCount() int {
+	driver.spMutex.RLock()
+	defer driver.spMutex.RUnlock()
+	return len(driver.storageProviders)
+}
+
+// effectiveProviderCacheTTL returns the TTL used to evict idle storage
+// providers, honoring the per-driver override when set (used by tests) and
+// otherwise falling back to the package-level providerCacheTTL (DRV-C1).
+func (driver *Driver) effectiveProviderCacheTTL() time.Duration {
+	if driver.providerCacheTTL > 0 {
+		return driver.providerCacheTTL
+	}
+	return providerCacheTTL
+}
+
+// startProviderCacheCleanup launches a background goroutine that periodically
+// evicts idle storage providers from the cache. It is idempotent: repeated
+// calls before a corresponding Stop only start a single goroutine. The
+// goroutine exits when stopProviderCacheCleanup is closed (DRV-C1).
+func (driver *Driver) startProviderCacheCleanup() {
+	driver.spMutex.Lock()
+	if driver.stopProviderCacheCleanup != nil {
+		// Cleanup already running.
+		driver.spMutex.Unlock()
+		return
+	}
+	stop := make(chan struct{})
+	driver.stopProviderCacheCleanup = stop
+	driver.spMutex.Unlock()
+
+	go func() {
+		ticker := time.NewTicker(providerCacheCleanupInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				log.Trace("Storage provider cache cleanup goroutine stopping")
+				return
+			case <-ticker.C:
+				driver.evictStaleProviders(time.Now())
+			}
+		}
+	}()
+}
+
+// stopProviderCacheCleanupGoroutine signals the background cleanup goroutine to
+// exit. It is safe to call multiple times and safe to call when cleanup was
+// never started (DRV-C1).
+func (driver *Driver) stopProviderCacheCleanupGoroutine() {
+	driver.stopProviderCacheCleanupOnce.Do(func() {
+		driver.spMutex.Lock()
+		stop := driver.stopProviderCacheCleanup
+		driver.spMutex.Unlock()
+		if stop != nil {
+			close(stop)
+		}
+	})
+}
+
+// evictStaleProviders removes any cached storage providers that have not been
+// accessed within the effective TTL. The supplied now is used as the reference
+// time so tests can drive eviction deterministically (DRV-C1).
+func (driver *Driver) evictStaleProviders(now time.Time) {
+	ttl := driver.effectiveProviderCacheTTL()
+	driver.spMutex.Lock()
+	defer driver.spMutex.Unlock()
+	for key, cp := range driver.storageProviders {
+		if now.Sub(cp.lastAccess) > ttl {
+			log.Infof("Evicting stale storage provider with cache key %s (idle for %s)", key, now.Sub(cp.lastAccess))
+			delete(driver.storageProviders, key)
+		}
 	}
 }
 
@@ -373,10 +539,17 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 	}
 
 	cacheKey := driver.GenerateStorageProviderCacheKey(credentials)
-	if csp, ok := driver.storageProviders[cacheKey]; ok {
+	driver.spMutex.Lock()
+	cp, ok := driver.storageProviders[cacheKey]
+	if ok {
+		// Refresh the access time so an actively-used provider is not evicted.
+		cp.lastAccess = time.Now()
+	}
+	driver.spMutex.Unlock()
+	if ok {
 		// TODO: verify other properties (username, password) of the CSP have not changed that would result in an update
 		log.Tracef("Storage provider already exists. Returning it.")
-		return csp, nil
+		return cp.provider, nil
 	}
 
 	err = driver.AddStorageProvider(credentials)
@@ -384,7 +557,16 @@ func (driver *Driver) GetStorageProvider(secrets map[string]string) (storageprov
 		return nil, err
 	}
 
-	return driver.storageProviders[cacheKey], nil
+	driver.spMutex.Lock()
+	cp = driver.storageProviders[cacheKey]
+	if cp != nil {
+		cp.lastAccess = time.Now()
+	}
+	driver.spMutex.Unlock()
+	if cp == nil {
+		return nil, fmt.Errorf("storage provider for cache key %s was evicted before it could be returned", cacheKey)
+	}
+	return cp.provider, nil
 }
 
 // GenerateStorageProviderCacheKey generates unique hash for the credential pair {Backend, Username}
@@ -452,7 +634,7 @@ func (driver *Driver) GetVolumeByID(id string, secrets map[string]string) (*mode
 		log.Tracef("Secrets not provided. Checking all known storage providers.")
 
 		// Search the volume in each known storage provider
-		for _, storageProvider := range driver.storageProviders {
+		for _, storageProvider := range driver.getStorageProviders() {
 			volume, err = storageProvider.GetVolume(id)
 			if err != nil {
 				log.Error("err: ", err.Error())
@@ -514,6 +696,16 @@ func (driver *Driver) DeleteVolumeByName(name string, secrets map[string]string,
 	return nil
 }
 
+// inMemoryRequestCacheTTL returns the TTL used to age out stale in-memory
+// duplicate-request guards. Tests may set driver.requestCacheTTL to a small
+// value; production leaves it zero and uses the default inMemoryRequestTTL.
+func (driver *Driver) inMemoryRequestCacheTTL() time.Duration {
+	if driver.requestCacheTTL > 0 {
+		return driver.requestCacheTTL
+	}
+	return inMemoryRequestTTL
+}
+
 // HandleDuplicateRequest checks for the duplicate request in the sync cache map.
 // If yes, then returns ABORTED error, else inserts the entry into sync cache map and returns nil
 func (driver *Driver) HandleDuplicateRequest(key string) error {
@@ -524,16 +716,49 @@ func (driver *Driver) HandleDuplicateRequest(key string) error {
 	//	- The driver's in-memory sync.Map is used to cache the requests
 	if driver.DBService == nil {
 
-		// Look for the key entry in the sync cache map, we dont care about the previous value
-		// return ABORTED, if the key is found
-		_, exists := driver.requestCache.LoadOrStore(key, true)
-		if exists {
-			return status.Error(
-				codes.Aborted,
-				fmt.Sprintf("There is already an operation pending for the specified id %s", key),
-			)
+		// Try to claim the key by storing a fresh guard entry. If a guard
+		// already exists, only treat it as a genuine in-flight duplicate when
+		// it is still within its TTL. A guard older than the TTL is
+		// considered stale (e.g. the deferred ClearRequest never ran because a
+		// panic escaped the handler) and is reclaimed so the volume does not
+		// stay blocked forever (DRV-B3).
+		ttl := driver.inMemoryRequestCacheTTL()
+		newGuard := &requestGuard{createdAt: time.Now()}
+		for {
+			existing, loaded := driver.requestCache.LoadOrStore(key, newGuard)
+			if !loaded {
+				// We stored our guard; the key is now claimed.
+				return nil
+			}
+
+			guard, ok := existing.(*requestGuard)
+			if !ok {
+				// An entry of an unexpected type is present (should not happen
+				// for the in-memory path). Treat it as an active duplicate.
+				return status.Error(
+					codes.Aborted,
+					fmt.Sprintf("There is already an operation pending for the specified id %s", key),
+				)
+			}
+
+			if time.Since(guard.createdAt) < ttl {
+				// A valid, in-flight request already holds this key.
+				return status.Error(
+					codes.Aborted,
+					fmt.Sprintf("There is already an operation pending for the specified id %s", key),
+				)
+			}
+
+			// The existing guard is stale. Atomically replace it with our fresh
+			// guard. CompareAndSwap guards against a racing goroutine that may
+			// have refreshed/cleared the entry between our Load and Swap.
+			log.Warnf("Reclaiming stale in-memory request guard for key '%s' (age %s exceeded TTL %s)",
+				key, time.Since(guard.createdAt), ttl)
+			if driver.requestCache.CompareAndSwap(key, existing, newGuard) {
+				return nil
+			}
+			// Lost the race; re-evaluate the current state.
 		}
-		return nil
 	}
 
 	// With DB support
