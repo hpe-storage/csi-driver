@@ -4,6 +4,7 @@ package driver
 import (
 	"context"
 	"io/ioutil"
+	"strings"
 	"os"
 	"path/filepath"
 	"testing"
@@ -160,7 +161,7 @@ func TestNodeGetVolumeStats(t *testing.T) {
 	}
 }
 
-func TestValidateFsRepairParameter(t *testing.T) {
+func TestValidateStorageClassBoolParam(t *testing.T) {
 	endpoint := "unix://" + testsocket
 	driver := &Driver{
 		name:             "fake-test-driver",
@@ -254,7 +255,7 @@ func TestValidateFsRepairParameter(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := driver.validateFsRepairParameter(tc.params)
+			err := driver.validateStorageClassBoolParam(tc.params, "fsRepair")
 			if err != nil && !tc.expectErr {
 				t.Fatalf("Got unexpected error: %v", err)
 			}
@@ -262,7 +263,7 @@ func TestValidateFsRepairParameter(t *testing.T) {
 				t.Fatal("Expected error but got none")
 			}
 			if err != nil && tc.expectErr && tc.errMsg != "" {
-				if !contains(err.Error(), tc.errMsg) {
+				if !strings.Contains(err.Error(), tc.errMsg) {
 					t.Fatalf("Error message %q does not contain expected %q", err.Error(), tc.errMsg)
 				}
 			}
@@ -306,22 +307,19 @@ func TestNodeStageVolumeFsRepairValidation(t *testing.T) {
 			expectErr:     false,
 		},
 		{
-			name:          "invalid fsRepair Tru - rejected",
+			name:          "invalid fsRepair Tru - silently skipped",
 			volumeContext: map[string]string{"fsRepair": "Tru", "accessProtocol": "iscsi"},
-			expectErr:     true,
-			errSubstring:  `invalid value "Tru" for fsRepair parameter`,
+			expectErr:     false,
 		},
 		{
-			name:          "invalid fsRepair enableit - rejected",
+			name:          "invalid fsRepair enableit - silently skipped",
 			volumeContext: map[string]string{"fsRepair": "enableit", "accessProtocol": "iscsi"},
-			expectErr:     true,
-			errSubstring:  `invalid value "enableit" for fsRepair parameter`,
+			expectErr:     false,
 		},
 		{
-			name:          "invalid fsRepair True (capital) - rejected",
+			name:          "invalid fsRepair True (capital) - silently skipped",
 			volumeContext: map[string]string{"fsRepair": "True", "accessProtocol": "iscsi"},
-			expectErr:     true,
-			errSubstring:  `invalid value "True" for fsRepair parameter`,
+			expectErr:     false,
 		},
 	}
 
@@ -348,7 +346,7 @@ func TestNodeStageVolumeFsRepairValidation(t *testing.T) {
 				if err == nil {
 					t.Fatal("Expected error but got none")
 				}
-				if tc.errSubstring != "" && !contains(err.Error(), tc.errSubstring) {
+				if tc.errSubstring != "" && !strings.Contains(err.Error(), tc.errSubstring) {
 					t.Fatalf("Error %q does not contain expected substring %q", err.Error(), tc.errSubstring)
 				}
 			}
@@ -356,15 +354,3 @@ func TestNodeStageVolumeFsRepairValidation(t *testing.T) {
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

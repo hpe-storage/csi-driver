@@ -469,12 +469,6 @@ func (driver *Driver) stageVolume(
 	// Get mount info from the request
 	mountInfo := getMountInfo(volumeID, volCap, publishContext, stagingMountPoint)
 
-	// Validate fsRepair value from volumeContext -- catches PVs that may have been
-	// created before this validation existed and have an invalid (non-boolean) value.
-	if fsRepairVal := volumeContext[fsRepairKey]; fsRepairVal != "" && fsRepairVal != trueKey && fsRepairVal != falseKey {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid value %q for fsRepair parameter on volume %s, it must be either [true, false] (lowercase only)", fsRepairVal, volumeID)
-	}
-
 	if mountInfo.FilesystemOptions != nil && (mountInfo.FilesystemOptions.Type == "ext2" || mountInfo.FilesystemOptions.Type == "ext3" || mountInfo.FilesystemOptions.Type == "ext4") {
 		log.Infof("Checking whether the file system of the volume %s is clean or not.", volumeID)
 		if !driver.chapiDriver.IsExtFileSystemClean(volumeID, device.AltFullPathName) {
