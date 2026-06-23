@@ -480,7 +480,7 @@ func (driver *Driver) stageVolume(
 				}
 				log.Infof("File system is repaired for the volume %s, proceeding to mount the device %s", volumeID, device.AltFullPathName)
 			} else {
-				return nil, status.Errorf(codes.Internal, "Filesystem issues has been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
+				return nil, status.Errorf(codes.Internal, "Filesystem issues have been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
 			}
 		}
 	}
@@ -505,7 +505,7 @@ func (driver *Driver) stageVolume(
 					return nil, status.Errorf(codes.Internal, "Failed to mount device %s again after successful repair: %v", device.AltFullPathName, err.Error())
 				}
 			} else {
-				return nil, status.Errorf(codes.Internal, "Filesystem issues has been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
+				return nil, status.Errorf(codes.Internal, "Filesystem issues have been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
 			}
 		} else {
 			return nil, status.Errorf(codes.Internal, "Filesystem intact, still failed to mount device %s: %v", device.AltFullPathName, err.Error())
