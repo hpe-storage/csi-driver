@@ -184,6 +184,7 @@ func (driver *Driver) NodeStageVolume(ctx context.Context, request *csi.NodeStag
 		request.VolumeContext,
 	)
 	if err != nil {
+		log.Errorf("Failed to stage volume %s, err: %s", request.VolumeId, err.Error())
 		return nil, err
 	}
 
@@ -208,7 +209,7 @@ func (driver *Driver) nodeStageVolume(
 	_, err := driver.IsValidVolumeCapability(volumeCapability)
 	if err != nil {
 		log.Errorf("Found unsupported volume capability %+v", volumeCapability)
-		return err
+		return status.Errorf(codes.InvalidArgument, "Found unsupported volume capability %+v", volumeCapability)
 	}
 
 	// Get volume access type (Block or Mount)
@@ -265,7 +266,7 @@ func (driver *Driver) nodeStageVolume(
 				volumeContext[hostEncryptionSecretNamespaceKey])
 			if err != nil {
 				log.Errorf("Encountered error while fetching secret - %v", err.Error())
-				return err // specified secret for encryption key doesn't exist
+				return status.Errorf(codes.Internal, "Encountered error while fetching encryption secret: %s", err.Error())
 			}
 
 			ctxt := make(map[string]string)
@@ -293,15 +294,14 @@ func (driver *Driver) nodeStageVolume(
 		volumeContext,
 	)
 	if err != nil {
-		return status.Error(codes.Internal,
-			fmt.Sprintf("Failed to stage volume %s, err: %s", volumeID, err.Error()))
+		return err
 	}
 	log.Tracef("Staged volume %s successfully, StagingDev: %#v", volumeID, stagingDev)
 
 	// Save staged device info in the staging area
 	log.Tracef("NodeStageVolume writing device info %+v to staging target path %s", stagingDev.Device, stagingTargetPath)
 	if stagingDev == nil || stagingDev.Device == nil {
-		return fmt.Errorf("Invalid staging device info. Staging device cannot be nil")
+		return status.Errorf(codes.Internal, "Invalid staging device info. Staging device cannot be nil")
 	}
 	err = writeData(stagingTargetPath, deviceInfoFileName, stagingDev)
 	if err != nil {
@@ -446,7 +446,7 @@ func (driver *Driver) stageVolume(
 		if volumeContext[hostEncryptionSecretNamespaceKey] != "" {
 			encKeySecretInfo.Namespace = volumeContext[hostEncryptionSecretNamespaceKey]
 		} else {
-			return nil, fmt.Errorf("Secret namespace missing for secret %s related to encrypted device %s",
+			return nil, status.Errorf(codes.Internal, "Secret namespace missing for secret %s related to encrypted device %s",
 				volumeContext[hostEncryptionSecretNameKey], device.AltFullLuksPathName)
 		}
 	}
@@ -476,11 +476,11 @@ func (driver *Driver) stageVolume(
 				log.Infof("Attempting to repair the file system issues of the device %s", device.AltFullPathName)
 				err := driver.chapiDriver.RepairFsckFileSystem(volumeID, device)
 				if err != nil {
-					return nil, fmt.Errorf("Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
+					return nil, status.Errorf(codes.Internal, "Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
 				}
 				log.Infof("File system is repaired for the volume %s, proceeding to mount the device %s", volumeID, device.AltFullPathName)
 			} else {
-				return nil, fmt.Errorf("Filesystem issues has been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
+				return nil, status.Errorf(codes.Internal, "Filesystem issues have been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
 			}
 		}
 	}
@@ -496,19 +496,19 @@ func (driver *Driver) stageVolume(
 				log.Debug(fmt.Printf("Attempting to repair the file system of the device %s", device.AltFullPathName))
 				err = driver.chapiDriver.RepairFileSystem(volumeID, device, mountInfo.FilesystemOptions)
 				if err != nil {
-					return nil, fmt.Errorf("Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
+					return nil, status.Errorf(codes.Internal, "Repairing the file system for the volume %s failed due to the error: %v", volumeID, err.Error())
 				}
 				log.Infof("Retrying to mount after successfully reparing the file system of the volume %s", volumeID)
 				mount, err = driver.chapiDriver.MountDevice(device, mountInfo.MountPoint,
 					mountInfo.MountOptions, mountInfo.FilesystemOptions)
 				if err != nil {
-					return nil, fmt.Errorf("Failed to mount device %s again after successful repair: %v", device.AltFullPathName, err.Error())
+					return nil, status.Errorf(codes.Internal, "Failed to mount device %s again after successful repair: %v", device.AltFullPathName, err.Error())
 				}
 			} else {
-				return nil, fmt.Errorf("Filesystem issues has been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
+				return nil, status.Errorf(codes.Internal, "Filesystem issues have been detected and will not be repaired for the volume %s as the fsRepair parameter is not set in the StorageClass", volumeID)
 			}
 		} else {
-			return nil, fmt.Errorf("Filesystem intact, still failed to mount device %s: %v", device.AltFullPathName, err.Error())
+			return nil, status.Errorf(codes.Internal, "Filesystem intact, still failed to mount device %s: %v", device.AltFullPathName, err.Error())
 		}
 	}
 	log.Tracef("Device %s mounted successfully, Mount: %+v", device.AltFullPathName, mount)
@@ -754,21 +754,19 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 				stagingDev.EncKeySecretInfo.Namespace)
 			if err != nil {
 				log.Errorln(err.Error())
-				return err
+				return status.Errorf(codes.Internal, "failed to retrieve encryption passphrase for volume: %s", err.Error())
 			}
 			_, _, err = util.ExecCommandOutputWithStdinArgs("cryptsetup",
 				[]string{"luksClose", device.LuksPathname},
 				[]string{passPhrase})
 			if err != nil {
-				err = fmt.Errorf("luksClose command failed with error %v", err)
-				log.Error(err.Error())
-				return err
+				log.Errorf("luksClose command failed with error %v", err)
+				return status.Errorf(codes.Internal, "luksClose command failed with error %v", err)
 			}
 			log.Infof("Device %s closed successfully by luksClose command", device.LuksPathname)
 		} else {
-			err := fmt.Errorf("secret not present in the device-info file %s for encrypted volume", deviceFilePath)
-			log.Errorln(err.Error())
-			return err
+			log.Errorf("secret not present in the device-info file %s for encrypted volume", deviceFilePath)
+			return status.Errorf(codes.Internal, "secret not present in the device-info file %s for encrypted volume", deviceFilePath)
 		}
 	}
 

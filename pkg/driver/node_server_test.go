@@ -4,6 +4,7 @@ package driver
 import (
 	"context"
 	"io/ioutil"
+	"strings"
 	"os"
 	"path/filepath"
 	"testing"
@@ -159,3 +160,114 @@ func TestNodeGetVolumeStats(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateStorageClassBoolParam(t *testing.T) {
+	endpoint := "unix://" + testsocket
+	driver := &Driver{
+		name:             "fake-test-driver",
+		version:          "2.0",
+		endpoint:         endpoint,
+		storageProviders: make(map[string]storageprovider.StorageProvider),
+		chapiDriver:      &chapi.FakeDriver{},
+		flavor:           &vanilla.Flavor{},
+	}
+
+	testCases := []struct {
+		name      string
+		params    map[string]string
+		expectErr bool
+		errMsg    string
+	}{
+		{
+			name:      "valid true",
+			params:    map[string]string{"fsRepair": "true"},
+			expectErr: false,
+		},
+		{
+			name:      "valid false",
+			params:    map[string]string{"fsRepair": "false"},
+			expectErr: false,
+		},
+		{
+			name:      "not set (empty map)",
+			params:    map[string]string{},
+			expectErr: false,
+		},
+		{
+			name:      "empty string value",
+			params:    map[string]string{"fsRepair": ""},
+			expectErr: false,
+		},
+		{
+			name:      "invalid - uppercase True",
+			params:    map[string]string{"fsRepair": "True"},
+			expectErr: true,
+			errMsg:    `invalid value "True" for the fsRepair parameter`,
+		},
+		{
+			name:      "invalid - uppercase TRUE",
+			params:    map[string]string{"fsRepair": "TRUE"},
+			expectErr: true,
+			errMsg:    `invalid value "TRUE" for the fsRepair parameter`,
+		},
+		{
+			name:      "invalid - uppercase FALSE",
+			params:    map[string]string{"fsRepair": "FALSE"},
+			expectErr: true,
+			errMsg:    `invalid value "FALSE" for the fsRepair parameter`,
+		},
+		{
+			name:      "invalid - typo Tru",
+			params:    map[string]string{"fsRepair": "Tru"},
+			expectErr: true,
+			errMsg:    `invalid value "Tru" for the fsRepair parameter`,
+		},
+		{
+			name:      "invalid - arbitrary string enableit",
+			params:    map[string]string{"fsRepair": "enableit"},
+			expectErr: true,
+			errMsg:    `invalid value "enableit" for the fsRepair parameter`,
+		},
+		{
+			name:      "invalid - yes",
+			params:    map[string]string{"fsRepair": "yes"},
+			expectErr: true,
+			errMsg:    `invalid value "yes" for the fsRepair parameter`,
+		},
+		{
+			name:      "invalid - 1",
+			params:    map[string]string{"fsRepair": "1"},
+			expectErr: true,
+			errMsg:    `invalid value "1" for the fsRepair parameter`,
+		},
+		{
+			name:      "valid true with other params",
+			params:    map[string]string{"fsRepair": "true", "cpg": "SSD_r6", "accessProtocol": "iscsi"},
+			expectErr: false,
+		},
+		{
+			name:      "invalid value with other params",
+			params:    map[string]string{"fsRepair": "Enable", "cpg": "SSD_r6", "accessProtocol": "iscsi"},
+			expectErr: true,
+			errMsg:    `invalid value "Enable" for the fsRepair parameter`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := driver.validateStorageClassBoolParam(tc.params, "fsRepair")
+			if err != nil && !tc.expectErr {
+				t.Fatalf("Got unexpected error: %v", err)
+			}
+			if err == nil && tc.expectErr {
+				t.Fatal("Expected error but got none")
+			}
+			if err != nil && tc.expectErr && tc.errMsg != "" {
+				if !strings.Contains(err.Error(), tc.errMsg) {
+					t.Fatalf("Error message %q does not contain expected %q", err.Error(), tc.errMsg)
+				}
+			}
+		})
+	}
+}
+
