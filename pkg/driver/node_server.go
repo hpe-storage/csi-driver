@@ -2045,11 +2045,21 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		// For block volumes, the volume path is the Kubernetes publish path (e.g., /var/lib/kubelet/plugins/.../volumeDevices/publish/...)
 		// which is a block device file created with mknod, not the actual multipath device.
 		// We must read the staging device info to get the real device path (e.g., /dev/mapper/mpathX)
-		stagedDevice, err := readStagedDeviceInfo(request.GetStagingTargetPath())
+		stagingPath := request.GetStagingTargetPath()
+		if stagingPath == "" {
+			// For RWX block volumes, kubelet omits staging_target_path in NodeExpandVolume because
+			// staging is shared across nodes and kubelet does not track it per-pod during expansion.
+			// Derive the staging path from the publish path:
+			//   publish: .../volumeDevices/publish/<volID>/<podUID>
+			//   staging: .../volumeDevices/staging/<volID>/
+			stagingPath = strings.Replace(filepath.Dir(request.GetVolumePath()), "/publish/", "/staging/", 1)
+			log.Infof("staging_target_path not provided (RWX block volume), derived staging path: %s", stagingPath)
+		}
+		stagedDevice, err := readStagedDeviceInfo(stagingPath)
 		if err != nil {
 			return nil, status.Error(codes.InvalidArgument,
 				fmt.Sprintf("Cannot get staging device info for block volume expansion from staging path %s, Error: %s",
-					request.GetStagingTargetPath(), err.Error()))
+					stagingPath, err.Error()))
 		}
 		if stagedDevice == nil || stagedDevice.Device == nil {
 			return nil, status.Error(codes.Internal,
@@ -2059,7 +2069,7 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 		// Use the actual device path from staging (e.g., /dev/mapper/mpathX)
 		targetPath = stagedDevice.Device.AltFullPathName
 		log.Infof("About to expand block device %s (resolved from staging path %s, volume path %s) to underlying volume size",
-			targetPath, request.GetStagingTargetPath(), request.VolumePath)
+			targetPath, stagingPath, request.VolumePath)
 		expandErr = driver.chapiDriver.ExpandDevice(targetPath, model.BlockType, accessProtocol)
 	} else {
 		// figure out if volumePath is actually a staging path
