@@ -25,6 +25,7 @@ import (
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	k8s_types "k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -97,6 +98,23 @@ type NFSSpec struct {
 	enableProbes         bool
 }
 
+// errPVCDeleted is returned when the requesting PVC is deleted during NFS volume creation
+var errPVCDeleted = fmt.Errorf("requesting PVC was deleted during NFS volume creation")
+
+// checkRequestingPVCExists verifies the requesting RWX PVC still exists.
+// Returns nil if it exists, errPVCDeleted if it has been deleted.
+func (flavor *Flavor) checkRequestingPVCExists(claimUID string) error {
+	claims, err := flavor.claimIndexer.ByIndex("uid", claimUID)
+	if err != nil || len(claims) == 0 {
+		return errPVCDeleted
+	}
+	claim := claims[0].(*core_v1.PersistentVolumeClaim)
+	if !claim.ObjectMeta.DeletionTimestamp.IsZero() {
+		return errPVCDeleted
+	}
+	return nil
+}
+
 // CreateNFSVolume creates nfs volume abstracting underlying nfs pvc, deployment and service
 func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameters map[string]string, volumeContentSource *csi.VolumeContentSource) (nfsVolume *csi.Volume, rollback bool, err error) {
 	log.Tracef(">>>>> CreateNFSVolume with %s", pvName)
@@ -138,8 +156,10 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 		return nil, false, err
 	}
 
+	requestingClaimUID := string(claim.ObjectMeta.UID)
+
 	// create pvc
-	newClaim, err := flavor.createNFSPVC(claimClone, nfsResourceNamespace)
+	newClaim, err := flavor.createNFSPVC(claimClone, nfsResourceNamespace, requestingClaimUID)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
 		return nil, true, err
@@ -175,7 +195,7 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 
 	// create deployment with name hpe-nfs-<originalclaim-uid>
 	deploymentName := fmt.Sprintf("%s%s", nfsPrefix, claim.ObjectMeta.UID)
-	err = flavor.createNFSDeployment(deploymentName, nfsSpec, nfsResourceNamespace)
+	err = flavor.createNFSDeployment(deploymentName, nfsSpec, nfsResourceNamespace, requestingClaimUID)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
 		return nil, true, err
@@ -187,6 +207,15 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
 		return nil, true, err
+	}
+
+	// Final check: verify the requesting PVC still exists before returning success.
+	// This closes the race window where the PVC is deleted while we were creating
+	// backend infrastructure, which would leave orphaned resources since no PV
+	// is ever created and DeleteVolume is never called.
+	if err := flavor.checkRequestingPVCExists(string(claim.ObjectMeta.UID)); err != nil {
+		log.Warnf("requesting PVC %s (uid %s) was deleted during NFS volume creation, rolling back backend resources", claim.Name, claim.ObjectMeta.UID)
+		return nil, true, errPVCDeleted
 	}
 
 	// get underlying NFS volume properties and copy onto original volume
@@ -393,6 +422,12 @@ func (flavor *Flavor) DeleteNFSVolume(volumeID string) error {
 }
 
 func (flavor *Flavor) deleteNFSResources(volumeID, nfsResourceName, nfsNamespace string) (err error) {
+	// If volumeID is not provided (rollback path), derive it from the resource name.
+	// The resource name format is "hpe-nfs-<pvc-uid>" and volumeID should be "<pvc-uid>".
+	if volumeID == "" && nfsResourceName != "" {
+		volumeID = strings.TrimPrefix(nfsResourceName, nfsPrefix)
+	}
+
 	// delete deployment deployment/hpe-nfs-<originalclaim-uid>
 	err = flavor.deleteNFSDeployment(nfsResourceName, nfsNamespace)
 	if err != nil {
@@ -797,7 +832,7 @@ func (flavor *Flavor) cloneClaim(claim *core_v1.PersistentVolumeClaim, nfsNamesp
 }
 
 // createNFSPVC creates Kubernetes Persistent Volume Claim
-func (flavor *Flavor) createNFSPVC(claim *core_v1.PersistentVolumeClaim, nfsNamespace string) (*core_v1.PersistentVolumeClaim, error) {
+func (flavor *Flavor) createNFSPVC(claim *core_v1.PersistentVolumeClaim, nfsNamespace string, requestingClaimUID string) (*core_v1.PersistentVolumeClaim, error) {
 	log.Tracef(">>>>> createNFSPVC with claim %s", claim.ObjectMeta.Name)
 	defer log.Tracef("<<<<< createNFSPVC")
 
@@ -820,7 +855,7 @@ func (flavor *Flavor) createNFSPVC(claim *core_v1.PersistentVolumeClaim, nfsName
 	}
 
 	// wait for pvc to be bound
-	err = flavor.waitForPVCCreation(newClaim.ObjectMeta.Name, nfsNamespace)
+	err = flavor.waitForPVCCreation(newClaim.ObjectMeta.Name, nfsNamespace, requestingClaimUID)
 	if err != nil {
 		return nil, err
 	}
@@ -918,7 +953,7 @@ func createNFSAppLabels() map[string]string {
 }
 
 // CreateNFSDeployment creates a nfs deployment with given name
-func (flavor *Flavor) createNFSDeployment(deploymentName string, nfsSpec *NFSSpec, nfsNamespace string) error {
+func (flavor *Flavor) createNFSDeployment(deploymentName string, nfsSpec *NFSSpec, nfsNamespace string, requestingClaimUID string) error {
 	log.Tracef(">>>>> createNFSDeployment with name %s volume %s", deploymentName, nfsSpec.volumeClaim)
 	defer log.Tracef("<<<<< createNFSDeployment")
 
@@ -936,7 +971,7 @@ func (flavor *Flavor) createNFSDeployment(deploymentName string, nfsSpec *NFSSpe
 		log.Infof("nfs deployment %s already exists", deploymentName)
 	}
 	// make sure its available
-	err := flavor.waitForDeployment(deploymentName, nfsNamespace)
+	err := flavor.waitForDeployment(deploymentName, nfsNamespace, requestingClaimUID)
 	if err != nil {
 		return err
 	}
@@ -1121,6 +1156,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 			Volumes:                   volumes,
 			HostIPC:                   false,
 			HostNetwork:               false,
+			EnableServiceLinks:        ptr.To(false),
 			Tolerations:               []core_v1.Toleration{tolerationsNotReady, tolerationsUnReachable, tolerationsDedicated},
 			TopologySpreadConstraints: []core_v1.TopologySpreadConstraint{podTopologySpreadConstraints},
 		},
@@ -1297,13 +1333,21 @@ func (flavor *Flavor) resourceExists(getAction func() error, resourceType string
 	return true, nil
 }
 
-func (flavor *Flavor) waitForPVCCreation(claimName, nfsNamespace string) error {
+func (flavor *Flavor) waitForPVCCreation(claimName, nfsNamespace string, requestingClaimUID string) error {
 	log.Tracef(">>>>> waitForPVCCreation with %s", claimName)
 	defer log.Tracef("<<<<< waitForPVCCreation")
 
-	// wait for the resource to be deleted
+	// wait for the resource to be bound
 	sleepTime := creationDelay
 	for i := 0; i < creationInterval; i++ {
+		// check if the requesting PVC still exists (early abort to prevent orphans)
+		if requestingClaimUID != "" && i > 0 && i%3 == 0 {
+			if err := flavor.checkRequestingPVCExists(requestingClaimUID); err != nil {
+				log.Warnf("requesting PVC (uid %s) deleted while waiting for backend PVC %s to bind", requestingClaimUID, claimName)
+				return errPVCDeleted
+			}
+		}
+
 		// check for the existence of the resource
 		claim, err := flavor.kubeClient.CoreV1().PersistentVolumeClaims(nfsNamespace).Get(context.Background(), claimName, meta_v1.GetOptions{})
 		if err != nil {
@@ -1323,13 +1367,21 @@ func (flavor *Flavor) waitForPVCCreation(claimName, nfsNamespace string) error {
 	return fmt.Errorf("gave up waiting for pvc %s to be bound", claimName)
 }
 
-func (flavor *Flavor) waitForDeployment(deploymentName string, nfsNamespace string) error {
+func (flavor *Flavor) waitForDeployment(deploymentName string, nfsNamespace string, requestingClaimUID string) error {
 	log.Tracef(">>>>> waitForDeployment with %s", deploymentName)
 	defer log.Tracef("<<<<< waitForDeployment")
 
-	// wait for the resource to be deleted
+	// wait for the deployment to become available
 	sleepTime := creationDelay
 	for i := 0; i < creationInterval; i++ {
+		// check if the requesting PVC still exists (early abort to prevent orphans)
+		if requestingClaimUID != "" && i > 0 && i%3 == 0 {
+			if err := flavor.checkRequestingPVCExists(requestingClaimUID); err != nil {
+				log.Warnf("requesting PVC (uid %s) deleted while waiting for deployment %s", requestingClaimUID, deploymentName)
+				return errPVCDeleted
+			}
+		}
+
 		// check for the existence of the resource
 		deployment, err := flavor.kubeClient.AppsV1().Deployments(nfsNamespace).Get(context.Background(), deploymentName, meta_v1.GetOptions{})
 		if err != nil {
