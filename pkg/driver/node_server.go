@@ -971,12 +971,6 @@ func (driver *Driver) nodePublishVolume(
 		volumeID, stagingTargetPath, targetPath)
 	defer log.Trace("<<<<< nodePublishVolume")
 
-	// Get Volume
-	if _, err := driver.GetVolumeByID(volumeID, secrets); err != nil {
-		log.Error("Failed to get volume ", volumeID)
-		return status.Error(codes.NotFound, err.Error())
-	}
-
 	// Read device info from the staging area
 	stagingDev, err := readStagedDeviceInfo(stagingTargetPath)
 	if err != nil {
