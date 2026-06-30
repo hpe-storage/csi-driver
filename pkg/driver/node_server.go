@@ -4,16 +4,15 @@
 package driver
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -23,6 +22,7 @@ import (
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/resource"
 
+	"github.com/hpe-storage/common-host-libs/concurrent"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/stringformat"
@@ -34,10 +34,14 @@ import (
 )
 
 var (
-	stageLock              sync.Mutex
-	unstageLock            sync.Mutex
-	ephemeralPublishLock   sync.Mutex
-	ephemeralUnpublishLock sync.Mutex
+	// Per-volume locks (keyed by volumeID/volumeHandle) so that operations on
+	// different volumes can proceed concurrently while operations on the same
+	// volume remain serialized (DRV-B2). MapMutex automatically removes a key's
+	// entry once its last holder unlocks, so these maps do not grow unbounded.
+	stageLock              = concurrent.NewMapMutex()
+	unstageLock            = concurrent.NewMapMutex()
+	ephemeralPublishLock   = concurrent.NewMapMutex()
+	ephemeralUnpublishLock = concurrent.NewMapMutex()
 )
 
 const (
@@ -225,7 +229,11 @@ func (driver *Driver) nodeStageVolume(
 
 	// Check if volume is requested with NFS resources and intercept here
 	if driver.IsNFSResourceRequest(volumeContext) {
-		log.Infof("NodeStageVolume requested with NFS resources, returning success")
+		nfsServer := volumeContext["nfsServerAddress"]
+		if nfsServer == "" {
+			return status.Error(codes.InvalidArgument, "NFS server address is required for NFS staging")
+		}
+		log.Infof("NFS volume %s: staging skipped (mount handled at NodePublish)", volumeID)
 		return nil
 	}
 
@@ -345,8 +353,20 @@ func (driver *Driver) isVolumeStaged(
 		return false, nil // Not staged as file doesn't exist
 	}
 
-	// Read the device info from the staging path
-	stagingDev, _ := readStagedDeviceInfo(stagingTargetPath)
+	// Read the device info from the staging path.
+	// The device info file existed per the FileExists check above, so a read or
+	// unmarshal failure here indicates a corrupted or partially-written file.
+	// Surface the error instead of silently treating the volume as "not staged",
+	// which could otherwise trigger a re-stage and a duplicate device attachment
+	// (DRV-B4). On a benign race (file removed after the check above), a retry of
+	// NodeStageVolume hits the FileExists early-return and proceeds normally.
+	stagingDev, err := readStagedDeviceInfo(stagingTargetPath)
+	if err != nil {
+		log.Errorf("Error reading staging device info for volume %s at %s, err: %v",
+			volumeID, stagingTargetPath, err.Error())
+		return false, status.Error(codes.Internal,
+			fmt.Sprintf("Failed to read staging device info for volume %s: %s", volumeID, err.Error()))
+	}
 	if stagingDev == nil {
 		return false, nil // Not staged as device info not found
 	}
@@ -426,9 +446,9 @@ func (driver *Driver) stageVolume(
 		volumeID, stagingMountPoint, volAccessType.String(), volCap, log.MapScrubber(publishContext), volumeContext)
 	defer log.Trace("<<<<< stageVolume")
 
-	// serialize stage requests
-	stageLock.Lock()
-	defer stageLock.Unlock()
+	// serialize stage requests for the same volume (per-volume lock, DRV-B2)
+	stageLock.Lock(volumeID)
+	defer stageLock.Unlock(volumeID)
 
 	// Create device for volume on the node
 	device, err := driver.setupDevice(volumeID, secrets, publishContext, volumeContext)
@@ -559,6 +579,34 @@ func (driver *Driver) stageVolume(
 	return stagingDevice, nil
 }
 
+// deleteStaleDevice removes a stale device that was found on the node prior to
+// staging. A stale device (left behind by a previous failed/incomplete stage)
+// can cause CreateDevices to fail or bind to the wrong multipath path, so a
+// cleanup failure must block staging rather than be ignored (DRV-B5).
+//
+// The delete is retried a bounded number of times to tolerate transient errors
+// (e.g. the device path being momentarily busy). If every attempt fails, an
+// Internal gRPC error is returned so NodeStageVolume aborts and the CO retries
+// the whole operation on a clean slate.
+func (driver *Driver) deleteStaleDevice(volumeID string, device *model.Device) error {
+	var err error
+	for attempt := 1; attempt <= staleDeviceCleanupMaxAttempts; attempt++ {
+		err = driver.chapiDriver.DeleteDevice(device)
+		if err == nil {
+			log.Infof("Cleaned up stale device %s for volume %s before staging", device.AltFullPathName, volumeID)
+			return nil
+		}
+		log.Warnf("Attempt %d/%d to cleanup stale device %s for volume %s failed, err: %s",
+			attempt, staleDeviceCleanupMaxAttempts, device.AltFullPathName, volumeID, err.Error())
+		if attempt < staleDeviceCleanupMaxAttempts {
+			time.Sleep(staleDeviceCleanupRetryDelay)
+		}
+	}
+	return status.Error(codes.Internal,
+		fmt.Sprintf("Failed to cleanup stale device %s before staging volume %s after %d attempts, err: %s",
+			device.AltFullPathName, volumeID, staleDeviceCleanupMaxAttempts, err.Error()))
+}
+
 //nolint:revive // TODO: fix the ununsed arguments secrets and volumeContext
 func (driver *Driver) setupDevice(
 	volumeID string,
@@ -573,19 +621,24 @@ func (driver *Driver) setupDevice(
 
 	discoveryIps := strings.Split(publishContext[discoveryIPsKey], ",")
 
+	// Normalize the access protocol so the canonical "nvmetcp" and its
+	// "nvmeotcp" synonym are handled identically here, regardless of how the
+	// publish context was populated (CROSS-3).
+	accessProtocol := normalizeAccessProtocol(publishContext[accessProtocolKey])
+
 	// For NVMe/TCP, set Nqn field in the model.Volume and update iqns accordingly
 	var nqn string
 	var iqns = []string{}
-	if publishContext[accessProtocolKey] == nvmetcp {
+	if accessProtocol == nvmetcp {
 		nqn = publishContext[targetNamesKey]
 		iqns = []string{}
-	} else if publishContext[accessProtocolKey] == iscsi {
+	} else if accessProtocol == iscsi {
 		nqn = ""
 		iqns = strings.Split(publishContext[targetNamesKey], ",")
 	}
 	volume := &model.Volume{
 		SerialNumber:          publishContext[serialNumberKey],
-		AccessProtocol:        publishContext[accessProtocolKey],
+		AccessProtocol:        accessProtocol,
 		Iqns:                  iqns,
 		Nqn:                   nqn,
 		TargetAddress:         publishContext[targetNamesKey],
@@ -599,7 +652,7 @@ func (driver *Driver) setupDevice(
 	}
 
 	// Set iSCSI CHAP credentials if configured
-	if publishContext[accessProtocolKey] == iscsi {
+	if accessProtocol == iscsi {
 		chapInfo, err := driver.flavor.GetChapCredentials(volumeContext)
 		if err != nil {
 			return nil, fmt.Errorf("Error: %s", err.Error())
@@ -610,13 +663,19 @@ func (driver *Driver) setupDevice(
 		}
 	}
 
-	// Cleanup any stale device existing before stage
+	// Cleanup any stale device existing before stage.
+	// A stale device left behind from a previous (failed/incomplete) stage can
+	// cause the subsequent CreateDevices to fail or, worse, bind to the wrong
+	// multipath path. Treat a cleanup failure as blocking instead of logging a
+	// warning and proceeding (DRV-B5). Retry once after a short delay to absorb
+	// transient errors (e.g. a path momentarily busy); if it still fails, return
+	// an error so NodeStageVolume aborts and the CO retries the whole stage on a
+	// clean slate.
 	device, _ := driver.chapiDriver.GetDevice(volume)
 	if device != nil {
 		device.TargetScope = volume.TargetScope
-		err := driver.chapiDriver.DeleteDevice(device)
-		if err != nil {
-			log.Warnf("Failed to cleanup stale device %s before staging, err %s", device.AltFullPathName, err.Error())
+		if err := driver.deleteStaleDevice(volumeID, device); err != nil {
+			return nil, err
 		}
 	}
 
@@ -710,8 +769,19 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 		return nil // Already unstaged as device file doesn't exist
 	}
 
-	// Read the device info from the staging path if exists
-	stagingDev, _ := readStagedDeviceInfo(stagingTargetPath)
+	// Read the device info from the staging path if exists.
+	// The device info file existed per the FileExists check above, so a read or
+	// unmarshal failure here indicates a corrupted or partially-written file.
+	// Returning an error (instead of silently treating the volume as already
+	// unstaged) prevents leaking the underlying device/mount and lets the CO
+	// retry the unstage (DRV-B4).
+	stagingDev, err := readStagedDeviceInfo(stagingTargetPath)
+	if err != nil {
+		log.Errorf("Error reading staging device info for volume %s at %s, err: %v",
+			volumeID, stagingTargetPath, err.Error())
+		return status.Error(codes.Internal,
+			fmt.Sprintf("Failed to read staging device info for volume %s: %s", volumeID, err.Error()))
+	}
 	if stagingDev == nil {
 		log.Infof("Volume %s not in staged state as the staging device info does not exist. Returning here", volumeID)
 		return nil // Already unstaged as device info doesn't exist
@@ -724,9 +794,9 @@ func (driver *Driver) nodeUnstageVolume(volumeID string, stagingTargetPath strin
 			fmt.Sprintf("Missing device info in the staging device %v", stagingDev))
 	}
 
-	// serialize unstage requests
-	unstageLock.Lock()
-	defer unstageLock.Unlock()
+	// serialize unstage requests for the same volume (per-volume lock, DRV-B2)
+	unstageLock.Lock(volumeID)
+	defer unstageLock.Unlock(volumeID)
 
 	// If mounted, then unmount the filesystem
 	if stagingDev.VolumeAccessMode == model.MountType && stagingDev.MountInfo != nil {
@@ -788,7 +858,15 @@ func isEphemeral(volContext map[string]string) bool {
 
 // Returns volume name with ephemeral prefix
 func getEphemeralVolName(podName string, volumeHandle string) string {
-	// Format: ephemeral-<PodName>-<VolumeHandle>
+	// Format: ephemeral-<PodName>-<VolumeHandle>-<Hash>
+	//
+	// The pod name infix is truncated to the last 'trimSize' characters to keep
+	// the generated name within backend name-length limits. Truncation alone can
+	// cause two pods whose names share the same trailing characters (and use the
+	// same volume handle) to collide on an identical ephemeral volume name
+	// (DRV-D7). To guarantee uniqueness, a short hash derived from the *full*
+	// pod name and volume handle is appended so distinct pods always map to
+	// distinct ephemeral volume names even when their truncated infixes match.
 	podNameInfix := podName
 	podNameLength := len(podNameInfix)
 	trimSize := 32
@@ -796,7 +874,12 @@ func getEphemeralVolName(podName string, volumeHandle string) string {
 		log.Infof("Truncating the actual podName '%s' infix from %d to %d chars", podName, podNameLength, trimSize)
 		podNameInfix = podNameInfix[podNameLength-trimSize:] // Trim the podName to retain only the last 'n' chars
 	}
-	return fmt.Sprintf("%s-%s-%s", ephemeralKey, podNameInfix, volumeHandle)
+	// Derive a collision-resistant suffix from the full pod name and volume
+	// handle. 8 bytes (16 hex chars) is ample to avoid practical collisions
+	// while keeping the overall name short.
+	hash := sha256.Sum256([]byte(podName + ":" + volumeHandle))
+	shortHash := fmt.Sprintf("%x", hash[:8])
+	return fmt.Sprintf("%s-%s-%s-%s", ephemeralKey, podNameInfix, volumeHandle, shortHash)
 }
 
 // NodePublishVolume ...
@@ -1261,9 +1344,10 @@ func (driver *Driver) nodePublishEphemeralVolume(
 		volumeHandle, targetPath, volumeCapability, readOnly, volumeContext, publishContext)
 	defer log.Trace("<<<<< nodePublishEphemeralVolume")
 
-	// serialize inline ephemeral volume NodePublish() requests
-	ephemeralPublishLock.Lock()
-	defer ephemeralPublishLock.Unlock()
+	// serialize inline ephemeral volume NodePublish() requests for the same
+	// volume (per-volume lock, DRV-B2)
+	ephemeralPublishLock.Lock(volumeHandle)
+	defer ephemeralPublishLock.Unlock(volumeHandle)
 
 	podUID := volumeContext[csiEphemeralPodUID]
 	// POD UID must be provided in the request
@@ -1760,9 +1844,10 @@ func (driver *Driver) nodeUnpublishEphemeralVolume(volumeHandle string, targetPa
 	log.Tracef(">>>>> nodeUnpublishEphemeralVolume, volumeHandle: %s, targetPath: %s", volumeHandle, targetPath)
 	defer log.Trace("<<<<< nodeUnpublishEphemeralVolume")
 
-	// serialize ephemeral NodeUnpublish() requests
-	ephemeralUnpublishLock.Lock()
-	defer ephemeralUnpublishLock.Unlock()
+	// serialize ephemeral NodeUnpublish() requests for the same volume
+	// (per-volume lock, DRV-B2)
+	ephemeralUnpublishLock.Lock(volumeHandle)
+	defer ephemeralUnpublishLock.Unlock(volumeHandle)
 
 	// For ephemeral inline volume, we do the following in-order:
 	// 1) Node unpublish (unmount)
@@ -2019,7 +2104,9 @@ func (driver *Driver) NodeExpandVolume(ctx context.Context, request *csi.NodeExp
 	// Derive the accessProtocol from volume attributes of PV
 	accessProtocol := ""
 	if pv != nil && pv.Spec.CSI != nil && pv.Spec.CSI.VolumeAttributes != nil {
-		accessProtocol = pv.Spec.CSI.VolumeAttributes[accessProtocolKey]
+		// Normalize so the canonical "nvmetcp" and its "nvmeotcp" synonym are
+		// treated identically by the downstream rescan logic (CROSS-3).
+		accessProtocol = normalizeAccessProtocol(pv.Spec.CSI.VolumeAttributes[accessProtocolKey])
 		log.Tracef("Volume attributes found in the persistent volume for volume ID: %s with accessProtocol %s", request.VolumeId, accessProtocol)
 	} else {
 		log.Warnf("Volume attributes not found in the persistent volume for volume ID: %s defaulting to iSCSI protocol", request.VolumeId)
@@ -2304,7 +2391,7 @@ func readStagedDeviceInfo(targetPath string) (*StagingDevice, error) {
 	}
 
 	// Read from file
-	deviceInfo, err := ioutil.ReadFile(filePath)
+	deviceInfo, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Errorf("Error reading the device info file %s, err: %s", filePath, err.Error())
 		return nil, err
