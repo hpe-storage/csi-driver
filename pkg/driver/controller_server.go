@@ -393,6 +393,13 @@ func (driver *Driver) createVolume(
 			createParameters[accessProtocolKey] = normalizeAccessProtocol(raw)
 		}
 	}
+	// Validate the fsRepair and nfsResources parameters
+	for _, paramKey := range []string{fsRepairKey, nfsResourcesKey} {
+		if err := driver.validateStorageClassBoolParam(createParameters, paramKey); err != nil {
+			log.Error("err: ", err.Error())
+			return nil, status.Error(codes.InvalidArgument, err.Error())
+		}
+	}
 
 	// TODO: use additional properties here to configure the volume further... these might come in from doryd
 	createOptions := make(map[string]interface{})
@@ -2033,4 +2040,15 @@ func (driver *Driver) ControllerModifyVolume(
 ) (*csi.ControllerModifyVolumeResponse, error) {
 	// This driver does not support ControllerModifyVolume, return Unimplemented.
 	return nil, status.Error(codes.Unimplemented, "ControllerModifyVolume is not implemented")
+}
+
+// validateStorageClassBoolParam validates that the specified StorageClass parameter,
+// if present, is strictly "true" or "false" (lowercase only).
+func (driver *Driver) validateStorageClassBoolParam(createParameters map[string]string, paramKey string) error {
+	if val, ok := createParameters[paramKey]; ok && val != "" {
+		if val != trueKey && val != falseKey {
+			return fmt.Errorf("invalid value %q for the %s parameter, it must be either [true, false] (lowercase only)", val, paramKey)
+		}
+	}
+	return nil
 }
