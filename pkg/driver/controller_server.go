@@ -1050,6 +1050,12 @@ func (driver *Driver) controllerPublishVolume(
 		// Filesystem Details
 		log.Trace("Adding filesystem details to the publish context")
 		publishContext[fsTypeKey] = volumeContext[fsTypeKey]
+		// For statically provisioned volumes, volumeContext may not have fsType.
+		// Fall back to the fsType from the volume capability (sourced from PV spec).
+		if publishContext[fsTypeKey] == "" && volumeCapability.GetMount() != nil {
+			publishContext[fsTypeKey] = volumeCapability.GetMount().GetFsType()
+			log.Tracef("Using fsType '%s' from volume capability for volume %s", publishContext[fsTypeKey], volumeID)
+		}
 		publishContext[fsOwnerKey] = volumeContext[fsOwnerKey]
 		publishContext[fsModeKey] = volumeContext[fsModeKey]
 		publishContext[fsCreateOptionsKey] = volumeContext[fsCreateOptionsKey]
