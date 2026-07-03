@@ -8,12 +8,16 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
+	rbac_v1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
 )
 
 var (
@@ -631,4 +635,148 @@ func TestGetNFSMountOptions(t *testing.T) {
 	emptyContext := map[string]string{}
 	mountOptions = getNFSMountOptions(emptyContext)
 	assert.Nil(t, mountOptions)
+}
+
+// newClaimIndexerWith builds a claim indexer keyed by the "uid" index (as done
+// in production via MetaUIDFunc) and pre-populates it with the given claims.
+func newClaimIndexerWith(t *testing.T, claims ...*v1.PersistentVolumeClaim) cache.Indexer {
+	t.Helper()
+	idx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{"uid": MetaUIDFunc})
+	for _, c := range claims {
+		if err := idx.Add(c); err != nil {
+			t.Fatalf("failed to add claim to indexer: %v", err)
+		}
+	}
+	return idx
+}
+
+// TestCheckRequestingPVCExists_Exists verifies that a live (non-terminating) PVC
+// present in the indexer is reported as existing.
+func TestCheckRequestingPVCExists_Exists(t *testing.T) {
+	claim := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "app-pvc",
+			Namespace: "default",
+			UID:       "req-uid-exists",
+		},
+	}
+	f := &Flavor{claimIndexer: newClaimIndexerWith(t, claim)}
+
+	err := f.checkRequestingPVCExists("req-uid-exists")
+	assert.NoError(t, err)
+}
+
+// TestCheckRequestingPVCExists_Terminating verifies that a PVC with a non-zero
+// DeletionTimestamp (Terminating, finalizer-held) is treated as deleted.
+func TestCheckRequestingPVCExists_Terminating(t *testing.T) {
+	now := metav1.NewTime(time.Now())
+	claim := &v1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "app-pvc",
+			Namespace:         "default",
+			UID:               "req-uid-terminating",
+			DeletionTimestamp: &now,
+		},
+	}
+	f := &Flavor{claimIndexer: newClaimIndexerWith(t, claim)}
+
+	err := f.checkRequestingPVCExists("req-uid-terminating")
+	assert.ErrorIs(t, err, errPVCDeleted)
+}
+
+// TestCheckRequestingPVCExists_Missing verifies that a UID absent from the
+// indexer is reported as deleted.
+func TestCheckRequestingPVCExists_Missing(t *testing.T) {
+	f := &Flavor{claimIndexer: newClaimIndexerWith(t)}
+
+	err := f.checkRequestingPVCExists("no-such-uid")
+	assert.ErrorIs(t, err, errPVCDeleted)
+}
+
+// TestDeleteNFSResources_RollbackDerivesVolumeID verifies the rollback path
+// (empty volumeID) derives the volumeID from the resource name and thereby
+// deletes the correctly-named Role and RoleBinding. This guards the fix for the
+// previously-orphaned RBAC resources.
+func TestDeleteNFSResources_RollbackDerivesVolumeID(t *testing.T) {
+	const (
+		uid       = "abc123"
+		namespace = "hpe-nfs"
+	)
+	nfsResourceName := nfsPrefix + uid // "hpe-nfs-abc123"
+	roleName := nfsPrefix + uid + nfsRoleSuffix
+	roleBindingName := nfsPrefix + uid + nfsRoleBindingSuffix
+
+	client := fake.NewSimpleClientset()
+	f := &Flavor{kubeClient: client}
+
+	_, err := client.RbacV1().Roles(namespace).Create(context.Background(),
+		&rbac_v1.Role{ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: namespace}},
+		metav1.CreateOptions{})
+	assert.NoError(t, err)
+	_, err = client.RbacV1().RoleBindings(namespace).Create(context.Background(),
+		&rbac_v1.RoleBinding{ObjectMeta: metav1.ObjectMeta{Name: roleBindingName, Namespace: namespace}},
+		metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	// Rollback path: volumeID is empty, must be derived from nfsResourceName.
+	err = f.deleteNFSResources("", nfsResourceName, namespace)
+	assert.NoError(t, err)
+
+	// The correctly-named Role and RoleBinding must have been deleted.
+	_, err = client.RbacV1().Roles(namespace).Get(context.Background(), roleName, metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "expected role %s to be deleted", roleName)
+	_, err = client.RbacV1().RoleBindings(namespace).Get(context.Background(), roleBindingName, metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "expected role binding %s to be deleted", roleBindingName)
+}
+
+// TestDeleteNFSResources_RollbackDoesNotDeleteWrongRBAC verifies that with the
+// derived volumeID, an RBAC object bearing the old buggy empty-volumeID name is
+// NOT the target, and only the correctly-named resource is removed.
+func TestDeleteNFSResources_RollbackDoesNotDeleteWrongRBAC(t *testing.T) {
+	const namespace = "hpe-nfs"
+	nfsResourceName := nfsPrefix + "xyz789" // "hpe-nfs-xyz789"
+
+	// Role that would have been targeted by the OLD (buggy) empty-volumeID logic.
+	buggyRoleName := nfsPrefix + "" + nfsRoleSuffix // "hpe-nfs-deployment-rollout-role"
+
+	client := fake.NewSimpleClientset()
+	f := &Flavor{kubeClient: client}
+
+	_, err := client.RbacV1().Roles(namespace).Create(context.Background(),
+		&rbac_v1.Role{ObjectMeta: metav1.ObjectMeta{Name: buggyRoleName, Namespace: namespace}},
+		metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	err = f.deleteNFSResources("", nfsResourceName, namespace)
+	assert.NoError(t, err)
+
+	// The buggy-named role must remain untouched (derivation targets xyz789).
+	_, err = client.RbacV1().Roles(namespace).Get(context.Background(), buggyRoleName, metav1.GetOptions{})
+	assert.NoError(t, err, "buggy-named role should not have been deleted")
+}
+
+// TestDeleteNFSResources_UsesProvidedVolumeID verifies that when a non-empty
+// volumeID is supplied (normal delete path), it is used as-is and the derivation
+// branch is skipped.
+func TestDeleteNFSResources_UsesProvidedVolumeID(t *testing.T) {
+	const (
+		volumeID  = "realvol"
+		namespace = "hpe-nfs"
+	)
+	nfsResourceName := nfsPrefix + volumeID
+	roleName := nfsPrefix + volumeID + nfsRoleSuffix
+
+	client := fake.NewSimpleClientset()
+	f := &Flavor{kubeClient: client}
+
+	_, err := client.RbacV1().Roles(namespace).Create(context.Background(),
+		&rbac_v1.Role{ObjectMeta: metav1.ObjectMeta{Name: roleName, Namespace: namespace}},
+		metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	err = f.deleteNFSResources(volumeID, nfsResourceName, namespace)
+	assert.NoError(t, err)
+
+	_, err = client.RbacV1().Roles(namespace).Get(context.Background(), roleName, metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "expected role %s to be deleted", roleName)
 }
