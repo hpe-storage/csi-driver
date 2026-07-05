@@ -693,6 +693,105 @@ func TestCheckRequestingPVCExists_Missing(t *testing.T) {
 	assert.ErrorIs(t, err, errPVCDeleted)
 }
 
+// TestShouldRollbackNFSCreate verifies the CON-3166 / CON-4768 rollback policy:
+// backend NFS resources are torn down ONLY when the requesting PVC was deleted
+// mid-creation (errPVCDeleted). Timeouts and other transient failures must NOT
+// trigger a rollback, so a stalled-but-recoverable NFS deployment is left in
+// place for the provisioner to retry.
+func TestShouldRollbackNFSCreate(t *testing.T) {
+	// PVC deleted mid-creation -> rollback to avoid orphaned resources.
+	assert.True(t, shouldRollbackNFSCreate(errPVCDeleted),
+		"expected rollback when the requesting PVC was deleted")
+
+	// Timeout waiting for the deployment/pvc -> do NOT rollback (CON-3166).
+	assert.False(t, shouldRollbackNFSCreate(fmt.Errorf("gave up waiting for deployment hpe-nfs-xyz to be available")),
+		"expected no rollback on deployment timeout")
+	assert.False(t, shouldRollbackNFSCreate(fmt.Errorf("gave up waiting for pvc hpe-nfs-xyz to be bound")),
+		"expected no rollback on pvc bind timeout")
+
+	// Other transient/infra errors -> do NOT rollback (retry is idempotent).
+	assert.False(t, shouldRollbackNFSCreate(fmt.Errorf("failed to get deployment hpe-nfs-xyz")),
+		"expected no rollback on a generic transient error")
+
+	// No error -> no rollback.
+	assert.False(t, shouldRollbackNFSCreate(nil), "expected no rollback for nil error")
+}
+
+// TestCheckRequestingPVCExists_WrongType verifies that an unexpected object type
+// stored in the indexer is handled gracefully (no panic) and reported as deleted.
+func TestCheckRequestingPVCExists_WrongType(t *testing.T) {
+	idx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{"uid": MetaUIDFunc})
+	// Store a non-PVC object that still carries a UID via ObjectMeta.
+	cm := &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "not-a-pvc",
+			Namespace: "default",
+			UID:       "req-uid-wrongtype",
+		},
+	}
+	if err := idx.Add(cm); err != nil {
+		t.Fatalf("failed to add object to indexer: %v", err)
+	}
+	f := &Flavor{claimIndexer: idx}
+
+	assert.NotPanics(t, func() {
+		err := f.checkRequestingPVCExists("req-uid-wrongtype")
+		assert.ErrorIs(t, err, errPVCDeleted)
+	})
+}
+
+// TestWaitForPVCCreation_RollbackClassification verifies the end-to-end rollback
+// classification for the backend-PVC wait path:
+//   - if the requesting (frontend) PVC is deleted while waiting, waitForPVCCreation
+//     returns errPVCDeleted, which shouldRollbackNFSCreate treats as rollback=true
+//     (orphan cleanup, CON-4768);
+//   - if the backend PVC simply never binds (timeout), it returns a non-errPVCDeleted
+//     error, which shouldRollbackNFSCreate treats as rollback=false (CON-3166).
+func TestWaitForPVCCreation_RollbackClassification(t *testing.T) {
+	// Shorten the wait loop so the test runs in milliseconds.
+	origDelay, origInterval := creationDelay, creationInterval
+	creationDelay = time.Millisecond
+	creationInterval = 6
+	defer func() { creationDelay, creationInterval = origDelay, origInterval }()
+
+	const (
+		nfsNamespace   = "hpe-nfs"
+		backendPVCName = "hpe-nfs-backend"
+		reqUID         = "req-uid-wait"
+	)
+
+	unboundBackendPVC := func() *v1.PersistentVolumeClaim {
+		return &v1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: backendPVCName, Namespace: nfsNamespace},
+			Status:     v1.PersistentVolumeClaimStatus{Phase: v1.ClaimPending},
+		}
+	}
+
+	t.Run("requesting PVC deleted -> errPVCDeleted (rollback)", func(t *testing.T) {
+		client := fake.NewSimpleClientset(unboundBackendPVC())
+		// claimIndexer WITHOUT the requesting PVC => checkRequestingPVCExists returns errPVCDeleted
+		f := &Flavor{kubeClient: client, claimIndexer: newClaimIndexerWith(t)}
+
+		err := f.waitForPVCCreation(backendPVCName, nfsNamespace, reqUID)
+		assert.ErrorIs(t, err, errPVCDeleted)
+		assert.True(t, shouldRollbackNFSCreate(err), "PVC-deleted path must trigger rollback")
+	})
+
+	t.Run("bind timeout -> not errPVCDeleted (no rollback)", func(t *testing.T) {
+		client := fake.NewSimpleClientset(unboundBackendPVC())
+		reqClaim := &v1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "app-pvc", Namespace: "default", UID: reqUID},
+		}
+		// claimIndexer WITH the requesting PVC present => checkRequestingPVCExists returns nil
+		f := &Flavor{kubeClient: client, claimIndexer: newClaimIndexerWith(t, reqClaim)}
+
+		err := f.waitForPVCCreation(backendPVCName, nfsNamespace, reqUID)
+		assert.Error(t, err)
+		assert.NotErrorIs(t, err, errPVCDeleted)
+		assert.False(t, shouldRollbackNFSCreate(err), "bind timeout must NOT trigger rollback")
+	})
+}
+
 // TestDeleteNFSResources_RollbackDerivesVolumeID verifies the rollback path
 // (empty volumeID) derives the volumeID from the resource name and thereby
 // deletes the correctly-named Role and RoleBinding. This guards the fix for the
