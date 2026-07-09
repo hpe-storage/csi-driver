@@ -10,16 +10,44 @@ import (
 	storage_v1 "k8s.io/api/storage/v1"
 )
 
-func doesDeviceBelongToTheNode(multipathDevice *model.MultipathDevice, volumeAttachmentList *storage_v1.VolumeAttachmentList, nodeName string) bool {
-	if multipathDevice != nil {
-		for _, va := range volumeAttachmentList.Items {
-			log.Tracef("SERIAL NUMBER: %s, NAME: %s", va.Status.AttachmentMetadata["serialNumber"], va.Name)
-			if multipathDevice.UUID[1:] == va.Status.AttachmentMetadata["serialNumber"] && nodeName == va.Spec.NodeName {
-				return true
-			}
-		}
+// getVolumeAttachmentSerialsForNode builds a compact set of CSI serial numbers
+// from VolumeAttachments that belong to the given node.
+//
+// The node monitor only needs serial-number membership checks when matching
+// multipath devices to Kubernetes VolumeAttachments. Extracting just the
+// serials lets the caller drop the full VolumeAttachmentList earlier and
+// avoid repeatedly scanning large Kubernetes objects in the hot path.
+func getVolumeAttachmentSerialsForNode(volumeAttachmentList *storage_v1.VolumeAttachmentList, nodeName string) map[string]struct{} {
+	serials := map[string]struct{}{}
+	if volumeAttachmentList == nil {
+		return serials
 	}
-	return false
+
+	for _, va := range volumeAttachmentList.Items {
+		if nodeName != va.Spec.NodeName {
+			continue
+		}
+		serialNumber := va.Status.AttachmentMetadata["serialNumber"]
+		if serialNumber == "" {
+			continue
+		}
+		serials[serialNumber] = struct{}{}
+		log.Tracef("VolumeAttachment %s on node %s has serial number %s", va.Name, nodeName, serialNumber)
+	}
+	return serials
+}
+
+// doesDeviceBelongToTheNode reports whether the given multipath device matches
+// any VolumeAttachment serial number collected for the current node.
+//
+// Multipath UUIDs are compared using the UUID value without its leading prefix,
+// which matches the serialNumber stored in VolumeAttachment attachment metadata.
+func doesDeviceBelongToTheNode(multipathDevice *model.MultipathDevice, volumeAttachmentSerials map[string]struct{}) bool {
+	if multipathDevice == nil || len(multipathDevice.UUID) <= 1 {
+		return false
+	}
+	_, ok := volumeAttachmentSerials[multipathDevice.UUID[1:]]
+	return ok
 }
 
 func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
@@ -50,7 +78,7 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 	log.Tracef("Checking the connection to control plane....")
 	if !flavor.CheckConnection() {
 		log.Infof("The node %s is unable to connect to the control plane.", nodeName)
-		if multipathDevices != nil && len(multipathDevices) > 0 {
+		if len(multipathDevices) > 0 {
 			for _, device := range multipathDevices {
 				log.Tracef("Name:%s Vendor:%s Paths:%d Path Faults:%d UUID:%s IsUnhealthy:%t", device.Name, device.Vend, device.Paths, device.PathFaults, device.UUID, device.IsUnhealthy)
 				if device.IsUnhealthy {
@@ -84,11 +112,14 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 	if vaList != nil {
 		log.Infof("%d volume attachments found", len(vaList.Items))
 	}
+	volumeAttachmentSerials := getVolumeAttachmentSerialsForNode(vaList, nodeName)
+	vaList = nil // Free up memory as we no longer need the full list of volume attachments
+	log.Infof("%d volume attachments found for node %s", len(volumeAttachmentSerials), nodeName)
 
 	for _, device := range multipathDevices {
-		if vaList != nil && len(vaList.Items) > 0 {
+		if len(volumeAttachmentSerials) > 0 {
 			log.Infof("Assessing the multipath device %s", device.Name)
-			if doesDeviceBelongToTheNode(&device, vaList, nodeName) {
+			if doesDeviceBelongToTheNode(&device, volumeAttachmentSerials) {
 				if device.IsUnhealthy {
 					log.Infof("The multipath device %s belongs to this node %s and is unhealthy.", device.Name, nodeName)
 				} else {
