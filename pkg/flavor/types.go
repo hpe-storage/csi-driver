@@ -46,4 +46,6 @@ type Flavor interface {
 	GetChapCredentials(volumeContext map[string]string) (*model.ChapInfo, error)
 	CheckConnection() bool
 	HandleFileNodePublish(request *csi.NodePublishVolumeRequest, mountOptions []string) (*csi.NodePublishVolumeResponse, error)
+	TrackNFSPublish(volumeID, nodeID string)
+	UntrackNFSPublish(volumeID, nodeID string)
 }

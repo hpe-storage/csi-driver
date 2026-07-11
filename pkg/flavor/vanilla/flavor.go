@@ -158,3 +158,17 @@ func (flavor *Flavor) CheckConnection() bool {
 func (flavor *Flavor) HandleFileNodePublish(request *csi.NodePublishVolumeRequest, mountOptions []string) (*csi.NodePublishVolumeResponse, error) {
 	return nil, status.Error(codes.Internal, "File provisioned volume is not supported for non-k8s environments")
 }
+
+// TrackNFSPublish is a no-op for non-k8s environments as NFS provisioned
+// volumes are not supported there (CROSS-5).
+//
+//nolint:revive
+func (flavor *Flavor) TrackNFSPublish(volumeID, nodeID string) {
+}
+
+// UntrackNFSPublish is a no-op for non-k8s environments as NFS provisioned
+// volumes are not supported there (CROSS-5).
+//
+//nolint:revive
+func (flavor *Flavor) UntrackNFSPublish(volumeID, nodeID string) {
+}

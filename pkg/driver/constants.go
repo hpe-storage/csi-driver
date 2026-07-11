@@ -2,6 +2,8 @@
 
 package driver
 
+import "time"
+
 const (
 	// Protocol types
 	iscsi           = "iscsi"
@@ -52,6 +54,26 @@ const (
 	multiInitiatorKey     = "multiInitiator"
 	defaultConnectionMode = "manual"
 	KubeletRootDirEnvKey  = "KUBELET_ROOT_DIR"
+
+	// Replication (Remote Copy) StorageClass parameter keys. These are the
+	// camelCase keys as they appear in a StorageClass/PVC before being converted
+	// to snake_case for the CSP. They are used to detect when array-based
+	// replication is requested so that unsupported protocol combinations (e.g.
+	// NVMe/TCP + replication, CROSS-2) can be rejected early in the driver.
+	remoteCopyGroupKey                    = "remoteCopyGroup"
+	replicationDevicesKey                 = "replicationDevices"
+	oneRcgPerPvcKey                       = "oneRcgPerPvc"
+	allowBatchReplicatedVolumeCreationKey = "allowBatchReplicatedVolumeCreation"
+
+	// staleDeviceCleanupMaxAttempts bounds how many times stale-device cleanup
+	// is attempted before staging is failed (DRV-B5). The first attempt plus
+	// (max-1) retries gives transient failures a chance to clear without
+	// blocking indefinitely.
+	staleDeviceCleanupMaxAttempts = 2
+
+	// staleDeviceCleanupRetryDelay is the delay between stale-device cleanup
+	// attempts (DRV-B5).
+	staleDeviceCleanupRetryDelay = 1 * time.Second
 
 	// disable the node get volumestats
 	disableNodeGetVolumeStatsKey = "DISABLE_NODE_GET_VOLUMESTATS"
@@ -130,9 +152,9 @@ const (
 	fsRepairKey = "fsRepair"
 
 	// File volume constants
-	fileExportIPKey      = "exportIP"
-	mountPathKey         = "mountPath"
-	fileVolumeNameKey    = "csi.storage.k8s.io/pv/name"
-	accessControlListKey = "accessControlList"
+	fileExportIPKey                = "exportIP"
+	mountPathKey                   = "mountPath"
+	fileVolumeNameKey              = "csi.storage.k8s.io/pv/name"
+	accessControlListKey           = "accessControlList"
 	accessControlListAnnotationKey = "csi.hpe.com/accessControlList"
 )
