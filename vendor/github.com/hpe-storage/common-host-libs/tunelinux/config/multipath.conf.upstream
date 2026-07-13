@@ -1,7 +1,7 @@
 defaults {
     user_friendly_names yes
     find_multipaths     no
-    uxsock_timeout      10000
+    uxsock_timeout      300000
 }
 blacklist {
     devnode "^(ram|raw|loop|fd|md|dm-|sr|scd|st)[0-9]*"

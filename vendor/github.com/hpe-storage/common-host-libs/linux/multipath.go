@@ -30,7 +30,11 @@ const (
 	MultipathConf = "/etc/multipath.conf"
 	// MultipathBindings bindings file for multipathd
 	MultipathBindings  = "/etc/multipath/bindings"
-	orphanPathsPattern = ".*\\s+(?P<host>\\d+):(?P<channel>\\d+):(?P<target>\\d+):(?P<lun>\\d+).*(REPLACE_VENDOR).*orphan"
+	// orphanPathsPattern captures WWID (first field from multipathd show paths output)
+	// along with H:C:T:L so that orphan paths can be scoped to a specific volume.
+	// multipathd show paths format: %w %d %t %i %o %T %z %s %m
+	//   %w = WWID, %i = hcil (H:C:T:L)
+	orphanPathsPattern = "(?P<wwid>\\S+)\\s+\\S+\\s+\\S+\\s+(?P<host>\\d+):(?P<channel>\\d+):(?P<target>\\d+):(?P<lun>\\d+).*(REPLACE_VENDOR).*orphan"
 	maxTries           = 3
 )
 
@@ -426,26 +430,57 @@ func retryGetPathOfDevice(dev *model.Device, needActivePath bool) (paths []*mode
 	}
 }
 
-func multipathGetOrphanPathsByLunID(lunID string) []string {
-	log.Tracef(">>>> multipathGetOrphanPathsByLunID called with %s", lunID)
-	defer log.Trace("<<<<< multipathGetOrphanPathsByLunID")
+// multipathGetOrphanPathsBySerialAndLunID returns orphan HCTL paths that match
+// both the given serialNumber (WWID) and lunID. This prevents cross-array
+// interference when multiple arrays present volumes with the same Host LUN ID.
+//
+// If serialNumber is empty the function behaves identically to the legacy
+// multipathGetOrphanPathsByLunID, returning all orphan paths with the given LUN.
+func multipathGetOrphanPathsBySerialAndLunID(serialNumber, lunID string) []string {
+	log.Tracef(">>>> multipathGetOrphanPathsBySerialAndLunID called with serial=%s lunID=%s", serialNumber, lunID)
+	defer log.Trace("<<<<< multipathGetOrphanPathsBySerialAndLunID")
+
 	var hctls []string
 	lines, _ := multipathShowCmdOrphanPaths()
 	if len(lines) == 0 {
-		log.Tracef("no orphan paths found for lunID %s", lunID)
+		log.Tracef("no orphan paths found for serial=%s lunID=%s", serialNumber, lunID)
 		return hctls
 	}
 
 	for _, line := range lines {
 		result := util.FindStringSubmatchMap(line, orphanPathRegexp)
+		if len(result) == 0 {
+			continue
+		}
+		wwid := result["wwid"]
 		lun := result["lun"]
-		if lun == lunID {
+		if lun == lunID && matchesWWID(wwid, serialNumber) {
 			hctl := result["host"] + ":" + result["channel"] + ":" + result["target"] + ":" + lun
-			log.Debugf("orphan h:c:t:l found is %s", hctl)
+			log.Debugf("orphan h:c:t:l found is %s (wwid=%s matched serial=%s)", hctl, wwid, serialNumber)
 			hctls = append(hctls, hctl)
 		}
 	}
 	return hctls
+}
+
+// matchesWWID returns true when wwid corresponds to serialNumber.
+//
+// multipathd reports WWIDs with a leading NAA type byte, e.g.:
+//
+//	WWID:   360002ac0000000000200d34e0007f544   (leading '3' = NAA-6)
+//	Serial: 60002ac0000000000200d34e0007f544    (no leading type byte)
+//
+// When serialNumber is empty the function returns true to preserve
+// backward-compatible behaviour (no WWID filtering).
+func matchesWWID(wwid, serialNumber string) bool {
+	if serialNumber == "" {
+		return true
+	}
+	wwid = strings.ToLower(wwid)
+	serial := strings.ToLower(serialNumber)
+	// Accept either an exact suffix match (most common) or a full equality
+	// after the caller has already stripped the NAA prefix.
+	return strings.HasSuffix(wwid, serial) || strings.EqualFold(wwid, serial)
 }
 
 // multipathGetPathsOfDevice : get all scsi paths and host, channel information of multipath device

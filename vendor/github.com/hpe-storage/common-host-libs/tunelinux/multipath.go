@@ -24,6 +24,18 @@ import (
 const (
 	multipath = "multipath"
 
+	// uxsockTimeoutParam is the multipath.conf defaults-section key that controls
+	// the unix domain socket timeout (in milliseconds) used by multipathd.
+	uxsockTimeoutParam = "uxsock_timeout"
+
+	// uxsockTimeoutRecommended is the default recommended value for uxsock_timeout. Keep
+	// this in sync with the value shipped in the multipath.conf.generic/upstream templates.
+	uxsockTimeoutRecommended = "300000"
+
+	// uxsockTimeoutEnvVar, when set to a valid positive integer, overrides
+	// uxsockTimeoutRecommended so deployments can tune the value without a code change.
+	uxsockTimeoutEnvVar = "MULTIPATH_UXSOCK_TIMEOUT"
+
 	// multipath params
 	multipathParamPattern = "\\s*(?P<name>.*?)\\s+(?P<value>.*)"
 )
@@ -279,6 +291,19 @@ func setMultipathRecommendations(recommendations []*Recommendation, device strin
 		value := (defaultsSection.GetProperties())["find_multipaths"]
 		if value == "yes" || value == "" {
 			(defaultsSection.GetProperties())["find_multipaths"] = "no"
+		}
+
+		// Ensure uxsock_timeout is present in the defaults section and matches the
+		// desired value (env var override if set and valid, else the recommended default):
+		//   - key absent                      -> add it with the desired value
+		//   - key present but value differs   -> correct it to the desired value
+		//   - key present and already correct -> no-op
+		desiredUxsockTimeout := getUxsockTimeoutValue()
+		currentUxsockTimeout := (defaultsSection.GetProperties())[uxsockTimeoutParam]
+		if currentUxsockTimeout != desiredUxsockTimeout {
+			log.Infof("Setting %s in /etc/multipath.conf: current=%q desired=%q",
+				uxsockTimeoutParam, currentUxsockTimeout, desiredUxsockTimeout)
+			(defaultsSection.GetProperties())[uxsockTimeoutParam] = desiredUxsockTimeout
 		}
 	}
 
@@ -593,4 +618,20 @@ func forceDeleteMultipathDevice(multipathDevice string) error {
 		return err
 	}
 	return nil
+}
+
+// getUxsockTimeoutValue returns the uxsock_timeout value to apply to /etc/multipath.conf.
+// If the MULTIPATH_UXSOCK_TIMEOUT environment variable is set to a valid positive integer,
+// that value takes precedence; otherwise uxsockTimeoutRecommended is used.
+func getUxsockTimeoutValue() string {
+	envValue := os.Getenv(uxsockTimeoutEnvVar)
+	if envValue == "" {
+		return uxsockTimeoutRecommended
+	}
+	if parsed, err := strconv.Atoi(envValue); err != nil || parsed <= 0 {
+		log.Warnf("Invalid value %q for env var %s (must be a positive integer), falling back to default %s",
+			envValue, uxsockTimeoutEnvVar, uxsockTimeoutRecommended)
+		return uxsockTimeoutRecommended
+	}
+	return envValue
 }

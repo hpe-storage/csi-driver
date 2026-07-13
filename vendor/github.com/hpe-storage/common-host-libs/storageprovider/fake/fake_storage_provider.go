@@ -197,8 +197,12 @@ func (provider *StorageProvider) GetVolumes() ([]*model.Volume, error) {
 	return volumes, nil
 }
 
-// GetSnapshots returns the fake snapshots saved in the map
-func (provider *StorageProvider) GetSnapshots(sourceID string) ([]*model.Snapshot, error) {
+// GetSnapshots returns the fake snapshots saved in the map.
+// mode is variadic to mirror the real StorageProvider.GetSnapshots signature above -
+// callers such as CSI's ListSnapshots/DeleteVolume invoke this without a mode argument,
+// so the parameter can't be a required string. Only mode[0] would ever be used (this fake
+// implementation ignores it since there's no backing array to filter against).
+func (provider *StorageProvider) GetSnapshots(sourceID string, mode ...string) ([]*model.Snapshot, error) {
 	var snapshots []*model.Snapshot
 
 	for _, snapshot := range provider.snapshots {

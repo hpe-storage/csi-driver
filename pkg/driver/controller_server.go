@@ -735,8 +735,10 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 			fmt.Sprintf("Failed to get storage provider from secrets, err: %s", err.Error()))
 	}
 
-	// Get volume snapshots
-	snapshots, err := storageProvider.GetSnapshots(volumeID)
+	// Get volume snapshots. Pass the "exists" mode (CON-4709, common-host-libs) since DeleteVolume
+	// only needs to know whether any snapshot is present, not the full snapshot list 
+	const snapshotModeExists = "exists"
+	snapshots, err := storageProvider.GetSnapshots(volumeID, snapshotModeExists)
 	if err != nil {
 		log.Error("Error fetching snapshots for volume:", volumeID, ", error: ", err.Error())
 		return status.Error(codes.FailedPrecondition, fmt.Sprintf("Error while attempting to get snapshots for volume %s: %s", volumeID, err.Error()))

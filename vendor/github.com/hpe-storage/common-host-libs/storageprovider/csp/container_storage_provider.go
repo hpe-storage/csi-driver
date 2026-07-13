@@ -767,8 +767,13 @@ func (provider *ContainerStorageProvider) GetVolumes() ([]*model.Volume, error) 
 	return volumes, err
 }
 
-// GetSnapshots returns all of the snapshots for the given source volume from the CSP
-func (provider *ContainerStorageProvider) GetSnapshots(volumeID string) ([]*model.Snapshot, error) {
+// GetSnapshots returns all of the snapshots for the given source volume from the CSP.
+// mode is variadic (instead of a plain optional parameter) so this method's signature
+// stays backward compatible for callers that don't care about mode - e.g. CSI's
+// ListSnapshots and DeleteVolume/deleteVolume paths call GetSnapshots(volumeID) with no
+// mode at all. Only mode[0] is read; it's passed through as the "mode" query param to the
+// CSP getsnapshot API (CON-4709) when a caller does supply it.
+func (provider *ContainerStorageProvider) GetSnapshots(volumeID string, mode ...string) ([]*model.Snapshot, error) {
 	response := make([]*model.Snapshot, 0)
 	var errorResponse *ErrorsPayload
 
@@ -777,6 +782,9 @@ func (provider *ContainerStorageProvider) GetSnapshots(volumeID string) ([]*mode
 		path = fmt.Sprintf("/containers/v1/snapshots")
 	} else {
 		path = fmt.Sprintf("/containers/v1/snapshots?volume_id=%s", volumeID)
+		if len(mode) > 0 && mode[0] != "" {
+			path = fmt.Sprintf("%s&mode=%s", path, mode[0])
+		}
 	}
 
 	status, err := provider.invoke(

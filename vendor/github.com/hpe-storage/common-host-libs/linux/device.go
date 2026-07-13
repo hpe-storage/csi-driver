@@ -789,14 +789,17 @@ func canHandleRemap(volume *model.Volume) (err error) {
 func handleOrphanPaths(volume *model.Volume) error {
 	log.Tracef(">>> handleOrphanPaths called with volume %s serial %s lun %s", volume.Name, volume.SerialNumber, volume.LunID)
 	defer log.Tracef("<<< handleOrphanPaths")
-	err := handleOrphanPathsForSpecificLunId(volume.LunID)
+	// Pass volume.SerialNumber so orphan cleanup is scoped to this volume only.
+	// This prevents inadvertent cleanup of paths belonging to unrelated arrays
+	// that happen to present volumes with the same Host LUN ID.
+	err := handleOrphanPathsForSerialAndLunId(volume.SerialNumber, volume.LunID)
 	if err != nil {
 		return err
 	}
 	lunIdArray := util.GetSecondaryArrayLUNIds(volume.SecondaryArrayDetails)
 	if len(lunIdArray) > 0 {
 		for _, lunID := range lunIdArray {
-			err := handleOrphanPathsForSpecificLunId(strconv.Itoa(int(lunID)))
+			err := handleOrphanPathsForSerialAndLunId(volume.SerialNumber, strconv.Itoa(int(lunID)))
 			if err != nil {
 				return err
 			}
@@ -806,9 +809,16 @@ func handleOrphanPaths(volume *model.Volume) error {
 
 }
 
-func handleOrphanPathsForSpecificLunId(lunID string) error {
 
-	orphanHctls := multipathGetOrphanPathsByLunID(lunID)
+// handleOrphanPathsForSerialAndLunId deletes orphan SCSI paths that belong to
+// the volume identified by serialNumber and lunID, then triggers a targeted
+// per-H:C:T:L rescan so only the affected host adapter port is rescanned.
+//
+// Using the serial number prevents the rescan from touching FC host ports that
+// are zoned to different storage arrays sharing the same Host LUN ID.
+func handleOrphanPathsForSerialAndLunId(serialNumber, lunID string) error {
+
+	orphanHctls := multipathGetOrphanPathsBySerialAndLunID(serialNumber, lunID)
 	for _, pathHctl := range orphanHctls {
 		hctl := strings.Split(pathHctl, ":")
 		if len(hctl) != 4 {
