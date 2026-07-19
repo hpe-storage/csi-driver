@@ -1,6 +1,7 @@
 package nodeinit
 
 import (
+	"errors"
 	"os"
 
 	log "github.com/hpe-storage/common-host-libs/logger"
@@ -65,7 +66,12 @@ func AnalyzeMultiPathDevices(flavor flavor.Flavor, nodeName string) error {
 
 	multipathDevices, err := tunelinux.GetMultipathDevices() //driver.GetMultipathDevices()
 	if err != nil {
-		log.Errorf("Error while getting the information of multipath devices on the node %s", nodeName)
+		if errors.Is(err, tunelinux.ErrMultipathTimeout) {
+			// multipathd was busy/reloading; skip this cycle instead of failing node-init.
+			log.Warnf("Skipping multipath analysis on node %s (transient multipathd timeout): %v", nodeName, err)
+			return nil
+		}
+		log.Errorf("Error while getting the information of multipath devices on node %s: %v", nodeName, err)
 		return err
 	}
 
