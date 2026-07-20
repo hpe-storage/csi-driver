@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/hpe-storage/common-host-libs/linux"
 	log "github.com/hpe-storage/common-host-libs/logger"
@@ -22,7 +23,8 @@ import (
 )
 
 const (
-	multipath = "multipath"
+	multipath                = "multipath"
+	multipathTimeoutMaxTries = 3
 
 	// uxsockTimeoutParam is the multipath.conf defaults-section key that controls
 	// the unix domain socket timeout (in milliseconds) used by multipathd.
@@ -49,6 +51,13 @@ var (
 	umountMutex             sync.Mutex
 	staleDeviceRemovalMutex sync.Mutex
 	readProcMountsMutex     sync.Mutex
+	ErrMultipathTimeout     = errors.New("multipathd timeout")
+
+	// multipathTimeoutRetrySleep is a var so tests can shorten retry delays.
+	multipathTimeoutRetrySleep = 2 * time.Second
+
+	// execCommandOutput lets tests exercise retry behavior without shelling out.
+	execCommandOutput = util.ExecCommandOutput
 )
 
 // GetMultipathConfigFile returns path of the template multipath.conf file according to OS distro
@@ -217,7 +226,7 @@ func GetMultipathRecommendations() (settings []DeviceRecommendation, err error) 
 			return deviceRecommendations, err
 		}
 		// Obtain contents of /etc/multipath.conf
-		content, err := ioutil.ReadFile(linux.MultipathConf)
+		content, err := os.ReadFile(linux.MultipathConf)
 		if err != nil {
 			log.Error(err.Error())
 			return nil, err
@@ -386,40 +395,79 @@ func GetMultipathDevices() (multipathDevices []model.MultipathDevice, err error)
 	log.Tracef(">>>> getMultipathDevices ")
 	defer log.Trace("<<<<< getMultipathDevices")
 
-	out, _, err := util.ExecCommandOutput("multipathd", []string{"show", "multipaths", "json"})
+	for try := 1; try <= multipathTimeoutMaxTries; try++ {
+		out, _, cmdErr := execCommandOutput("multipathd", []string{"show", "multipaths", "json"})
 
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get the multipath devices due to the error: %s", err.Error())
-	}
-
-	if out != "" {
-		multipathJson := new(model.MultipathInfo)
-		err = json.Unmarshal([]byte(out), multipathJson)
+		multipathDevices, err = parseMultipathDevices(out)
+		if errors.Is(err, ErrMultipathTimeout) || (cmdErr != nil && linux.IsMultipathTimeoutError(cmdErr.Error())) {
+			if try == multipathTimeoutMaxTries {
+				return nil, fmt.Errorf("failed to get the multipath devices after %d attempts: %w", multipathTimeoutMaxTries, ErrMultipathTimeout)
+			}
+			log.Warnf("Transient multipathd timeout while getting multipath devices; retrying attempt %d of %d", try+1, multipathTimeoutMaxTries)
+			time.Sleep(multipathTimeoutRetrySleep)
+			continue
+		}
+		if cmdErr != nil {
+			return nil, fmt.Errorf("failed to get the multipath devices due to the error: %s", cmdErr.Error())
+		}
 		if err != nil {
-			return nil, fmt.Errorf("Invalid JSON output of multipathd command: %s", err.Error())
+			return nil, err
 		}
-
-		for _, mapItem := range multipathJson.Maps {
-			if len(mapItem.Vend) > 0 && isSupportedDeviceVendor(linux.DeviceVendorPatterns, mapItem.Vend) {
-				if mapItem.Paths < 1 && mapItem.PathFaults > 0 {
-					mapItem.IsUnhealthy = true
-					log.Tracef("Known unhealthy multipath device: %s", mapItem.Name)
-				}
-				multipathDevices = append(multipathDevices, mapItem)
-				continue
-			}
-
-			// residual non-functional multipath devices
-			if len(mapItem.PathGroups) == 0 && mapItem.Queueing == "off" && mapItem.Features == "0" {
-				mapItem.IsUnhealthy = true
-				log.Tracef("Unknown orphan multipath device without path_groups: %s", mapItem.Name)
-				multipathDevices = append(multipathDevices, mapItem)
-			}
-		}
-		log.Infof("Found %d multipath devices %+v", len(multipathDevices), multipathDevices)
 		return multipathDevices, nil
 	}
-	return nil, fmt.Errorf("Invalid multipathd command output received")
+	return nil, ErrMultipathTimeout
+}
+
+func parseMultipathDevices(out string) (multipathDevices []model.MultipathDevice, err error) {
+	out = strings.TrimSpace(out)
+	if out == "" {
+		log.Infof("No multipath devices found")
+		return nil, nil
+	}
+
+	multipathJson := new(model.MultipathInfo)
+	decoder := json.NewDecoder(strings.NewReader(out))
+	err = decoder.Decode(multipathJson)
+	if err != nil {
+		if linux.IsMultipathTimeoutError(out) {
+			return nil, ErrMultipathTimeout
+		}
+		return nil, fmt.Errorf("Invalid JSON output of multipathd command: %s", err.Error())
+	}
+	var extra interface{}
+	if err = decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			err = fmt.Errorf("unexpected data after JSON object")
+		}
+		return nil, fmt.Errorf("Invalid JSON output of multipathd command: %s", err.Error())
+	}
+
+	multipathDevices = make([]model.MultipathDevice, 0, len(multipathJson.Maps))
+	unhealthyDeviceCount := 0
+	orphanDeviceCount := 0
+
+	for _, mapItem := range multipathJson.Maps {
+		if len(mapItem.Vend) > 0 && isSupportedDeviceVendor(linux.DeviceVendorPatterns, mapItem.Vend) {
+			if mapItem.Paths < 1 && mapItem.PathFaults > 0 {
+				mapItem.IsUnhealthy = true
+				unhealthyDeviceCount++
+				log.Tracef("Known unhealthy multipath device: %s", mapItem.Name)
+			}
+			multipathDevices = append(multipathDevices, mapItem)
+			continue
+		}
+
+		// residual non-functional multipath devices
+		if len(mapItem.PathGroups) == 0 && mapItem.Queueing == "off" && mapItem.Features == "0" {
+			mapItem.IsUnhealthy = true
+			unhealthyDeviceCount++
+			orphanDeviceCount++
+			log.Tracef("Unknown orphan multipath device without path_groups: %s", mapItem.Name)
+			multipathDevices = append(multipathDevices, mapItem)
+		}
+	}
+	log.Infof("Found %d multipath devices (%d unhealthy, of which %d are orphan)", len(multipathDevices), unhealthyDeviceCount, orphanDeviceCount)
+	return multipathDevices, nil
 }
 
 func isSupportedDeviceVendor(deviceVendors []string, vendor string) bool {
