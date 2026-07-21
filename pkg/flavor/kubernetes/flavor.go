@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/hpe-storage/common-host-libs/chapi"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
+	hpeflavor "github.com/hpe-storage/csi-driver/pkg/flavor"
 	crd_v1 "github.com/hpe-storage/k8s-custom-resources/pkg/apis/hpestorage/v1"
 	crd_client "github.com/hpe-storage/k8s-custom-resources/pkg/client/clientset/versioned"
 	v1beta1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
@@ -189,6 +191,10 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 	log.Tracef(">>>>> LoadNodeInfo called with node %v", node)
 	defer log.Trace("<<<<< LoadNodeInfo")
 
+	// Capture the (possibly sanitized) backend-facing hostname before it's overwritten below.
+	backendHostname := node.Name
+	hostnameSanitizationEnabled, _ := strconv.ParseBool(os.Getenv(hpeflavor.DisableHostnameEnvKey))
+
 	// overwrite actual host name with node name from k8s to be compliant
 	if name := os.Getenv("NODE_NAME"); name != "" {
 		node.Name = name
@@ -252,6 +258,20 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			nodeInfo.Spec.NQNs = nqnsFromNode
 			updateNodeRequired = true
 		}
+		// update the backend-facing hostname annotation on mismatch; only present when opted in
+		_, hasAnnotation := nodeInfo.ObjectMeta.Annotations[hpeflavor.BackendGeneratedHostnameAnnotationKey]
+		if hostnameSanitizationEnabled {
+			if nodeInfo.ObjectMeta.Annotations[hpeflavor.BackendGeneratedHostnameAnnotationKey] != backendHostname {
+				if nodeInfo.ObjectMeta.Annotations == nil {
+					nodeInfo.ObjectMeta.Annotations = map[string]string{}
+				}
+				nodeInfo.ObjectMeta.Annotations[hpeflavor.BackendGeneratedHostnameAnnotationKey] = backendHostname
+				updateNodeRequired = true
+			}
+		} else if hasAnnotation {
+			delete(nodeInfo.ObjectMeta.Annotations, hpeflavor.BackendGeneratedHostnameAnnotationKey)
+			updateNodeRequired = true
+		}
 
 		if !updateNodeRequired {
 			// no update needed to existing CRD
@@ -275,9 +295,14 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 			log.Errorf("Initiator validation failed: %s", err.Error())
 			return "", err
 		}
+		var annotations map[string]string
+		if hostnameSanitizationEnabled {
+			annotations = map[string]string{hpeflavor.BackendGeneratedHostnameAnnotationKey: backendHostname}
+		}
 		newNodeInfo := &crd_v1.HPENodeInfo{
 			ObjectMeta: meta_v1.ObjectMeta{
-				Name: node.Name,
+				Name:        node.Name,
+				Annotations: annotations,
 			},
 			Spec: crd_v1.HPENodeInfoSpec{
 				UUID:     node.UUID,
@@ -471,6 +496,29 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 	}
 
 	return nil, fmt.Errorf("failed to get node with id %s", nodeID)
+}
+
+// GetNodeBackendHostname returns the backend-facing hostname for the node identified by nodeID,
+// which may differ from its Kubernetes node name (see LoadNodeInfo).
+func (flavor *Flavor) GetNodeBackendHostname(nodeID string) (string, error) {
+	log.Tracef(">>>>>> GetNodeBackendHostname from node ID %s", nodeID)
+	defer log.Trace("<<<<<< GetNodeBackendHostname")
+
+	nodeInfoList, err := flavor.crdClient.StorageV1().HPENodeInfos().List(meta_v1.ListOptions{})
+	if err != nil {
+		return "", err
+	}
+
+	for _, nodeInfo := range nodeInfoList.Items {
+		if nodeInfo.Spec.UUID == nodeID {
+			if name := nodeInfo.ObjectMeta.Annotations[hpeflavor.BackendGeneratedHostnameAnnotationKey]; name != "" {
+				return name, nil
+			}
+			return nodeInfo.ObjectMeta.Name, nil
+		}
+	}
+
+	return "", fmt.Errorf("failed to get node with id %s", nodeID)
 }
 
 // NewClaimController provides a controller that watches for PersistentVolumeClaims and takes action on them
