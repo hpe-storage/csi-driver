@@ -90,11 +90,12 @@ func (nm *NodeMonitor) StopNodeMonitor() error {
 func (nm *NodeMonitor) monitorNode() error {
 	log.Trace(">>>>> monitorNode for the node ", nm.nodeName)
 	defer log.Trace("<<<<< monitorNode")
-	defer close(nm.done)
 
 	tick := time.NewTicker(time.Duration(nm.intervalSec) * time.Second)
 
 	go func() {
+		defer tick.Stop()
+		defer close(nm.done)
 		for {
 			select {
 			case <-tick.C:
