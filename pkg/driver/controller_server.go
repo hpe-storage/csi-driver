@@ -987,6 +987,12 @@ func (driver *Driver) controllerPublishVolume(
 		log.Tracef("Notifying CSP about Node with ID %s and UUID %s", node.ID, node.UUID)
 		log.Tracef("AccessProtocol set is %s", requestedAccessProtocol)
 		node.AccessProtocol = requestedAccessProtocol
+		// Extract optional virtual domain from request context and pass it during host creation.
+		requestedVirtualDomain := strings.TrimSpace(volumeContext[virtualDomainKey])
+		if requestedVirtualDomain != "" {
+			node.VirtualDomain = requestedVirtualDomain
+			log.Tracef("VirtualDomain set is %s", requestedVirtualDomain)
+		}
 		if err = storageProvider.SetNodeContext(node); err != nil {
 			log.Error("err: ", err.Error())
 			return nil, status.Error(codes.Unavailable,

@@ -52,6 +52,7 @@ const (
 	multiInitiatorKey     = "multiInitiator"
 	defaultConnectionMode = "manual"
 	KubeletRootDirEnvKey  = "KUBELET_ROOT_DIR"
+	virtualDomainKey      = "virtualDomain"
 
 	// disable the node get volumestats
 	disableNodeGetVolumeStatsKey = "DISABLE_NODE_GET_VOLUMESTATS"
