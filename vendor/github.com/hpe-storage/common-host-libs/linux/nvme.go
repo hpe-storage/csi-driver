@@ -5,7 +5,6 @@ package linux
 import (
 	"fmt"
 	"io/ioutil"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -18,334 +17,387 @@ import (
 )
 
 const (
-    nvmecmd                = "nvme"
-    nvmeConnectCmd         = "nvme connect"
-    nvmeDisconnectCmd      = "nvme disconnect"
-    nvmeListCmd            = "nvme list"
-    nvmeListSubsysCmd      = "nvme list-subsys"
-    defaultNvmePort        = "4420"
-    nvmeDiscoveryPort      = "8009"
-    nvmeHostPathFormat     = "/sys/class/nvme/"
-    nvmeNamespacePattern   = "nvme[0-9]+n[0-9]+"
-    nvmeHostPath           = "/etc/nvme/hostnqn"
+	nvmecmd              = "nvme"
+	nvmeConnectCmd       = "nvme connect"
+	nvmeDisconnectCmd    = "nvme disconnect"
+	nvmeListCmd          = "nvme list"
+	nvmeListSubsysCmd    = "nvme list-subsys"
+	defaultNvmePort      = "4420"
+	nvmeDiscoveryPort    = "8009"
+	nvmeHostPathFormat   = "/sys/class/nvme/"
+	nvmeNamespacePattern = "nvme[0-9]+n[0-9]+"
+	nvmeHostPath         = "/etc/nvme/hostnqn"
+
+	// nvmeDiscoveryNQN is the well-known NVMe discovery subsystem NQN. Discovery
+	// controllers created by "nvme discover" register under this NQN.
+	nvmeDiscoveryNQN = "nqn.2014-08.org.nvmexpress.discovery"
 )
 
 // GetNvmeInitiator gets the NVMe host NQN
 func GetNvmeInitiator() (string, error) {
-    // Read from /etc/nvme/hostnqn or generate one if not present
-    hostnqn, err := util.FileReadFirstLine(nvmeHostPath)
-    if err != nil {
-        log.Debugf("Could not read hostnqn from %s, generating one", nvmeHostPath)
-        // Generate hostnqn using nvme gen-hostnqn
-        args := []string{"gen-hostnqn"}
-        hostnqn, _, err = util.ExecCommandOutput(nvmecmd, args)
-        if err != nil {
-            return "", err
-        }
-        hostnqn = strings.TrimSpace(hostnqn)
-    }
-    return hostnqn, nil
+	// Read from /etc/nvme/hostnqn or generate one if not present
+	hostnqn, err := util.FileReadFirstLine(nvmeHostPath)
+	if err != nil {
+		log.Debugf("Could not read hostnqn from %s, generating one", nvmeHostPath)
+		// Generate hostnqn using nvme gen-hostnqn
+		args := []string{"gen-hostnqn"}
+		hostnqn, _, err = util.ExecCommandOutput(nvmecmd, args)
+		if err != nil {
+			return "", err
+		}
+		hostnqn = strings.TrimSpace(hostnqn)
+	}
+	return hostnqn, nil
 }
 
 // ApplyNvmeTcpTuning applies recommended sysctl and module settings for NVMe over TCP
 func ApplyNvmeTcpTuning() error {
-    var tuningErrors []string
+	var tuningErrors []string
 
-    // Example: Increase network buffer sizes for high throughput
-    if err := setSysctl("net.core.rmem_max", netCoreRmemMax); err != nil {
-        tuningErrors = append(tuningErrors, err.Error())
-    }
-    if err := setSysctl("net.core.wmem_max", netCoreWmemMax); err != nil {
-        tuningErrors = append(tuningErrors, err.Error())
-    }
+	// Example: Increase network buffer sizes for high throughput
+	if err := setSysctl("net.core.rmem_max", netCoreRmemMax); err != nil {
+		tuningErrors = append(tuningErrors, err.Error())
+	}
+	if err := setSysctl("net.core.wmem_max", netCoreWmemMax); err != nil {
+		tuningErrors = append(tuningErrors, err.Error())
+	}
 
-    // Example: Set NVMe core parameters (if needed)
-    if err := setKernelParam("/sys/module/nvme_core/parameters/multipath", "Y"); err != nil {
-        tuningErrors = append(tuningErrors, err.Error())
-    }
+	// Check native NVMe multipath. nvme_core.multipath is a read-only (0444)
+	// kernel module parameter: it can only be set at boot/module-load time and
+	// cannot be changed at runtime by writing sysfs, not even from a privileged
+	// container. We therefore only verify (never write) its current value.
+	logNvmeMultipathStatus()
 
-    // Add more NVMe/TCP-specific tuning as needed...
+	// Add more NVMe/TCP-specific tuning as needed...
 
-    if len(tuningErrors) > 0 {
-        return fmt.Errorf("NVMe TCP tuning errors: %s", strings.Join(tuningErrors, "; "))
-    }
-    return nil
+	if len(tuningErrors) > 0 {
+		return fmt.Errorf("NVMe TCP tuning errors: %s", strings.Join(tuningErrors, "; "))
+	}
+	return nil
+}
+
+// nvmeCoreMultipathPath is the sysfs path for the nvme_core native multipath
+// module parameter. It is a variable so unit tests can override it.
+var nvmeCoreMultipathPath = "/sys/module/nvme_core/parameters/multipath"
+
+// nvmeExecCommandOutput runs an external command and returns its stdout, return
+// code, and error. It is a variable so unit tests can override it.
+var nvmeExecCommandOutput = util.ExecCommandOutput
+
+// isNvmeMultipathEnabled reports whether native NVMe multipath is currently
+// enabled on this node by reading the read-only nvme_core.multipath module
+// parameter.
+func isNvmeMultipathEnabled() (bool, error) {
+	value, err := util.FileReadFirstLine(nvmeCoreMultipathPath)
+	if err != nil {
+		return false, err
+	}
+	return strings.EqualFold(strings.TrimSpace(value), "Y"), nil
+}
+
+// logNvmeMultipathStatus checks the read-only nvme_core.multipath module
+// parameter and logs whether native NVMe multipath is enabled. The parameter
+// cannot be enabled at runtime (privileged containers included); it must be set
+// at boot/module-load time.
+func logNvmeMultipathStatus() {
+	enabled, err := isNvmeMultipathEnabled()
+	if err != nil {
+		log.Infof("Could not read NVMe native multipath parameter %s: %v. Kernel may lack NVMe multipath support.", nvmeCoreMultipathPath, err)
+		return
+	}
+	if enabled {
+		log.Tracef("NVMe native multipath is enabled (%s=Y)", nvmeCoreMultipathPath)
+		return
+	}
+	log.Warnf("NVMe native multipath is disabled at %s. This is a read-only kernel "+
+		"module parameter and cannot be enabled at runtime (privileged containers "+
+		"included). To enable it, add 'nvme_core.multipath=Y' to the kernel command "+
+		"line or 'options nvme_core multipath=Y' in /etc/modprobe.d, then reboot or "+
+		"reload the nvme_core module.", nvmeCoreMultipathPath)
 }
 
 func setSysctl(key, value string) error {
-    cmd := fmt.Sprintf("sysctl -w %s=%s", key, value)
-    out, _, err := util.ExecCommandOutput("sh", []string{"-c", cmd})
-    if err != nil {
-        return fmt.Errorf("failed to set %s: %v (%s)", key, err, out)
-    }
-    return nil
-}
-
-func setKernelParam(path, value string) error {
-    f, err := os.OpenFile(path, os.O_WRONLY, 0)
-    if err != nil {
-        return fmt.Errorf("failed to open %s: %v", path, err)
-    }
-    defer f.Close()
-    if _, err := f.WriteString(value); err != nil {
-        return fmt.Errorf("failed to write %s to %s: %v", value, path, err)
-    }
-    return nil
+	cmd := fmt.Sprintf("sysctl -w %s=%s", key, value)
+	out, _, err := util.ExecCommandOutput("sh", []string{"-c", cmd})
+	if err != nil {
+		return fmt.Errorf("failed to set %s: %v (%s)", key, err, out)
+	}
+	return nil
 }
 
 // ConnectNvmeTarget connects to an NVMe over TCP target
 func ConnectNvmeTarget(target *model.NvmeTarget) error {
-    discoveryIPs := strings.Split(target.Address, ",")
-    if len(discoveryIPs) == 0 {
-        return fmt.Errorf("no discovery IPs provided for NVMe target")
-    }
+	discoveryIPs := strings.Split(target.Address, ",")
+	if len(discoveryIPs) == 0 {
+		return fmt.Errorf("no discovery IPs provided for NVMe target")
+	}
 
-    var lastErr error
-    var success bool
+	var lastErr error
+	var success bool
 
-    for _, ip := range discoveryIPs {
-        // Sanitize IP address (remove whitespace,* and other invalid format)
-        ip = util.SanitizeIPAddress(ip)
-        args := []string{
-            "connect",
-            "-t", "tcp",
-            "-n", target.NQN,
-            "-a", ip,
-            "-s", target.Port,
-        }
-        out, rc, err := util.ExecCommandOutput(nvmecmd, args)
-        // Treat rc=114 as success
-        if rc == 114 {
-            log.Infof("NVMe target %s connected via %s:%s (rc=114)", target.NQN, ip, target.Port)
-            success = true
-            continue
-        }
-        // Handle non-zero rc with 'already connected' message
-        if err != nil || rc != 0 {
-            if strings.Contains(strings.ToLower(out), "already connected") {
-                log.Infof("NVMe target %s already connected via %s:%s", target.NQN, ip, target.Port)
-                success = true
-                continue
-            }
-            log.Warnf("NVMe connect failed for discovery IP %s, rc=%d, error: %v", ip, rc, err)
-            lastErr = err
-            continue
-        }
-        log.Infof("Successfully connected to NVMe target using discovery IP %s", ip)
-        success = true
-    }
+	for _, ip := range discoveryIPs {
+		// Sanitize IP address (remove whitespace,* and other invalid format)
+		ip = util.SanitizeIPAddress(ip)
+		args := []string{
+			"connect",
+			"-t", "tcp",
+			"-n", target.NQN,
+			"-a", ip,
+			"-s", target.Port,
+		}
+		out, rc, err := util.ExecCommandOutput(nvmecmd, args)
+		// Treat rc=114 as success
+		if rc == 114 {
+			log.Infof("NVMe target %s connected via %s:%s (rc=114)", target.NQN, ip, target.Port)
+			success = true
+			continue
+		}
+		// Handle non-zero rc with 'already connected' message
+		if err != nil || rc != 0 {
+			if strings.Contains(strings.ToLower(out), "already connected") {
+				log.Infof("NVMe target %s already connected via %s:%s", target.NQN, ip, target.Port)
+				success = true
+				continue
+			}
+			log.Warnf("NVMe connect failed for discovery IP %s, rc=%d, error: %v", ip, rc, err)
+			lastErr = err
+			continue
+		}
+		log.Infof("Successfully connected to NVMe target using discovery IP %s", ip)
+		success = true
+	}
 
-    if !success {
-        return fmt.Errorf("failed to connect to NVMe target: %v", lastErr)
-    }
-    return nil
+	if !success {
+		return fmt.Errorf("failed to connect to NVMe target: %v", lastErr)
+	}
+	return nil
 }
 
 // RescanNvme performs NVMe namespace rescan
 func RescanNvme() error {
-    // NVMe typically doesn't require explicit rescanning like SCSI
-    // The kernel automatically detects new namespaces
-    return nil
+	// NVMe typically doesn't require explicit rescanning like SCSI
+	// The kernel automatically detects new namespaces
+	return nil
 }
+
 // HandleNvmeTcpDiscovery performs NVMe/TCP connection and device verification for a volume.
 func HandleNvmeTcpDiscovery(volume *model.Volume) error {
-    log.Tracef(">>>>> HandleNvmeTcpDiscovery for volume %s", volume.SerialNumber)
-    defer log.Trace("<<<<< HandleNvmeTcpDiscovery")
+	log.Tracef(">>>>> HandleNvmeTcpDiscovery for volume %s", volume.SerialNumber)
+	defer log.Trace("<<<<< HandleNvmeTcpDiscovery")
 
-    // 1. Apply NVMe/TCP tuning recommendations
-    if err := ApplyNvmeTcpTuning(); err != nil {
-        log.Warnf("Failed to apply NVMe TCP tuning: %v", err)
-        // Continue even if tuning fails
-    }
+	// 1. Apply NVMe/TCP tuning recommendations
+	if err := ApplyNvmeTcpTuning(); err != nil {
+		log.Warnf("Failed to apply NVMe TCP tuning: %v", err)
+		// Continue even if tuning fails
+	}
 
-    // 2. Prepare NVMe target info
-    target := &model.NvmeTarget{
-        NQN:     volume.Nqn,
-        Address: volume.TargetAddress,
-        Port:    volume.TargetPort,
-    }
+	// 2. Prepare NVMe target info
+	target := &model.NvmeTarget{
+		NQN:     volume.Nqn,
+		Address: volume.TargetAddress,
+		Port:    volume.TargetPort,
+	}
 
-    // 3. Perform discovery first to identify correct I/O portal(s)
-    discoveryIPs := volume.DiscoveryIPs
-    if len(discoveryIPs) == 0 && strings.TrimSpace(volume.TargetAddress) != "" {
-        discoveryIPs = strings.Split(volume.TargetAddress, ",")
-    }
-    endpoints, derr := discoverNvmeEndpoints(volume.Nqn, discoveryIPs)
-    if derr != nil {
-        log.Warnf("NVMe discover failed on %v: %v", discoveryIPs, derr)
-    }
-    // Prefer discovered endpoints; fall back to provided target if none found
-    if len(endpoints) > 0 {
-        // Build a combined target from discovered endpoints and reuse ConnectNvmeTarget
-        var epIPs []string
-        var epPort string
-        for _, ep := range endpoints {
-            if strings.TrimSpace(ep.IP) != "" {
-                epIPs = append(epIPs, ep.IP)
-            }
-            if epPort == "" && strings.TrimSpace(ep.Port) != "" {
-                epPort = strings.TrimSpace(ep.Port)
-            }
-        }
-        if epPort == "" {
-            epPort = defaultNvmePort
-        }
-        discTarget := &model.NvmeTarget{
-            NQN:     volume.Nqn,
-            Address: strings.Join(epIPs, ","),
-            Port:    epPort,
-        }
-        if err := ConnectNvmeTarget(discTarget); err != nil {
-            return fmt.Errorf("failed to connect to NVMe target %s via discovered endpoints: %v", volume.Nqn, err)
-        }
-    } else {
-        // Fallback: direct connect using provided target address
-        if err := ConnectNvmeTarget(target); err != nil {
-            return fmt.Errorf("failed to connect to NVMe target: %v", err)
-        }
-    }
+	// 3. Perform discovery first to identify correct I/O portal(s)
+	discoveryIPs := volume.DiscoveryIPs
+	if len(discoveryIPs) == 0 && strings.TrimSpace(volume.TargetAddress) != "" {
+		discoveryIPs = strings.Split(volume.TargetAddress, ",")
+	}
+	endpoints, derr := discoverNvmeEndpoints(volume.Nqn, discoveryIPs)
+	if derr != nil {
+		log.Warnf("NVMe discover failed on %v: %v", discoveryIPs, derr)
+	}
+	// Prefer discovered endpoints; fall back to provided target if none found
+	if len(endpoints) > 0 {
+		// Build a combined target from discovered endpoints and reuse ConnectNvmeTarget
+		var epIPs []string
+		var epPort string
+		for _, ep := range endpoints {
+			if strings.TrimSpace(ep.IP) != "" {
+				epIPs = append(epIPs, ep.IP)
+			}
+			if epPort == "" && strings.TrimSpace(ep.Port) != "" {
+				epPort = strings.TrimSpace(ep.Port)
+			}
+		}
+		if epPort == "" {
+			epPort = defaultNvmePort
+		}
+		discTarget := &model.NvmeTarget{
+			NQN:     volume.Nqn,
+			Address: strings.Join(epIPs, ","),
+			Port:    epPort,
+		}
+		if err := ConnectNvmeTarget(discTarget); err != nil {
+			return fmt.Errorf("failed to connect to NVMe target %s via discovered endpoints: %v", volume.Nqn, err)
+		}
+	} else {
+		// Fallback: direct connect using provided target address
+		if err := ConnectNvmeTarget(target); err != nil {
+			return fmt.Errorf("failed to connect to NVMe target: %v", err)
+		}
+	}
 
-    // 4. Optionally, verify device presence (wait for /dev/nvmeXnY)
-    found := false
-    for i := 0; i < 10; i++ {
-        devices, _ := FindNvmeDevices(volume.SerialNumber)
-        if len(devices) > 0 {
-            found = true
-            break
-        }
-        time.Sleep(1 * time.Second)
-    }
-    if !found {
-        return fmt.Errorf("NVMe device for serial %s not found after connect", volume.SerialNumber)
-    }
+	// 4. Optionally, verify device presence (wait for /dev/nvmeXnY)
+	found := false
+	for i := 0; i < 10; i++ {
+		devices, _ := FindNvmeDevices(volume.SerialNumber)
+		if len(devices) > 0 {
+			found = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if !found {
+		return fmt.Errorf("NVMe device for serial %s not found after connect", volume.SerialNumber)
+	}
 
-    return nil
+	return nil
 }
 
 // nvmeEndpoint represents an NVMe/TCP I/O portal discovered via nvme discover
 type nvmeEndpoint struct {
-    IP    string
-    Port  string
-    Subnqn string
+	IP     string
+	Port   string
+	Subnqn string
 }
 
 // discoverNvmeEndpoints runs nvme discover on the given discovery IPs and returns I/O portals matching the NQN
 func discoverNvmeEndpoints(nqn string, discoveryIPs []string) ([]nvmeEndpoint, error) {
-    var eps []nvmeEndpoint
-    if len(discoveryIPs) == 0 {
-        return eps, fmt.Errorf("no discovery IPs provided")
-    }
-    for _, ip := range discoveryIPs {
-        // Sanitize IP address (remove whitespace,* and other invalid format)
-        ip = util.SanitizeIPAddress(ip)       
-        args := []string{
-            "discover",
-            "-t", "tcp",
-            "-a", ip,
-            "-s", nvmeDiscoveryPort,
-        }
-        out, rc, err := util.ExecCommandOutput(nvmecmd, args)
-        if err != nil || rc != 0 {
-            log.Warnf("NVMe discover failed on %s:%s: %v", ip, nvmeDiscoveryPort, err)
-            continue
-        }
-        parsed := parseDiscoveryOutput(out, nqn)
-        eps = append(eps, parsed...)
-    }
-    return eps, nil
+	var eps []nvmeEndpoint
+	if len(discoveryIPs) == 0 {
+		return eps, fmt.Errorf("no discovery IPs provided")
+	}
+	// "nvme discover" leaves a persistent discovery controller behind on every
+	// call. Reap them once discovery is done so they don't accumulate as orphaned
+	// "live" discovery controllers - otherwise they pile up (thousands over time)
+	// and make every subsequent NVMe operation on the node extremely slow because
+	// the kernel has to walk every controller.
+	defer reapNvmeDiscoveryControllers()
+	for _, ip := range discoveryIPs {
+		// Sanitize IP address (remove whitespace,* and other invalid format)
+		ip = util.SanitizeIPAddress(ip)
+		args := []string{
+			"discover",
+			"-t", "tcp",
+			"-a", ip,
+			"-s", nvmeDiscoveryPort,
+		}
+		out, rc, err := nvmeExecCommandOutput(nvmecmd, args)
+		if err != nil || rc != 0 {
+			log.Warnf("NVMe discover failed on %s:%s: %v", ip, nvmeDiscoveryPort, err)
+			continue
+		}
+		parsed := parseDiscoveryOutput(out, nqn)
+		eps = append(eps, parsed...)
+	}
+	return eps, nil
+}
+
+// reapNvmeDiscoveryControllers disconnects all NVMe discovery controllers
+// (subsystem NQN nqn.2014-08.org.nvmexpress.discovery). Discovery controllers
+// carry no namespaces, so disconnecting them is always safe. This prevents the
+// unbounded accumulation of orphaned discovery controllers created by
+// "nvme discover" on every NodeStageVolume.
+func reapNvmeDiscoveryControllers() {
+	out, _, err := nvmeExecCommandOutput(nvmecmd, []string{"disconnect", "-n", nvmeDiscoveryNQN})
+	if err != nil {
+		log.Tracef("No NVMe discovery controllers to reap (or disconnect failed): %v (%s)", err, strings.TrimSpace(out))
+		return
+	}
+	log.Debugf("Reaped NVMe discovery controllers (%s): %s", nvmeDiscoveryNQN, strings.TrimSpace(out))
 }
 
 // parseDiscoveryOutput extracts traddr/trsvcid/subnqn entries from nvme discover output
 func parseDiscoveryOutput(output string, wantedNqn string) []nvmeEndpoint {
-    lines := strings.Split(output, "\n")
-    var eps []nvmeEndpoint
-    var cur nvmeEndpoint
-    for _, line := range lines {
-        l := strings.TrimSpace(line)
-        if l == "" {
-            continue
-        }
-        if strings.HasPrefix(l, "=====") {
-            // new entry delimiter; flush previous if complete
-            if cur.IP != "" && cur.Port != "" && cur.Subnqn != "" {
-                if wantedNqn == "" || cur.Subnqn == wantedNqn {
-                    eps = append(eps, cur)
-                }
-            }
-            cur = nvmeEndpoint{}
-            continue
-        }
-        if strings.HasPrefix(l, "subnqn:") {
-            cur.Subnqn = strings.TrimSpace(strings.TrimPrefix(l, "subnqn:"))
-            continue
-        }
-        if strings.HasPrefix(l, "traddr:") {
-            cur.IP = strings.TrimSpace(strings.TrimPrefix(l, "traddr:"))
-            continue
-        }
-        if strings.HasPrefix(l, "trsvcid:") {
-            cur.Port = strings.TrimSpace(strings.TrimPrefix(l, "trsvcid:"))
-            continue
-        }
-    }
-    // flush last entry
-    if cur.IP != "" && cur.Port != "" && cur.Subnqn != "" {
-        if wantedNqn == "" || cur.Subnqn == wantedNqn {
-            eps = append(eps, cur)
-        }
-    }
-    return eps
+	lines := strings.Split(output, "\n")
+	var eps []nvmeEndpoint
+	var cur nvmeEndpoint
+	for _, line := range lines {
+		l := strings.TrimSpace(line)
+		if l == "" {
+			continue
+		}
+		if strings.HasPrefix(l, "=====") {
+			// new entry delimiter; flush previous if complete
+			if cur.IP != "" && cur.Port != "" && cur.Subnqn != "" {
+				if wantedNqn == "" || cur.Subnqn == wantedNqn {
+					eps = append(eps, cur)
+				}
+			}
+			cur = nvmeEndpoint{}
+			continue
+		}
+		if strings.HasPrefix(l, "subnqn:") {
+			cur.Subnqn = strings.TrimSpace(strings.TrimPrefix(l, "subnqn:"))
+			continue
+		}
+		if strings.HasPrefix(l, "traddr:") {
+			cur.IP = strings.TrimSpace(strings.TrimPrefix(l, "traddr:"))
+			continue
+		}
+		if strings.HasPrefix(l, "trsvcid:") {
+			cur.Port = strings.TrimSpace(strings.TrimPrefix(l, "trsvcid:"))
+			continue
+		}
+	}
+	// flush last entry
+	if cur.IP != "" && cur.Port != "" && cur.Subnqn != "" {
+		if wantedNqn == "" || cur.Subnqn == wantedNqn {
+			eps = append(eps, cur)
+		}
+	}
+	return eps
 }
-
 
 // DisconnectNVMeTargetByNQN disconnects all NVMe controllers for a given subsystem NQN
 func DisconnectNVMeTargetByNQN(subsysNQN string) error {
-    if subsysNQN == "" {
-        return fmt.Errorf("subsystem NQN is empty")
-    }
-    cmd := exec.Command("nvme", "disconnect", "-n", subsysNQN)
-    output, err := cmd.CombinedOutput()
-    if err != nil {
-        log.Errorf("Failed to disconnect NVMe subsystem NQN %s: %s, output: %s", subsysNQN, err.Error(), string(output))
-        return err
-    }
-    log.Infof("Disconnected NVMe subsystem NQN %s successfully", subsysNQN)
-    return nil
+	if subsysNQN == "" {
+		return fmt.Errorf("subsystem NQN is empty")
+	}
+	cmd := exec.Command("nvme", "disconnect", "-n", subsysNQN)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Errorf("Failed to disconnect NVMe subsystem NQN %s: %s, output: %s", subsysNQN, err.Error(), string(output))
+		return err
+	}
+	log.Infof("Disconnected NVMe subsystem NQN %s successfully", subsysNQN)
+	return nil
 }
 
 // FindNvmeDevices searches for NVMe devices matching the given serial number
 func FindNvmeDevices(serialNumber string) ([]string, error) {
-    var devices []string
-    
-    // Scan /dev for nvme devices
-    files, err := ioutil.ReadDir("/dev")
-    if err != nil {
-        return nil, err
-    }
-    
-    nvmeRegex := regexp.MustCompile(`^nvme\d+n\d+$`)
-    for _, f := range files {
-        if nvmeRegex.MatchString(f.Name()) {
-            devicePath := filepath.Join("/dev", f.Name())
-            
-             // Check serial number via sysfs
-            sysfsSerialPath := fmt.Sprintf("/sys/class/block/%s/subsystem/%s/nguid", f.Name(), f.Name())
-            log.Tracef("serial path=%s", sysfsSerialPath)
-            if serial, err := util.FileReadFirstLine(sysfsSerialPath); err == nil {
-                // Normalize the serial from sysfs by removing dashes and whitespace
-                normalizedSerial := strings.ReplaceAll(strings.TrimSpace(serial), "-", "")
-                log.Tracef("found serial number %s, normalized: %s", serial, normalizedSerial)
-                if strings.TrimSpace(normalizedSerial) == serialNumber {
-                    devices = append(devices, devicePath)
-                }
-            }
-            
-            // Also check if the device name itself matches (for namespace matching)
-            if f.Name() == serialNumber {
-                devices = append(devices, devicePath)
-            }
-        }
-    }
-    
-    return devices, nil
+	var devices []string
+
+	// Scan /dev for nvme devices
+	files, err := ioutil.ReadDir("/dev")
+	if err != nil {
+		return nil, err
+	}
+
+	nvmeRegex := regexp.MustCompile(`^nvme\d+n\d+$`)
+	for _, f := range files {
+		if nvmeRegex.MatchString(f.Name()) {
+			devicePath := filepath.Join("/dev", f.Name())
+
+			// Check serial number via sysfs
+			sysfsSerialPath := fmt.Sprintf("/sys/class/block/%s/subsystem/%s/nguid", f.Name(), f.Name())
+			log.Tracef("serial path=%s", sysfsSerialPath)
+			if serial, err := util.FileReadFirstLine(sysfsSerialPath); err == nil {
+				// Normalize the serial from sysfs by removing dashes and whitespace
+				normalizedSerial := strings.ReplaceAll(strings.TrimSpace(serial), "-", "")
+				log.Tracef("found serial number %s, normalized: %s", serial, normalizedSerial)
+				if strings.TrimSpace(normalizedSerial) == serialNumber {
+					devices = append(devices, devicePath)
+				}
+			}
+
+			// Also check if the device name itself matches (for namespace matching)
+			if f.Name() == serialNumber {
+				devices = append(devices, devicePath)
+			}
+		}
+	}
+
+	return devices, nil
 }

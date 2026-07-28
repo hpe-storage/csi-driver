@@ -49,7 +49,7 @@ const (
 	// lrwxrwxrwx 1 root root 0 Mar  8 16:51 sdg -> ../devices/platform/host4/session2/target4:0:0/4:0:0:2/block/sdg
 	deviceByHctlPatternFmt = ".*%s:%s:%s:%s.*block/(?P<diskname>.*)"
 	lunNotSupportedErr     = "LOGICAL UNIT NOT SUPPORTED"
-	nvmeDevicePattern = "nvme[0-9]+n[0-9]+"
+	nvmeDevicePattern      = "nvme[0-9]+n[0-9]+"
 )
 
 var (
@@ -360,7 +360,7 @@ func getSizeOfDeviceInMiB(minorDev string, device *model.Device) (int64, error) 
 	return sizeInSector / sectorstoMiBFactor, nil
 }
 
-//GetMpathName for device
+// GetMpathName for device
 func getMpathName(dev *model.Device) (m string, err error) {
 	log.Trace(">>>>> GetMpathName")
 	defer log.Trace("<<<<< GetMpathName")
@@ -410,7 +410,12 @@ func rescanLoginVolume(volume *model.Volume) error {
 	primaryVolObj.SerialNumber = volume.SerialNumber
 	primaryVolObj.Networks = volume.Networks
 	primaryVolObj.Nqn = volume.Nqn
-	primaryVolObj.TargetAddress = strings.Join(volume.DiscoveryIPs, ",")
+	if strings.EqualFold(volume.AccessProtocol, "fc") {
+		// For FC, preserve the original TargetAddress which contains target port WWPNs
+		primaryVolObj.TargetAddress = volume.TargetAddress
+	} else {
+		primaryVolObj.TargetAddress = strings.Join(volume.DiscoveryIPs, ",")
+	}
 	primaryVolObj.TargetPort = volume.TargetPort
 
 	err = rescanLoginVolumeForBackend(primaryVolObj)
@@ -449,19 +454,31 @@ func rescanLoginVolumeForBackend(volObj *model.Volume) error {
 	log.Traceln("Called rescanLoginVolumeForBackend", volObj, "and accessProtocol", volObj.AccessProtocol)
 	var err error
 	if strings.EqualFold(volObj.AccessProtocol, "fc") {
-		// FC volume
-
-		err = RescanFcTarget(volObj.LunID)
+		// FC volume — scope rescan to hosts connected to this volume's target ports
+		fcTargetWwpns := getFcTargetWwpns(volObj)
+		if len(fcTargetWwpns) > 0 {
+			fcHosts, fcErr := GetFcHostNumbersForTargetWwpns(fcTargetWwpns)
+			if fcErr == nil && len(fcHosts) > 0 {
+				log.Infof("scoped FC rescan to hosts %v for lun %s", fcHosts, volObj.LunID)
+				err = RescanFcHostsForLun(fcHosts, volObj.LunID)
+			} else {
+				log.Infof("no scoped FC hosts for target WWPNs (err=%v); falling back to full rescan for lun %s", fcErr, volObj.LunID)
+				err = RescanFcTarget(volObj.LunID)
+			}
+		} else {
+			log.Infof("no FC target WWPNs available, performing full FC rescan for lun %s", volObj.LunID)
+			err = RescanFcTarget(volObj.LunID)
+		}
 		if err != nil {
 			return err
 		}
 	} else if strings.EqualFold(volObj.AccessProtocol, nvmetcp) {
-        // NVMe over TCP volume
-        err = HandleNvmeTcpDiscovery(volObj)
-        if err != nil {
-            return err
-        }
-	}else {
+		// NVMe over TCP volume
+		err = HandleNvmeTcpDiscovery(volObj)
+		if err != nil {
+			return err
+		}
+	} else {
 		// Check if client intends us to specifically login using multiple IP addresses(cloud volumes)
 		if len(volObj.Networks) > 0 {
 			// check if ifaces are created and enable port binding
@@ -504,18 +521,18 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 	log.Debugf(">>>> createLinuxDevice called with volume %s serialNumber %s and lunID %s", volume.Name, volume.SerialNumber, volume.LunID)
 	defer log.Debug("<<<<< createLinuxDevice")
 
-	 // Handle NVMe/TCP device creation
-    if strings.EqualFold(volume.AccessProtocol, "nvmetcp") {
-        log.Tracef("NVMe/TCP requested, NQN: %s, Serial: %s", volume.Nqn, volume.SerialNumber)
-        // Initiate NVMe/TCP discovery and connection
-        if err := rescanLoginVolume(volume); err != nil {
-            return nil, fmt.Errorf("NVMe/TCP discovery failed: %v", err)
-        }
-        // Allow time for device to register
-        time.Sleep(time.Second * 2)
-        // Attempt to locate NVMe device by NQN or Serial
-        nvmeDev, lookupErr := GetNvmeDeviceFromNamespace(volume.Nqn)
-        if lookupErr == nil && nvmeDev != nil {
+	// Handle NVMe/TCP device creation
+	if strings.EqualFold(volume.AccessProtocol, "nvmetcp") {
+		log.Tracef("NVMe/TCP requested, NQN: %s, Serial: %s", volume.Nqn, volume.SerialNumber)
+		// Initiate NVMe/TCP discovery and connection
+		if err := rescanLoginVolume(volume); err != nil {
+			return nil, fmt.Errorf("NVMe/TCP discovery failed: %v", err)
+		}
+		// Allow time for device to register
+		time.Sleep(time.Second * 2)
+		// Attempt to locate NVMe device by NQN or Serial
+		nvmeDev, lookupErr := GetNvmeDeviceFromNamespace(volume.Nqn)
+		if lookupErr == nil && nvmeDev != nil {
 			// Populate NVMe targets
 			nvmeDev.NvmeTargets = []*model.NvmeTarget{
 				{
@@ -524,7 +541,7 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 					Port:    volume.TargetPort,
 				},
 			}
-            log.Infof("NVMe/TCP device found: %+v", nvmeDev)
+			log.Infof("NVMe/TCP device found: %+v", nvmeDev)
 			// Apply host encryption for NVMe if requested
 			if volume.EncryptionKey != "" {
 				devPath := nvmeDev.Pathname
@@ -561,12 +578,12 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 				nvmeDev.LuksPathname = mappedName
 				nvmeDev.AltFullLuksPathName = "/dev/mapper/" + mappedName
 			}
-            return nvmeDev, nil
-        }
-        // Fallback to SerialNumber if NQN lookup fails
-        nvmeDev, lookupErr = GetNvmeDeviceFromNamespace(volume.SerialNumber)
-        if lookupErr == nil && nvmeDev != nil {
-            log.Infof("NVMe/TCP device found by serial: %+v", nvmeDev)
+			return nvmeDev, nil
+		}
+		// Fallback to SerialNumber if NQN lookup fails
+		nvmeDev, lookupErr = GetNvmeDeviceFromNamespace(volume.SerialNumber)
+		if lookupErr == nil && nvmeDev != nil {
+			log.Infof("NVMe/TCP device found by serial: %+v", nvmeDev)
 			// Apply host encryption for NVMe if requested
 			if volume.EncryptionKey != "" {
 				devPath := nvmeDev.Pathname
@@ -603,11 +620,11 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 				nvmeDev.LuksPathname = mappedName
 				nvmeDev.AltFullLuksPathName = "/dev/mapper/" + mappedName
 			}
-            return nvmeDev, nil
-        }
-        return nil, fmt.Errorf("unable to locate NVMe/TCP device for NQN %s or serial %s", volume.Nqn, volume.SerialNumber)
-    }
-	
+			return nvmeDev, nil
+		}
+		return nil, fmt.Errorf("unable to locate NVMe/TCP device for NQN %s or serial %s", volume.Nqn, volume.SerialNumber)
+	}
+
 	// Rescan and detect the newly attached volume
 	err = rescanLoginVolume(volume)
 	if err != nil {
@@ -699,7 +716,7 @@ func createLinuxDevice(volume *model.Volume) (dev *model.Device, err error) {
 	return nil, fmt.Errorf("device not found with serial %s or target %s", volume.SerialNumber, volume.Iqn)
 }
 
-//nolint : gocyclo
+// nolint : gocyclo
 func cleanupStaleScsiPaths(volume *model.Volume) (err error) {
 	log.Tracef(">>>>> cleanupStaleScsiPaths called for %s", volume.Name)
 	defer log.Tracef("<<<<<< cleanupStaleScsiPaths")
@@ -738,10 +755,10 @@ func cleanupStaleScsiPaths(volume *model.Volume) (err error) {
 		// obtain current path serial using sysfs vpd80 page
 		var serialNumber string
 		vendorName, _ := getVendorFromSysfs(h, c, t, l)
-		if strings.Contains(vendorName, "3PARdata"){
+		if strings.Contains(vendorName, "3PARdata") {
 			serialNumber, err = getWwidFromSysfs(h, c, t, l)
-		}else {
-		// obtain current path serial using sysfs vpd80 page
+		} else {
+			// obtain current path serial using sysfs vpd80 page
 			serialNumber, err = getVpd80FromSysfs(h, c, t, l)
 		}
 		//serialNumber, err = getVpd80FromSysfs(h, c, t, l)
@@ -809,7 +826,6 @@ func handleOrphanPaths(volume *model.Volume) error {
 
 }
 
-
 // handleOrphanPathsForSerialAndLunId deletes orphan SCSI paths that belong to
 // the volume identified by serialNumber and lunID, then triggers a targeted
 // per-H:C:T:L rescan so only the affected host adapter port is rescanned.
@@ -841,9 +857,26 @@ func handleOrphanPathsForSerialAndLunId(serialNumber, lunID string) error {
 	return nil
 }
 
+// getFcTargetWwpns extracts FC target port WWPNs from the volume's TargetAddress field.
+// Returns nil if the volume is not FC or has no target address.
+func getFcTargetWwpns(volume *model.Volume) []string {
+	if !strings.EqualFold(volume.AccessProtocol, "fc") || volume.TargetAddress == "" {
+		return nil
+	}
+	wwpns := strings.Split(volume.TargetAddress, ",")
+	var result []string
+	for _, w := range wwpns {
+		w = strings.TrimSpace(w)
+		if w != "" {
+			result = append(result, w)
+		}
+	}
+	return result
+}
+
 // find if an existing lun has been remapped with new lun provided
 // if found, remove old paths and rescan new lun paths
-// nolint : gocyclo
+//nolint:gocyclo
 func handleRemappedLun(volume *model.Volume) (err error) {
 	log.Tracef(">>> handleRemappedLun called with volume %s serial %s lun %s", volume.Name, volume.SerialNumber, volume.LunID)
 	defer log.Tracef("<<< handleRemappedLun")
@@ -859,14 +892,14 @@ func handleRemappedLun(volume *model.Volume) (err error) {
 		// format it into /proc/scsi/scsi format for matching eg: Lun: 00
 		lunID = "0" + volume.LunID
 	}
-	err = handleRemapForSpecificLunID(volume.SerialNumber, lunID, volume.AccessProtocol)
+	err = handleRemapForSpecificLunID(volume.SerialNumber, lunID, volume.AccessProtocol, volume.TargetNames(), getFcTargetWwpns(volume))
 	if err != nil {
 		return err
 	}
 	lunIdArray := util.GetSecondaryArrayLUNIds(volume.SecondaryArrayDetails)
 	if len(lunIdArray) > 0 {
 		for _, secLunID := range lunIdArray {
-			err = handleRemapForSpecificLunID(volume.SerialNumber, "0"+strconv.Itoa(int(secLunID)), volume.AccessProtocol)
+			err = handleRemapForSpecificLunID(volume.SerialNumber, "0"+strconv.Itoa(int(secLunID)), volume.AccessProtocol, volume.TargetNames(), getFcTargetWwpns(volume))
 			if err != nil {
 				return err
 			}
@@ -875,7 +908,7 @@ func handleRemappedLun(volume *model.Volume) (err error) {
 	return nil
 
 }
-func handleRemapForSpecificLunID(serialNumber, lunID, accessProtocol string) (err error) {
+func handleRemapForSpecificLunID(serialNumber, lunID, accessProtocol string, targetIqns []string, fcTargetWwpns []string) (err error) {
 	// example output from /proc/scsi/scsi
 	// Host: scsi7 Channel: 00 Id: 00 Lun: 00
 	procScsiRealPath := getProcScsiPath()
@@ -886,12 +919,40 @@ func handleRemapForSpecificLunID(serialNumber, lunID, accessProtocol string) (er
 		return err
 	}
 
+	// Determine which hosts belong to this volume's targets to avoid false
+	// remap detection when another array has a volume at the same LUN ID.
+	var scopedHostSet map[string]bool
+	if strings.EqualFold(accessProtocol, "fc") && len(fcTargetWwpns) > 0 {
+		scopedHosts, err := GetFcHostNumbersForTargetWwpns(fcTargetWwpns)
+		if err == nil && len(scopedHosts) > 0 {
+			scopedHostSet = make(map[string]bool)
+			for _, h := range scopedHosts {
+				scopedHostSet[h] = true
+			}
+			log.Infof("remap check scoped to FC hosts %v for lun %s", scopedHosts, lunID)
+		}
+	} else if !strings.EqualFold(accessProtocol, "fc") && len(targetIqns) > 0 {
+		scopedHosts, err := GetIscsiHostNumbersForTargetIqns(targetIqns)
+		if err == nil && len(scopedHosts) > 0 {
+			scopedHostSet = make(map[string]bool)
+			for _, h := range scopedHosts {
+				scopedHostSet[h] = true
+			}
+			log.Infof("remap check scoped to hosts %v for lun %s", scopedHosts, lunID)
+		}
+	}
+
 	for _, pathStr := range paths {
 		// parse h:c:t:l info
 		h, c, t, l, err := parseHctl(pathStr)
 		if err != nil {
 			log.Debugf("unable to parse h:c:t:l info from %s, err %s", procScsiRealPath, err.Error())
 			// continue with other paths as best effort
+			continue
+		}
+		// Skip paths on hosts that don't belong to this volume's targets
+		if scopedHostSet != nil && !scopedHostSet[h] {
+			log.Tracef("skipping remap check for host %s (not in scoped hosts)", h)
 			continue
 		}
 		// refresh path serial and update paths if its remapped lun
@@ -907,11 +968,30 @@ func handleRemapForSpecificLunID(serialNumber, lunID, accessProtocol string) (er
 		}
 		// cleanup multipath device and all its paths, as we found its remapped with different LUN underneath
 		cleanupUnmappedDevice(oldSerial, lunID)
-		// perform SCSI lun rescan to discover new volume paths
+		// perform SCSI lun rescan to discover new volume paths.
+		// Scope the rescan to hosts connected to this volume's targets.
 		if strings.EqualFold(accessProtocol, "fc") {
-			RescanFcTarget(l)
+			if scopedHostSet != nil {
+				var hostList []string
+				for h := range scopedHostSet {
+					hostList = append(hostList, h)
+				}
+				log.Infof("scoped FC remap rescan to hosts %v for lun %s", hostList, l)
+				RescanFcHostsForLun(hostList, l)
+			} else {
+				RescanFcTarget(l)
+			}
 		} else {
-			RescanIscsi(l)
+			if scopedHostSet != nil {
+				var hostList []string
+				for h := range scopedHostSet {
+					hostList = append(hostList, h)
+				}
+				log.Infof("scoped remap rescan to hosts %v for lun %s", hostList, l)
+				RescanIscsiHostsForLun(hostList, l)
+			} else {
+				RescanIscsi(l)
+			}
 		}
 		// we found the remapped volume, we can skip rest of the paths as they are cleaned up at once above
 		break
@@ -987,13 +1067,13 @@ func cleanupUnmappedDevice(oldSerial string, volumelunID string) error {
 						}
 						var currentSerial string
 						vendorName, _ := getVendorFromSysfs(h, c, t, l)
-						if strings.Contains(vendorName, "3PARdata"){
+						if strings.Contains(vendorName, "3PARdata") {
 							currentSerial, err = getWwidFromSysfs(h, c, t, l)
-						}else {
-						// obtain current path serial using sysfs vpd80 page
+						} else {
+							// obtain current path serial using sysfs vpd80 page
 							currentSerial, err = getVpd80FromSysfs(h, c, t, l)
-						}						
-						
+						}
+
 						//currentSerial, err = getVpd80FromSysfs(h, c, t, l)
 						if err != nil {
 							log.Debugf("unable to get serial for h:c:t:l %s:%s:%s:%s err=%s, continue with other paths", h, c, t, l, err.Error())
@@ -1043,13 +1123,13 @@ func checkRemappedLunPath(h string, c string, t string, l string, serial string,
 		return false, "", err
 	}
 	vendorName, _ := getVendorFromSysfs(h, c, t, l)
-	if strings.Contains(vendorName, "3PARdata"){
+	if strings.Contains(vendorName, "3PARdata") {
 		oldSerial, err = getWwidFromSysfs(h, c, t, l)
-	}else {
+	} else {
 		// obtain current path serial using sysfs vpd80 page
 		oldSerial, err = getVpd80FromSysfs(h, c, t, l)
 	}
-	
+
 	if err != nil {
 		return false, "", err
 	}
@@ -1063,10 +1143,10 @@ func checkRemappedLunPath(h string, c string, t string, l string, serial string,
 		log.Debugf("%s:%s:%s:%s lun-id %s is in offline state, assuming remapped-lun", h, c, t, l, lunID)
 		return true, oldSerial, nil
 	}
-   	if strings.Contains(vendorName, "3PARdata"){
-			log.Debugf("found remapped lun with oldserial %s and Serial %s", oldSerial, serial)		
-	} else{
-	// check for serial number mismatch
+	if strings.Contains(vendorName, "3PARdata") {
+		log.Debugf("found remapped lun with oldserial %s and Serial %s", oldSerial, serial)
+	} else {
+		// check for serial number mismatch
 		updatedSerial, err := getDeviceSerialByHctl(h, c, t, l)
 		if err != nil {
 			// continue with other paths
@@ -1076,9 +1156,9 @@ func checkRemappedLunPath(h string, c string, t string, l string, serial string,
 		if updatedSerial != serial {
 			return false, "", nil
 		}
-		log.Debugf("found remapped lun with oldserial %s and updatedSerial %s", oldSerial, updatedSerial)		
+		log.Debugf("found remapped lun with oldserial %s and updatedSerial %s", oldSerial, updatedSerial)
 	}
-	
+
 	// updated path serial matches serial of the new lun attached
 
 	return true, oldSerial, nil
@@ -1142,7 +1222,7 @@ func getDeviceState(h string, c string, t string, l string) (state string, err e
 	return state, nil
 }
 
-func getVendorFromSysfs(h string, c string, t string, l string) (vendorName string, err error){
+func getVendorFromSysfs(h string, c string, t string, l string) (vendorName string, err error) {
 	log.Tracef(">>>>> getVendorFromSysfs")
 	vendorPath := fmt.Sprintf("/sys/class/scsi_device/%s:%s:%s:%s/device/vendor", h, c, t, l)
 	out, err := util.FileReadFirstLine(vendorPath)
@@ -1150,10 +1230,10 @@ func getVendorFromSysfs(h string, c string, t string, l string) (vendorName stri
 	if err != nil {
 		return "", err
 	}
-    return out, nil
+	return out, nil
 }
 
-func getWwidFromSysfs(h string, c string, t string, l string) (serial string, err error){
+func getWwidFromSysfs(h string, c string, t string, l string) (serial string, err error) {
 
 	log.Tracef(">>>>> getWwidFromSysfs")
 
@@ -1166,11 +1246,10 @@ func getWwidFromSysfs(h string, c string, t string, l string) (serial string, er
 	// extract serial from format: naa.60002ac0000000000a0066ef0001db2c
 	entries := strings.Split(wwidOut, ".")
 	if len(entries) > 1 {
-	   return entries[1], nil
+		return entries[1], nil
 	}
 	return "", fmt.Errorf("invalid serial number found with wwid %s", wwidOut)
-	
-	
+
 }
 
 func getVpd80FromSysfs(h string, c string, t string, l string) (serial string, err error) {
@@ -1223,7 +1302,7 @@ func GetDeviceFromVolume(vol *model.Volume) (*model.Device, error) {
 			log.Debugf("Found NVMe device: %+v", nvmeDev)
 			return nvmeDev, nil
 		}
-	}else{
+	} else {
 		devices, err := GetLinuxDmDevices(false, vol)
 		if err != nil {
 			return nil, err
@@ -1240,7 +1319,7 @@ func GetDeviceFromVolume(vol *model.Volume) (*model.Device, error) {
 	return nil, fmt.Errorf("device not found for volume %s with access protocol %s", vol.Name, vol.AccessProtocol)
 }
 
-//CreateLinuxDevices : attached and creates linux devices to host
+// CreateLinuxDevices : attached and creates linux devices to host
 func CreateLinuxDevices(vols []*model.Volume) (devs []*model.Device, err error) {
 	log.Tracef(">>>>> CreateLinuxDevices")
 	defer log.Trace("<<<<< CreateLinuxDevices")
@@ -1524,13 +1603,13 @@ func rescanNVMeDevice(devPath string) error {
 		log.Tracef("Skipping explicit nvme namespace rescan for block devices and replying on kernal auto-resize")
 	}
 
-    // 2) Primary: settle udev so block layer reflects new size
-    log.Tracef("running udevadm settle after NVMe rescan for %s", devPath)
-    out, exitStatus, err := util.ExecCommandOutput("udevadm", []string{"settle"})
-    if err != nil {
-        log.Warnf("udevadm settle failed for %s: %v (output: %s, exit code: %d)", devPath, err, out, exitStatus)
-    }
-    
+	// 2) Primary: settle udev so block layer reflects new size
+	log.Tracef("running udevadm settle after NVMe rescan for %s", devPath)
+	out, exitStatus, err := util.ExecCommandOutput("udevadm", []string{"settle"})
+	if err != nil {
+		log.Warnf("udevadm settle failed for %s: %v (output: %s, exit code: %d)", devPath, err, out, exitStatus)
+	}
+
 	return nil
 }
 
@@ -1609,7 +1688,7 @@ func ExpandDevice(targetPath string, volAccessType model.VolumeAccessType, acces
 			return fmt.Errorf("unable to perform rescan to update device capacity for %s, error :%s", devPath, err.Error())
 		}
 	}
-	
+
 	// resize filesystem
 	fsType, err := GetFilesystemType(devPath)
 	if err != nil {
@@ -1659,193 +1738,209 @@ func isMappedLuksDevice(devPath string) (bool, error) {
 
 // Helper function to parse NVMe address format
 func parseNvmeAddress(addrStr string) (ip string, port string) {
-    // Format: traddr=192.168.1.100,trsvcid=4420
-    parts := strings.Split(addrStr, ",")
-    for _, part := range parts {
-        if strings.HasPrefix(part, "traddr=") {
-            ip = strings.TrimPrefix(part, "traddr=")
-        } else if strings.HasPrefix(part, "trsvcid=") {
-            port = strings.TrimPrefix(part, "trsvcid=")
-        }
-    }
-    return ip, port
+	// Format: traddr=192.168.1.100,trsvcid=4420
+	parts := strings.Split(addrStr, ",")
+	for _, part := range parts {
+		if strings.HasPrefix(part, "traddr=") {
+			ip = strings.TrimPrefix(part, "traddr=")
+		} else if strings.HasPrefix(part, "trsvcid=") {
+			port = strings.TrimPrefix(part, "trsvcid=")
+		}
+	}
+	return ip, port
 }
+
+// nvmeReadDir and readNvmeNamespaceNguid are indirection points for GetNvmeDeviceFromNamespace,
+// overridable in tests so device discovery can be exercised without real /dev and /sys entries.
+var (
+	nvmeReadDir = ioutil.ReadDir
+
+	readNvmeNamespaceNguid = func(deviceName string) (string, error) {
+		// e.g. /sys/class/block/nvme0n1/subsystem/nvme0n1/nguid
+		// serial format: 60002ac0-0000-003e-0002-ac940002b10c
+		sysfsSerialPath := fmt.Sprintf("/sys/class/block/%s/subsystem/%s/nguid", deviceName, deviceName)
+		log.Tracef("serial path=%s", sysfsSerialPath)
+		return util.FileReadFirstLine(sysfsSerialPath)
+	}
+)
+
 // GetNvmeDeviceFromNamespace returns NVMe device path for given namespace or serial
 // NVMe namespace:
-// - A namespace is a block storage entity within an NVMe subsystem, analogous to a LUN.
-// - Each NVMe controller exposes one or more namespaces (n1, n2, ...), which appear as
-//   /dev/nvmeXnY devices (e.g., nvme0n1).
-// - Namespaces have identifiers such as NGUID/EUI64 and belong to an NVMe subsystem (NQN).
-// - Over NVMe/TCP, after connecting to a subsystem (by NQN), the host maps namespaces
-//   to local block devices; this function tries to locate those devices via namespace
-//   identifiers (NGUID) or by matching the device name.
+//   - A namespace is a block storage entity within an NVMe subsystem, analogous to a LUN.
+//   - Each NVMe controller exposes one or more namespaces (n1, n2, ...), which appear as
+//     /dev/nvmeXnY devices (e.g., nvme0n1).
+//   - Namespaces have identifiers such as NGUID/EUI64 and belong to an NVMe subsystem (NQN).
+//   - Over NVMe/TCP, after connecting to a subsystem (by NQN), the host maps namespaces
+//     to local block devices; this function tries to locate those devices via namespace
+//     identifiers (NGUID) or by matching the device name.
 func GetNvmeDeviceFromNamespace(serialOrNamespace string) (*model.Device, error) {
-    log.Tracef(">>>>> GetNvmeDeviceFromNamespace called for %s", serialOrNamespace)
-    defer log.Tracef("<<<<< GetNvmeDeviceFromNamespace")
-    nvmeRoot := "/dev/"
-    files, err := ioutil.ReadDir(nvmeRoot)
-    if err != nil {
-        return nil, err
-    }
-    nvmeRegex := regexp.MustCompile(nvmeDevicePattern)
-    for _, f := range files {
-        if nvmeRegex.MatchString(f.Name()) {
-            // Extract nvme controller number using regex (e.g., nvme0 from nvme0n1)
-            ctrlRegex := regexp.MustCompile(`^(nvme\d+)n\d+$`)
-            matches := ctrlRegex.FindStringSubmatch(f.Name())
-            if len(matches) < 2 {
-                log.Warnf("Failed to extract controller name from %s", f.Name())
-                continue
-            }
-            ctrlName := matches[1]
-            log.Tracef("Extracted controller name: %s from device: %s", ctrlName, f.Name())
-            
-            // Check namespace/serial via sysfs
-	    // Consider /sys/class/block/nvme0c0n1/subsystem/nvme0c0n1/nguid as example
-	    // serial format will be something like: 60002ac0-0000-003e-0002-ac940002b10c
-            sysfsSerialPath := fmt.Sprintf("/sys/class/block/%s/subsystem/%s/nguid", f.Name(), f.Name())
-            log.Tracef("serial path=%s", sysfsSerialPath)
-            serial, err := util.FileReadFirstLine(sysfsSerialPath)
-            if err != nil {
-				return nil, err
+	log.Tracef(">>>>> GetNvmeDeviceFromNamespace called for %s", serialOrNamespace)
+	defer log.Tracef("<<<<< GetNvmeDeviceFromNamespace")
+	nvmeRoot := "/dev/"
+	files, err := nvmeReadDir(nvmeRoot)
+	if err != nil {
+		return nil, err
+	}
+	nvmeRegex := regexp.MustCompile(nvmeDevicePattern)
+	for _, f := range files {
+		if nvmeRegex.MatchString(f.Name()) {
+			// Extract nvme controller number using regex (e.g., nvme0 from nvme0n1)
+			ctrlRegex := regexp.MustCompile(`^(nvme\d+)n\d+$`)
+			matches := ctrlRegex.FindStringSubmatch(f.Name())
+			if len(matches) < 2 {
+				log.Warnf("Failed to extract controller name from %s", f.Name())
+				continue
 			}
-            // Normalize the serial from sysfs by removing dashes and whitespace
-	    // In nomarlizeSerial we remove "-" from serial 
-	    // and compare it with what we are getting from CSP response
-	    // normalizedSerial example: 60002ac00000003e0002ac940002b10c
-            normalizedSerial := strings.ReplaceAll(strings.TrimSpace(serial), "-", "")
-            log.Tracef("found serial number %s, normalized: %s", serial, normalizedSerial)
-            
-            if normalizedSerial == serialOrNamespace || f.Name() == serialOrNamespace {
-                devicePath := nvmeRoot + f.Name()
-                device := &model.Device{
-                    Pathname:        devicePath,
-                    AltFullPathName: devicePath,
-                    SerialNumber:    normalizedSerial,
-                }
-                
-                // Collect all NVMe targets for this device
-                nvmeTargets, err := getNvmeTargetsForDevice(ctrlName)
-                if err != nil {
-                    log.Warnf("Failed to get NVMe targets for %s: %v", ctrlName, err)
-                } else if len(nvmeTargets) > 0 {
-                    device.NvmeTargets = nvmeTargets
-                    log.Debugf("Found %d NVMe targets for device %s", len(nvmeTargets), f.Name())
-                }
-                
-                return device, nil
-            }
-        }
-    }
-    return nil, fmt.Errorf("NVMe device not found for %s", serialOrNamespace)
+			ctrlName := matches[1]
+			log.Tracef("Extracted controller name: %s from device: %s", ctrlName, f.Name())
+
+			// Read the namespace nguid from sysfs (see readNvmeNamespaceNguid).
+			serial, err := readNvmeNamespaceNguid(f.Name())
+			if err != nil {
+				// A namespace may not expose an nguid (e.g. local NVMe boot drives such as
+				// nvme0n1). Skip such devices instead of aborting the entire scan; otherwise
+				// the attached NVMe/TCP volume on a later device is never located (ESC-17833).
+				// Mirrors the lenient handling in FindNvmeDevices.
+				log.Warnf("Failed to read nguid for %s: %v. Skipping this device.", f.Name(), err)
+				continue
+			}
+			// Normalize the serial from sysfs by removing dashes and whitespace
+			// In nomarlizeSerial we remove "-" from serial
+			// and compare it with what we are getting from CSP response
+			// normalizedSerial example: 60002ac00000003e0002ac940002b10c
+			normalizedSerial := strings.ReplaceAll(strings.TrimSpace(serial), "-", "")
+			log.Tracef("found serial number %s, normalized: %s", serial, normalizedSerial)
+
+			if normalizedSerial == serialOrNamespace || f.Name() == serialOrNamespace {
+				devicePath := nvmeRoot + f.Name()
+				device := &model.Device{
+					Pathname:        devicePath,
+					AltFullPathName: devicePath,
+					SerialNumber:    normalizedSerial,
+				}
+
+				// Collect all NVMe targets for this device
+				nvmeTargets, err := getNvmeTargetsForDevice(ctrlName)
+				if err != nil {
+					log.Warnf("Failed to get NVMe targets for %s: %v", ctrlName, err)
+				} else if len(nvmeTargets) > 0 {
+					device.NvmeTargets = nvmeTargets
+					log.Debugf("Found %d NVMe targets for device %s", len(nvmeTargets), f.Name())
+				}
+
+				return device, nil
+			}
+		}
+	}
+	return nil, fmt.Errorf("NVMe device not found for %s", serialOrNamespace)
 }
 
 // getNvmeTargetsForDevice collects all NVMe targets (controllers) for a given device
 func getNvmeTargetsForDevice(deviceName string) ([]*model.NvmeTarget, error) {
-    log.Tracef(">>>>> getNvmeTargetsForDevice called for %s", deviceName)
-    defer log.Tracef("<<<<< getNvmeTargetsForDevice")
-    
-    var targets []*model.NvmeTarget
-    
-    // Get subsystem NQN first - this is common across all controllers
-    subsysPath := fmt.Sprintf("/sys/class/nvme/%s/subsysnqn", deviceName)
-    nqn, err := util.FileReadFirstLine(subsysPath)
-    if err != nil {
-        return nil, fmt.Errorf("failed to read subsystem NQN from %s: %v", subsysPath, err)
-    }
-    nqn = strings.TrimSpace(nqn)
-    
-    // Check if this device uses multipath (nvme_core.multipath=Y)
-    // If multipathing is enabled, we need to enumerate all controllers under the subsystem
-    subsysDir := fmt.Sprintf("/sys/class/nvme-subsystem/%s", strings.TrimPrefix(nqn, "nqn."))
-    
-    // Try to read all controllers under the subsystem
-    subsysExists, _, err := util.FileExists(subsysDir)
-    if err != nil {
-    	log.Debugf("error checking existence of subsystem dir %s: %v", subsysDir, err)
-	return nil, err
-    }
-    if subsysExists {
-        // Enumerate all nvme controllers in the subsystem
-        controllers, err := ioutil.ReadDir(subsysDir)
-        if err == nil {
-            for _, ctrl := range controllers {
-                if strings.HasPrefix(ctrl.Name(), "nvme") && ctrl.IsDir() {
-                    target, err := getNvmeTargetInfo(ctrl.Name(), nqn)
-                    if err != nil {
-                        log.Warnf("Failed to get target info for controller %s: %v", ctrl.Name(), err)
-                        continue
-                    }
-                    if target != nil {
-                        targets = append(targets, target)
-                    }
-                }
-            }
-			log.Tracef("targets %v", targets)
-        } else {
-		log.Debugf("error reading controllers from subsystem dir %s: %v", subsysDir, err)
+	log.Tracef(">>>>> getNvmeTargetsForDevice called for %s", deviceName)
+	defer log.Tracef("<<<<< getNvmeTargetsForDevice")
+
+	var targets []*model.NvmeTarget
+
+	// Get subsystem NQN first - this is common across all controllers
+	subsysPath := fmt.Sprintf("/sys/class/nvme/%s/subsysnqn", deviceName)
+	nqn, err := util.FileReadFirstLine(subsysPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read subsystem NQN from %s: %v", subsysPath, err)
+	}
+	nqn = strings.TrimSpace(nqn)
+
+	// Check if this device uses multipath (nvme_core.multipath=Y)
+	// If multipathing is enabled, we need to enumerate all controllers under the subsystem
+	subsysDir := fmt.Sprintf("/sys/class/nvme-subsystem/%s", strings.TrimPrefix(nqn, "nqn."))
+
+	// Try to read all controllers under the subsystem
+	subsysExists, _, err := util.FileExists(subsysDir)
+	if err != nil {
+		log.Debugf("error checking existence of subsystem dir %s: %v", subsysDir, err)
 		return nil, err
 	}
-    }
-    
-    // Fallback: if no subsystem directory or no targets found, try the device itself
-    if len(targets) == 0 {
-        target, err := getNvmeTargetInfo(deviceName, nqn)
-        if err != nil {
-            return nil, err
-        }
-        if target != nil {
-            targets = append(targets, target)
-        }
-    }
-    
-    log.Debugf("Found %d NVMe targets for device %s", len(targets), deviceName)
-    return targets, nil
+	if subsysExists {
+		// Enumerate all nvme controllers in the subsystem
+		controllers, err := ioutil.ReadDir(subsysDir)
+		if err == nil {
+			for _, ctrl := range controllers {
+				if strings.HasPrefix(ctrl.Name(), "nvme") && ctrl.IsDir() {
+					target, err := getNvmeTargetInfo(ctrl.Name(), nqn)
+					if err != nil {
+						log.Warnf("Failed to get target info for controller %s: %v", ctrl.Name(), err)
+						continue
+					}
+					if target != nil {
+						targets = append(targets, target)
+					}
+				}
+			}
+			log.Tracef("targets %v", targets)
+		} else {
+			log.Debugf("error reading controllers from subsystem dir %s: %v", subsysDir, err)
+			return nil, err
+		}
+	}
+
+	// Fallback: if no subsystem directory or no targets found, try the device itself
+	if len(targets) == 0 {
+		target, err := getNvmeTargetInfo(deviceName, nqn)
+		if err != nil {
+			return nil, err
+		}
+		if target != nil {
+			targets = append(targets, target)
+		}
+	}
+
+	log.Debugf("Found %d NVMe targets for device %s", len(targets), deviceName)
+	return targets, nil
 }
 
 // getNvmeTargetInfo retrieves target information for a specific NVMe controller
 func getNvmeTargetInfo(ctrlName string, nqn string) (*model.NvmeTarget, error) {
 	log.Tracef(">>>>> getNvmeTargetInfo called for controller %s and nqn %s", ctrlName, nqn)
-    defer log.Tracef("<<<<< getNvmeTargetInfo")
-    // Get NVMe transport address (IP:Port for TCP)
-    addressPath := fmt.Sprintf("/sys/class/nvme/%s/address", ctrlName)
-    addr, err := util.FileReadFirstLine(addressPath)
-    if err != nil {
-        return nil, fmt.Errorf("failed to read address from %s: %v", addressPath, err)
-    }
-    addr = strings.TrimSpace(addr)
-    
-    // Get transport type to confirm it's TCP
-    transportPath := fmt.Sprintf("/sys/class/nvme/%s/transport", ctrlName)
+	defer log.Tracef("<<<<< getNvmeTargetInfo")
+	// Get NVMe transport address (IP:Port for TCP)
+	addressPath := fmt.Sprintf("/sys/class/nvme/%s/address", ctrlName)
+	addr, err := util.FileReadFirstLine(addressPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read address from %s: %v", addressPath, err)
+	}
+	addr = strings.TrimSpace(addr)
+
+	// Get transport type to confirm it's TCP
+	transportPath := fmt.Sprintf("/sys/class/nvme/%s/transport", ctrlName)
 	// Read transport type of the NVMe controller
 	// transportPath will be /sys/class/nvme/nvme0/transport
 	// transport will be "tcp" or "rdma" etc.
-    transport, err := util.FileReadFirstLine(transportPath)
+	transport, err := util.FileReadFirstLine(transportPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read transport from %s: %v", transportPath, err)
 	}
-    transport = strings.TrimSpace(transport)
-    
-    // Get state
-    statePath := fmt.Sprintf("/sys/class/nvme/%s/state", ctrlName)
+	transport = strings.TrimSpace(transport)
+
+	// Get state
+	statePath := fmt.Sprintf("/sys/class/nvme/%s/state", ctrlName)
 	// Read state of the NVMe controller
 	// statePath will be /sys/class/nvme/nvme0/state
 	// state will be "live" or "connecting" etc.
-    state, err := util.FileReadFirstLine(statePath)
+	state, err := util.FileReadFirstLine(statePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read state from %s: %v", statePath, err)
 	}
-    state = strings.TrimSpace(state)
-    
-    // Parse the address to extract IP and port
-    ip, port := parseNvmeAddress(addr)
-    
-    log.Debugf("NVMe controller %s: NQN=%s, Address=%s (IP=%s, Port=%s), Transport=%s, State=%s", 
-        ctrlName, nqn, addr, ip, port, transport, state)
-    
-    return &model.NvmeTarget{
-        NQN:     nqn,
-        Address: ip,
-        Port:    port,
-    }, nil
+	state = strings.TrimSpace(state)
+
+	// Parse the address to extract IP and port
+	ip, port := parseNvmeAddress(addr)
+
+	log.Debugf("NVMe controller %s: NQN=%s, Address=%s (IP=%s, Port=%s), Transport=%s, State=%s",
+		ctrlName, nqn, addr, ip, port, transport, state)
+
+	return &model.NvmeTarget{
+		NQN:     nqn,
+		Address: ip,
+		Port:    port,
+	}, nil
 }
