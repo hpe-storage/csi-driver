@@ -144,6 +144,11 @@ func GetScsiHosts() ([]string, error) {
 func RescanScsiHosts(scsiHosts []string, lunID string) (err error) {
 	log.Traceln(">>>>> RescanScsiHosts")
 	defer log.Traceln("<<<<< RescanScsiHosts")
+
+	if err := ValidateLunID(lunID); err != nil {
+		return err
+	}
+
 	for _, scsiHost := range scsiHosts {
 		if scsiHost == "" {
 			continue

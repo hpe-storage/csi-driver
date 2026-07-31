@@ -103,6 +103,10 @@ func RescanFcTarget(lunID string) (err error) {
 	log.Tracef(">>> RescanFcTarget called on lunID %s", lunID)
 	defer log.Traceln("<<< RescanFcTarget")
 
+	if err := ValidateLunID(lunID); err != nil {
+		return err
+	}
+
 	// Get the list of FC hosts to rescan
 	fcHosts, err := GetAllFcHostPorts()
 	if err != nil {
@@ -227,6 +231,10 @@ func GetFcHostNumbersForTargetWwpns(targetWwpns []string) ([]string, error) {
 func RescanFcHostsForLun(hostNumbers []string, lunID string) error {
 	log.Tracef(">>> RescanFcHostsForLun called with hosts %v lun %s", hostNumbers, lunID)
 	defer log.Trace("<<< RescanFcHostsForLun")
+
+	if err := ValidateLunID(lunID); err != nil {
+		return err
+	}
 
 	for _, hostNum := range hostNumbers {
 		fcHostScanPath := fmt.Sprintf(fcHostScanPathFormat, hostNum)
