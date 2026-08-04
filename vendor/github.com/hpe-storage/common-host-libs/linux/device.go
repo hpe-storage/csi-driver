@@ -426,6 +426,16 @@ func rescanLoginVolume(volume *model.Volume) error {
 
 	secondaryBackends := util.GetSecondaryBackends(volume.SecondaryArrayDetails)
 
+	// If this is an iSCSI volume whose primary had no target IQNs (APP failover skip)
+	// and there are no secondary backends to fall back to, fail early rather than
+	// letting the caller spin in the retry loop waiting for a device that will never appear.
+	if !strings.EqualFold(volume.AccessProtocol, "fc") &&
+		!strings.EqualFold(volume.AccessProtocol, nvmetcp) &&
+		len(filterEmptyTargets(volume.TargetNames())) == 0 &&
+		len(secondaryBackends) == 0 {
+		return fmt.Errorf("no iSCSI targets available for volume %s and no secondary backends configured", volume.SerialNumber)
+	}
+
 	for _, secondaryLunInfo := range secondaryBackends {
 		// Do iscsi discovery for Each Secondary Backend
 		var secondaryVolObj *model.Volume

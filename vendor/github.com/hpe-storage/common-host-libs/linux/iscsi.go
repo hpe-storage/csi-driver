@@ -222,47 +222,26 @@ func loginToVolume(volume *model.Volume) (err error) {
 }
 
 // HandleIscsiDiscovery performs iscsi target discovery and create sessions as required.
+// NOTE: This function handles a single backend (primary or secondary). The caller
+// (rescanLoginVolume in device.go) is responsible for iterating over secondaries.
 func HandleIscsiDiscovery(volume *model.Volume) (err error) {
 	log.Tracef(">>>>> HandleIscsiDiscovery for volume %s, lun %s", volume.SerialNumber, volume.LunID)
 	defer log.Tracef("<<<<< HandleIscsiDiscovery")
 
-	// Do iscsi discovery for Primary Backend
-
-	var primaryVolObj *model.Volume
-	primaryVolObj = &model.Volume{}
-	primaryVolObj.LunID = volume.LunID
-	primaryVolObj.Iqns = volume.Iqns
-	primaryVolObj.TargetScope = volume.TargetScope
-	primaryVolObj.DiscoveryIPs = volume.DiscoveryIPs
-	primaryVolObj.Chap = volume.Chap
-	primaryVolObj.ConnectionMode = volume.ConnectionMode
-	primaryVolObj.SerialNumber = volume.SerialNumber
-
-	err = handleIscsiDiscoveryForBackend(primaryVolObj, true)
-
-	if err != nil {
-		return err
+	// During APP failover the primary array may be offline and its target IQNs
+	// will be absent from the publish context. Only skip discovery when there are
+	// genuinely no targets — any other failure means the array is faulty
+	// and we should surface the error.
+	// Note: targetNames:"" parses as []string{""} so we must filter empty strings.
+	if len(filterEmptyTargets(volume.TargetNames())) == 0 {
+		log.Warnf("no target IQNs for volume %s, skipping iSCSI discovery (APP failover scenario)", volume.SerialNumber)
+		return nil
 	}
-	secondaryBackends := util.GetSecondaryBackends(volume.SecondaryArrayDetails)
 
-	for _, secondaryLunInfo := range secondaryBackends {
-		// Do iscsi discovery for Each Secondary Backend
-		var secondaryVolObj *model.Volume
-		secondaryVolObj = &model.Volume{}
-		secondaryVolObj.LunID = strconv.Itoa(int(secondaryLunInfo.LunID))
-		secondaryVolObj.Iqns = secondaryLunInfo.TargetNames
-		secondaryVolObj.TargetScope = volume.TargetScope
-		secondaryVolObj.DiscoveryIPs = secondaryLunInfo.IscsiAccessInfo.DiscoveryIPs
-		secondaryVolObj.Chap = volume.Chap
-		secondaryVolObj.ConnectionMode = volume.ConnectionMode
-		secondaryVolObj.SerialNumber = volume.SerialNumber
-
-		err = handleIscsiDiscoveryForBackend(secondaryVolObj, true)
-	}
-	return nil
+	return handleIscsiDiscoveryForBackend(volume)
 }
-func handleIscsiDiscoveryForBackend(volume *model.Volume, isPrimaryBackend bool) (err error) {
-	log.Tracef(">>>>> handleIscsiDiscoveryForBackend for volume obj : %v, isPrimary %v", volume, isPrimaryBackend)
+func handleIscsiDiscoveryForBackend(volume *model.Volume) (err error) {
+	log.Tracef(">>>>> handleIscsiDiscoveryForBackend for volume obj : %v", volume)
 	defer log.Tracef("<<<<< handleIscsiDiscoveryForBackend")
 	// determine if all required targets are already logged-in
 	loggedIn, err := areTargetsLoggedIn(volume.TargetNames())
@@ -1001,6 +980,17 @@ func iscsiDeleteNode(target *model.IscsiTarget) (err error) {
 	}
 
 	return nil
+}
+
+// filterEmptyTargets returns a new slice with empty-string entries removed.
+func filterEmptyTargets(targets []string) []string {
+	var out []string
+	for _, t := range targets {
+		if t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func getIscsiHosts() ([]string, error) {
