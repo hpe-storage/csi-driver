@@ -940,6 +940,11 @@ func (driver *Driver) controllerPublishVolume(
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
+	// The backend hostname may differ from the node's Kubernetes name (see LoadNodeInfo).
+	if backendHostname, err := driver.flavor.GetNodeBackendHostname(nodeID); err == nil && backendHostname != "" {
+		node.Name = backendHostname
+	}
+
 	chapInfo, err := driver.flavor.GetChapCredentials(volumeContext)
 	if err != nil {
 		return nil, fmt.Errorf("Error: %s", err.Error())

@@ -27,6 +27,7 @@ import (
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/stringformat"
 	"github.com/hpe-storage/common-host-libs/util"
+	"github.com/hpe-storage/csi-driver/pkg/flavor"
 	mountutil "k8s.io/mount-utils"
 	"k8s.io/utils/exec"
 
@@ -2218,6 +2219,21 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 	}
 	log.Infof("Host name reported as %s", hostNameAndDomain[0])
 
+	hostname := hostNameAndDomain[0]
+	if disableHostname, _ := strconv.ParseBool(os.Getenv(flavor.DisableHostnameEnvKey)); disableHostname {
+		fqdn := hostNameAndDomain[0]
+		if hostNameAndDomain[1] != "" {
+			fqdn = hostNameAndDomain[0] + "." + hostNameAndDomain[1]
+		}
+		maxLen := int(driver.nodeGetIntEnv(flavor.MaxHostnameLenEnvKey))
+		if maxLen <= 0 {
+			maxLen = flavor.DefaultMaxHostnameLen
+		}
+		sanitized := flavor.SanitizeHostname(fqdn, host.UUID, maxLen)
+		log.Infof("Hostname sanitization enabled, registering %q as %q", hostname, sanitized)
+		hostname = sanitized
+	}
+
 	initiators, err := driver.chapiDriver.GetHostInitiators()
 	if err != nil {
 		log.Errorf("Failed to get initiators for host %s.  Error: %s", hostNameAndDomain[0], err.Error())
@@ -2258,7 +2274,7 @@ func (driver *Driver) nodeGetInfo() (string, error) {
 	}
 
 	node := &model.Node{
-		Name:     hostNameAndDomain[0],
+		Name:     hostname,
 		UUID:     host.UUID,
 		Iqns:     iqns,
 		Networks: cidrNetworks,

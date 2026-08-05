@@ -60,6 +60,15 @@ func (flavor *Flavor) GetNodeInfo(nodeID string) (*model.Node, error) {
 	return node, err
 }
 
+// GetNodeBackendHostname returns the node's Name, which vanilla already stores in the nodeID itself
+func (flavor *Flavor) GetNodeBackendHostname(nodeID string) (string, error) {
+	node, err := flavor.GetNodeInfo(nodeID)
+	if err != nil {
+		return "", err
+	}
+	return node.Name, nil
+}
+
 // GetEphemeralVolumeSecretFromPod :
 //
 //nolint:revive
