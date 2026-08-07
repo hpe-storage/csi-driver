@@ -1112,11 +1112,33 @@ func GetIscsiHostNumbersForTargetIqns(targetIqns []string) ([]string, error) {
 	return matchingHosts, nil
 }
 
+// ValidateLunID checks that a LUN ID string is either empty (wildcard) or a
+// non-negative integer. The Linux kernel rejects negative values written to
+// /sys/class/scsi_host/hostN/scan, so catching them here prevents silent
+// failures during SCSI device discovery.
+func ValidateLunID(lunID string) error {
+	if lunID == "" {
+		return nil
+	}
+	id, err := strconv.Atoi(lunID)
+	if err != nil {
+		return fmt.Errorf("invalid LUN ID %q: %w", lunID, err)
+	}
+	if id < 0 {
+		return fmt.Errorf("invalid LUN ID %d: must be non-negative", id)
+	}
+	return nil
+}
+
 // RescanIscsiHostsForLun rescans ONLY the specified iSCSI host numbers for lunID.
 // Does NOT fall back to full rescan if hostNumbers is empty -- caller decides.
 func RescanIscsiHostsForLun(hostNumbers []string, lunID string) error {
 	log.Tracef(">>> RescanIscsiHostsForLun called with hosts=%v lunID=%s", hostNumbers, lunID)
 	defer log.Trace("<<< RescanIscsiHostsForLun")
+
+	if err := ValidateLunID(lunID); err != nil {
+		return err
+	}
 
 	for _, hostNum := range hostNumbers {
 		iscsiHostScanPath := fmt.Sprintf(iscsiHostScanPathFormat, "host"+hostNum)
@@ -1141,6 +1163,10 @@ func RescanIscsiHostsForLun(hostNumbers []string, lunID string) error {
 
 // nolint: dupl
 func rescanIscsiHosts(iscsiHosts []string, lunID string) (err error) {
+	if err := ValidateLunID(lunID); err != nil {
+		return err
+	}
+
 	for _, iscsiHost := range iscsiHosts {
 		// perform rescan for all hosts
 		if iscsiHost != "" {

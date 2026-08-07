@@ -437,6 +437,9 @@ func rescanLoginVolume(volume *model.Volume) error {
 	}
 
 	for _, secondaryLunInfo := range secondaryBackends {
+		if secondaryLunInfo.LunID < 0 {
+			return fmt.Errorf("invalid secondary LUN ID %d for volume %s", secondaryLunInfo.LunID, volume.SerialNumber)
+		}
 		// Do iscsi discovery for Each Secondary Backend
 		var secondaryVolObj *model.Volume
 		secondaryVolObj = &model.Volume{}

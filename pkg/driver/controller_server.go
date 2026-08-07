@@ -1014,6 +1014,12 @@ func (driver *Driver) controllerPublishVolume(
 	}
 	log.Tracef("PublishInfo response from CSP: %+v", publishInfo)
 
+	if publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID < 0 {
+		return nil, status.Error(codes.Internal,
+			fmt.Sprintf("CSP returned invalid LUN ID %d for volume %s on node %s; VLUN may not have been created",
+				publishInfo.AccessInfo.BlockDeviceAccessInfo.LunID, volume.ID, node.ID))
+	}
+
 	// target scope is nimble specific therefore extract it from the volume config
 	var requestedTargetScope = targetScopeGroup
 	if val, ok := volumeConfig[targetScopeKey]; ok {
@@ -1032,6 +1038,12 @@ func (driver *Driver) controllerPublishVolume(
 
 	// Start of population of target array details
 	if publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails != nil {
+		for _, peer := range publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails.PeerArrayDetails {
+			if peer.LunID < 0 {
+				return nil, status.Error(codes.Internal,
+					fmt.Sprintf("CSP returned invalid secondary LUN ID %d for volume %s", peer.LunID, volume.ID))
+			}
+		}
 		secondaryArrayMarshalledStr, err := json.Marshal(&publishInfo.AccessInfo.BlockDeviceAccessInfo.SecondaryBackendDetails)
 		if err != nil {
 			log.Errorf("Error in marshalling secondary details %s", err.Error())
