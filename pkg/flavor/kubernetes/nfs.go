@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,8 @@ const (
 
 	creationInterval               = 60 // 300s with sleep interval of 5s
 	creationDelay                  = 5 * time.Second
+	configMapUpdateRetryCount      = 5
+	configMapUpdateRetryDelay      = 500 * time.Millisecond
 	defaultExportPath              = "/export"
 	nfsResourceLimitsCPUKey        = "nfsResourceLimitsCpuM"
 	nfsResourceRequestsCPUKey      = "nfsResourceRequestsCpuM"
@@ -352,6 +355,13 @@ NFSv4
   UseGetpwnam = true;
   DomainName = "REPLACE_DOMAIN";
 }
+MDCACHE
+{
+  Dir_Chunk = 0;
+  Entries_HWMark = 50000;
+  LRU_Run_Interval = 90;
+  Use_Getattr_Directory_Invalidation = true;
+}
 EXPORT
 {
   Export_Id = 716;
@@ -362,6 +372,7 @@ EXPORT
   Transports = TCP;
   Protocols = 4;
   SecType = "sys";
+  Attr_Expiration_Time = -1;
   FSAL {
       Name = VFS;
   }
@@ -379,15 +390,58 @@ EXPORT
 			nfsConfigFile: nfsGaneshaConfig,
 		},
 	}
-	_, err := flavor.kubeClient.CoreV1().ConfigMaps(nfsNamespace).Create(context.Background(), configMap, meta_v1.CreateOptions{})
+	// Get existing ConfigMap first
+	existingCM, err := flavor.kubeClient.CoreV1().ConfigMaps(nfsNamespace).Get(context.Background(), nfsConfigMap, meta_v1.GetOptions{})
 	if err != nil {
+		if !errors.IsNotFound(err) {
+			return err
+		}
+
+		// Create is intentionally outside retry loop
+		_, err = flavor.kubeClient.CoreV1().ConfigMaps(nfsNamespace).Create(context.Background(), configMap, meta_v1.CreateOptions{})
+		if err == nil {
+			log.Debugf("configmap %s successfully created in namespace %s", nfsConfigMap, nfsNamespace)
+			return nil
+		}
+
+		// Handle create race: another actor created it after our Get
 		if !errors.IsAlreadyExists(err) {
+			return err
+		}
+
+		existingCM, err = flavor.kubeClient.CoreV1().ConfigMaps(nfsNamespace).Get(context.Background(), nfsConfigMap, meta_v1.GetOptions{})
+		if err != nil {
 			return err
 		}
 	}
 
-	log.Debugf("configmap %s successfully created in namespace %s", nfsConfigMap, nfsNamespace)
-	return nil
+	// Retry loop around Update only
+	for i := 0; i < configMapUpdateRetryCount; i++ {
+		if reflect.DeepEqual(existingCM.Data, configMap.Data) &&
+			reflect.DeepEqual(existingCM.Labels, configMap.Labels) {
+			log.Debugf("configmap %s already up-to-date in namespace %s", nfsConfigMap, nfsNamespace)
+			return nil
+		}
+		existingCM.Data = configMap.Data
+		existingCM.Labels = configMap.Labels
+		_, err = flavor.kubeClient.CoreV1().ConfigMaps(nfsNamespace).Update(context.Background(), existingCM, meta_v1.UpdateOptions{})
+		if err == nil {
+			log.Debugf("configmap %s successfully updated in namespace %s", nfsConfigMap, nfsNamespace)
+			return nil
+		}
+
+		if !errors.IsConflict(err) {
+			return err
+		}
+
+		time.Sleep(configMapUpdateRetryDelay)
+		existingCM, err = flavor.kubeClient.CoreV1().ConfigMaps(nfsNamespace).Get(context.Background(), nfsConfigMap, meta_v1.GetOptions{})
+		if err != nil {
+			return err
+		}
+	}
+
+	return fmt.Errorf("failed to update configmap %s in namespace %s after %d retries", nfsConfigMap, nfsNamespace, configMapUpdateRetryCount)
 }
 
 func (flavor *Flavor) RollbackNFSResources(nfsResourceName string, nfsNamespace string) error {

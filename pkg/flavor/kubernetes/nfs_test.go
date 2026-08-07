@@ -106,6 +106,40 @@ func TestCreateConfigMap(t *testing.T) {
 	configMap, err := flavor.kubeClient.CoreV1().ConfigMaps(defaultNFSNamespace).Get(context.Background(), nfsConfigMap, metav1.GetOptions{})
 	assert.Nil(t, err)
 	assert.Equal(t, configMap.ObjectMeta.Name, nfsConfigMap)
+	ganeshaConfig, ok := configMap.Data[nfsConfigFile]
+	assert.True(t, ok)
+	assert.NotEmpty(t, ganeshaConfig)
+
+	// Validate domain substitution
+	assert.Contains(t, ganeshaConfig, `DomainName = "testdomain.com";`)
+	assert.NotContains(t, ganeshaConfig, "REPLACE_DOMAIN")
+
+	// Validate NFS_Core_Param section
+	assert.Contains(t, ganeshaConfig, "NFS_Protocols= 4;")
+	assert.Contains(t, ganeshaConfig, "NFS_Port = 2049;")
+	assert.Contains(t, ganeshaConfig, "fsid_device = false;")
+
+	// Validate NFSv4 section
+	assert.Contains(t, ganeshaConfig, "Graceless = true;")
+	assert.Contains(t, ganeshaConfig, "UseGetpwnam = true;")
+
+	// Validate key NFS and MDCACHE defaults
+	assert.Contains(t, ganeshaConfig, "MDCACHE")
+	assert.Contains(t, ganeshaConfig, "Dir_Chunk = 0;")
+	assert.Contains(t, ganeshaConfig, "Entries_HWMark = 50000;")
+	assert.Contains(t, ganeshaConfig, "LRU_Run_Interval = 90;")
+	assert.Contains(t, ganeshaConfig, "Use_Getattr_Directory_Invalidation = true;")
+
+	// Validate EXPORT section
+	assert.Contains(t, ganeshaConfig, "Export_Id = 716;")
+	assert.Contains(t, ganeshaConfig, "Path = /export;")
+	assert.Contains(t, ganeshaConfig, "Pseudo = /export;")
+	assert.Contains(t, ganeshaConfig, "Access_Type = RW;")
+	assert.Contains(t, ganeshaConfig, "Squash = No_Root_Squash;")
+	assert.Contains(t, ganeshaConfig, "Transports = TCP;")
+	assert.Contains(t, ganeshaConfig, `SecType = "sys";`)
+	assert.Contains(t, ganeshaConfig, "Attr_Expiration_Time = -1;")
+	assert.Contains(t, ganeshaConfig, "Name = VFS;")
 }
 
 func TestGetNFSSpec(t *testing.T) {
@@ -260,20 +294,58 @@ func TestGetNFSSpecWithCustomNodeSelector(t *testing.T) {
 }
 
 func TestCreateConfigMapDuplicate(t *testing.T) {
-	namespace := "test-config-namespace"
-	domain := "example.com"
+	namespace := fmt.Sprintf("test-config-namespace-%d", time.Now().UnixNano())
+	initialDomain := "example.com"
+	updatedDomain := "updated.example.com"
 
 	// create namespace first
 	_, err := flavor.createNFSNamespace(namespace)
 	assert.Nil(t, err)
 
-	// create config map
-	err = flavor.createNFSConfigMap(namespace, domain)
+	// initial create
+	err = flavor.createNFSConfigMap(namespace, initialDomain)
 	assert.Nil(t, err)
 
-	// create duplicate
-	err = flavor.createNFSConfigMap(namespace, domain)
+	// second call should update existing ConfigMap data
+	err = flavor.createNFSConfigMap(namespace, updatedDomain)
 	assert.Nil(t, err)
+
+	configMap, err := flavor.kubeClient.CoreV1().ConfigMaps(namespace).Get(context.Background(), nfsConfigMap, metav1.GetOptions{})
+	assert.Nil(t, err)
+	assert.Equal(t, nfsConfigMap, configMap.ObjectMeta.Name)
+
+	ganeshaConfig, ok := configMap.Data[nfsConfigFile]
+	assert.True(t, ok)
+	assert.Contains(t, ganeshaConfig, `DomainName = "updated.example.com";`)
+	assert.NotContains(t, ganeshaConfig, `DomainName = "example.com";`)
+
+	// ensure there is still only one ConfigMap object
+	configMapList, err := flavor.kubeClient.CoreV1().ConfigMaps(namespace).List(context.Background(), metav1.ListOptions{})
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(configMapList.Items))
+
+	// Validate no-op guard: same input should not issue another Update action
+	fakeClient, ok := flavor.kubeClient.(*fake.Clientset)
+	assert.True(t, ok)
+
+	countConfigMapUpdates := func() int {
+		count := 0
+		for _, action := range fakeClient.Actions() {
+			if action.GetVerb() == "update" && action.GetResource().Resource == "configmaps" {
+				count++
+			}
+		}
+		return count
+	}
+
+	updatesBeforeNoOpCall := countConfigMapUpdates()
+
+	// third call with same desired state should hit no-op guard and skip Update
+	err = flavor.createNFSConfigMap(namespace, updatedDomain)
+	assert.Nil(t, err)
+
+	updatesAfterNoOpCall := countConfigMapUpdates()
+	assert.Equal(t, updatesBeforeNoOpCall, updatesAfterNoOpCall, "no-op path should not perform configmap update")
 }
 
 func TestGetNodesWithEmptySelector(t *testing.T) {
