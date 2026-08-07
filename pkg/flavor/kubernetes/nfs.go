@@ -5,6 +5,7 @@ package kubernetes
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"net"
 	"os"
@@ -28,6 +29,14 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+// creationInterval and creationDelay control how long CreateNFSVolume waits for
+// backend NFS resources (PVC bind, deployment availability) to become ready.
+// They are vars (not consts) so unit tests can shorten the wait loop.
+var (
+	creationInterval = 60 // 300s with sleep interval of 5s
+	creationDelay    = 5 * time.Second
+)
+
 const (
 	nfsPrefix             = "hpe-nfs-"
 	pvcPrefix             = "pvc-" // this is hardcoded at csi-provisioner runtime
@@ -39,8 +48,6 @@ const (
 	defaultRLimitMemory   = "2Gi"
 	defaultRRequestMemory = "512Mi"
 
-	creationInterval               = 60 // 300s with sleep interval of 5s
-	creationDelay                  = 5 * time.Second
 	defaultExportPath              = "/export"
 	nfsResourceLimitsCPUKey        = "nfsResourceLimitsCpuM"
 	nfsResourceRequestsCPUKey      = "nfsResourceRequestsCpuM"
@@ -99,7 +106,7 @@ type NFSSpec struct {
 }
 
 // errPVCDeleted is returned when the requesting PVC is deleted during NFS volume creation
-var errPVCDeleted = fmt.Errorf("requesting PVC was deleted during NFS volume creation")
+var errPVCDeleted = stderrors.New("requesting PVC was deleted during NFS volume creation")
 
 // checkRequestingPVCExists verifies the requesting RWX PVC still exists.
 // Returns nil if it exists, errPVCDeleted if it has been deleted.
@@ -108,11 +115,31 @@ func (flavor *Flavor) checkRequestingPVCExists(claimUID string) error {
 	if err != nil || len(claims) == 0 {
 		return errPVCDeleted
 	}
-	claim := claims[0].(*core_v1.PersistentVolumeClaim)
+	claim, ok := claims[0].(*core_v1.PersistentVolumeClaim)
+	if !ok {
+		log.Errorf("unexpected object type %T in claim indexer for uid %s", claims[0], claimUID)
+		return errPVCDeleted
+	}
 	if !claim.ObjectMeta.DeletionTimestamp.IsZero() {
 		return errPVCDeleted
 	}
 	return nil
+}
+
+// shouldRollbackNFSCreate reports whether partially-created NFS backend resources
+// should be torn down when CreateNFSVolume fails.
+//
+// CON-3166: We must NOT roll back on timeouts / transient failures. Creating many
+// RWX PVCs under resource pressure can make NFS pods take longer than the wait
+// window; those deployments will still become ready and the external-provisioner
+// retries CreateVolume idempotently. Rolling back deletes deployments that would
+// have succeeded and hides the real (e.g. Pending) condition from the user.
+//
+// CON-4768: We MUST roll back when the requesting frontend PVC was deleted during
+// creation. In that case no PV is ever created and DeleteVolume is never called,
+// so the backend NFS resources would be orphaned and left unmanaged.
+func shouldRollbackNFSCreate(err error) bool {
+	return stderrors.Is(err, errPVCDeleted)
 }
 
 // CreateNFSVolume creates nfs volume abstracting underlying nfs pvc, deployment and service
@@ -162,7 +189,9 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	newClaim, err := flavor.createNFSPVC(claimClone, nfsResourceNamespace, requestingClaimUID)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
-		return nil, true, err
+		// Roll back only if the requesting PVC was deleted mid-wait (errPVCDeleted from
+		// waitForPVCCreation). A bind timeout or transient error must NOT roll back (CON-3166).
+		return nil, shouldRollbackNFSCreate(err), err
 	}
 
 	// update newly created nfs claim in nfs spec
@@ -172,25 +201,26 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	err = flavor.createServiceAccount(nfsResourceNamespace)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
-		return nil, true, err
+		return nil, false, err
 	}
 
 	nfsHostDomain, err := flavor.getNFSHostDomain()
 	if err != nil {
-		return nil, true, err
+		return nil, false, err
 	}
 	// create nfs configmap
 	err = flavor.createNFSConfigMap(nfsResourceNamespace, nfsHostDomain)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
-		return nil, true, err
+		return nil, false, err
 	}
 
 	log.Tracef("Create a role and role binding for the pv %s and service account %s", pvName, nfsServiceAccount)
 	err = flavor.createRoleAndRoleBinding(pvName, nfsServiceAccount, nfsResourceNamespace)
 	if err != nil {
 		log.Errorf("error occurred while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
-		return nil, true, fmt.Errorf("error occurred while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
+		wrappedErr := fmt.Errorf("error occurred while creating the role and rolebinding for the service account %s:%s", nfsServiceAccount, err.Error())
+		return nil, false, wrappedErr
 	}
 
 	// create deployment with name hpe-nfs-<originalclaim-uid>
@@ -198,7 +228,9 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	err = flavor.createNFSDeployment(deploymentName, nfsSpec, nfsResourceNamespace, requestingClaimUID)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
-		return nil, true, err
+		// Roll back only if the requesting PVC was deleted mid-wait (errPVCDeleted from
+		// waitForDeployment). A readiness timeout must NOT roll back (CON-3166).
+		return nil, shouldRollbackNFSCreate(err), err
 	}
 
 	// create service with name hpe-nfs-svc-<originalclaim-uid>
@@ -206,7 +238,7 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	err = flavor.createNFSService(serviceName, nfsResourceNamespace)
 	if err != nil {
 		flavor.eventRecorder.Event(claim, core_v1.EventTypeWarning, "ProvisionStorage", err.Error())
-		return nil, true, err
+		return nil, false, err
 	}
 
 	// Final check: verify the requesting PVC still exists before returning success.
@@ -222,7 +254,7 @@ func (flavor *Flavor) CreateNFSVolume(pvName string, reqVolSize int64, parameter
 	volumeContext := make(map[string]string)
 	pv, err := flavor.getPvFromName(fmt.Sprintf("%s%s", pvcPrefix, newClaim.ObjectMeta.UID))
 	if err != nil {
-		return nil, true, err
+		return nil, false, err
 	}
 
 	if pv.Spec.PersistentVolumeSource.CSI != nil {
