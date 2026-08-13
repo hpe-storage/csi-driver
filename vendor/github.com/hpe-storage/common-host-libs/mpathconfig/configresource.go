@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -121,8 +122,14 @@ func (section *Section) PrintSection(indent int) (conf []string) {
 		}
 	}
 	spacerSize++
-	for property, value := range section.properties {
-		formattedProperty = fmt.Sprintf("%s    %-"+strconv.Itoa(spacerSize)+"s%s%s", indenter, property, value, NEWLINE)
+	// sort keys so the emitted output is deterministic across restarts (Go randomizes map iteration order)
+	sortedKeys := make([]string, 0, len(section.properties))
+	for property := range section.properties {
+		sortedKeys = append(sortedKeys, property)
+	}
+	sort.Strings(sortedKeys)
+	for _, property := range sortedKeys {
+		formattedProperty = fmt.Sprintf("%s    %-"+strconv.Itoa(spacerSize)+"s%s%s", indenter, property, section.properties[property], NEWLINE)
 		conf = append(conf, formattedProperty)
 	}
 	// handle duplicate param case in defaults/alias/multipaths section
@@ -238,7 +245,7 @@ func addOption(section *Section, option string) {
 	}
 }
 
-//checks for the section
+// checks for the section
 func isSection(line string) (bool, error) {
 	line = strings.TrimSpace(line)
 	prefixes := []string{"defaults", "blacklist", "blacklist_exceptions", "devices", "device", "multipaths", "multipath"}
