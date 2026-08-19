@@ -493,7 +493,9 @@ func parseMultipathDevices(out string) (multipathDevices []model.MultipathDevice
 
 	for _, mapItem := range multipathJson.Maps {
 		if len(mapItem.Vend) > 0 && isSupportedDeviceVendor(linux.DeviceVendorPatterns, mapItem.Vend) {
-			if mapItem.Paths < 1 && mapItem.PathFaults > 0 {
+			// "paths" is the active-path count, not the total; gate on path groups so
+			// a map whose paths are only transiently failed is not deleted.
+			if len(mapItem.PathGroups) == 0 {
 				mapItem.IsUnhealthy = true
 				unhealthyDeviceCount++
 				log.Tracef("Known unhealthy multipath device: %s", mapItem.Name)
@@ -677,7 +679,9 @@ func RemoveMultipathDevice(multipathDevice string) error {
 	//check if the multipath device exists
 	log.Infof("Checking whether the multipath device %s exists or not.", multipathDevice)
 	if multipathDeviceExists(multipathDevice) {
-		_, _, err := util.ExecCommandOutput("dmsetup", []string{"remove", multipathDevice})
+		// Use multipath -f (not dmsetup remove) so multipathd stays in sync and kpartx/in-use
+		// maps are handled correctly.
+		_, _, err := util.ExecCommandOutput("multipath", []string{"-f", multipathDevice})
 		if err != nil {
 			log.Errorf("Error occurred while removing the multipath device %s: %s", multipathDevice, err.Error())
 			return err
@@ -705,7 +709,9 @@ func forceDeleteMultipathDevice(multipathDevice string) error {
 	log.Tracef(">>>> forceDeleteMultipathDevice: %s", multipathDevice)
 	defer log.Trace("<<<<< forceDeleteMultipathDevice")
 
-	_, _, err := util.ExecCommandOutput("dmsetup", []string{"remove", "-f", multipathDevice})
+	// Use multipath -f (not dmsetup remove) so multipathd stays in sync and kpartx/in-use
+	// maps are handled correctly.
+	_, _, err := util.ExecCommandOutput("multipath", []string{"-f", multipathDevice})
 	if err != nil {
 		log.Errorf("Error occurred while removing the multipath device %s by force: %s", multipathDevice, err.Error())
 		return err
