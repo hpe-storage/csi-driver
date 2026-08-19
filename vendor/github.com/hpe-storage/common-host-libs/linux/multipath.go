@@ -5,8 +5,10 @@ package linux
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,14 +31,62 @@ const (
 	// MultipathConf configuration file for multipathd
 	MultipathConf = "/etc/multipath.conf"
 	// MultipathBindings bindings file for multipathd
-	MultipathBindings  = "/etc/multipath/bindings"
+	MultipathBindings = "/etc/multipath/bindings"
 	// orphanPathsPattern captures WWID (first field from multipathd show paths output)
 	// along with H:C:T:L so that orphan paths can be scoped to a specific volume.
 	// multipathd show paths format: %w %d %t %i %o %T %z %s %m
 	//   %w = WWID, %i = hcil (H:C:T:L)
 	orphanPathsPattern = "(?P<wwid>\\S+)\\s+\\S+\\s+\\S+\\s+(?P<host>\\d+):(?P<channel>\\d+):(?P<target>\\d+):(?P<lun>\\d+).*(REPLACE_VENDOR).*orphan"
 	maxTries           = 3
+
+	multipathUxsockTimeoutEnvVar         = "MULTIPATH_UXSOCK_TIMEOUT"
+	defaultMultipathUxsockTimeoutMillis  = 300000
+	multipathCommandTimeoutMarginSeconds = 5
 )
+
+var (
+	multipathdUxsockTimeout, multipathdCommandTimeout = loadMultipathdTimeouts()
+	multipathdExecCommandOutput                       = util.ExecCommandOutputWithTimeout
+)
+
+// MultipathdUxsockTimeout returns the multipathd uxsock timeout, in
+// milliseconds, calculated when the package is initialized.
+func MultipathdUxsockTimeout() int {
+	return multipathdUxsockTimeout
+}
+
+// MultipathdCommandTimeout returns the multipathd executor timeout calculated
+// when the package is initialized.
+func MultipathdCommandTimeout() int {
+	return multipathdCommandTimeout
+}
+
+// loadMultipathdTimeouts returns the configured uxsock timeout and an executor
+// timeout that exceeds it by a fixed margin. MULTIPATH_UXSOCK_TIMEOUT is
+// expressed in milliseconds; invalid values use the recommended 300 seconds.
+func loadMultipathdTimeouts() (int, int) {
+	uxsockTimeoutMillis := defaultMultipathUxsockTimeoutMillis
+	if value := os.Getenv(multipathUxsockTimeoutEnvVar); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed <= 0 {
+			log.Warnf("Invalid value %q for %s (must be a positive integer), using default value of %d milliseconds",
+				value, multipathUxsockTimeoutEnvVar, defaultMultipathUxsockTimeoutMillis)
+		} else {
+			uxsockTimeoutMillis = parsed
+		}
+	}
+
+	// Round up partial seconds so the executor timeout always exceeds uxsock_timeout.
+	// If uxsock_timeout is 300999 milliseconds, the executor timeout will be 306 seconds.
+	uxsockTimeoutSeconds := uxsockTimeoutMillis / 1000
+	if uxsockTimeoutMillis%1000 != 0 {
+		uxsockTimeoutSeconds++
+	}
+	multipathCommandTimeout := uxsockTimeoutSeconds + multipathCommandTimeoutMarginSeconds
+	log.Infof("Using multipathd uxsock timeout of %d milliseconds and executor timeout of %d seconds",
+		uxsockTimeoutMillis, multipathCommandTimeout)
+	return uxsockTimeoutMillis, multipathCommandTimeout
+}
 
 func getOrphanPathsPattern() string {
 	vendorPattern := strings.Join(DeviceVendorPatterns, "|")
@@ -69,7 +119,7 @@ func MultipathdReconfigure() (out string, err error) {
 
 	var args []string
 	args = []string{"reconfigure"}
-	out, _, err = util.ExecCommandOutput(multipathd, args)
+	out, _, err = multipathdExecCommandOutput(multipathd, args, MultipathdCommandTimeout())
 	if err != nil {
 		log.Error("unable to reconfigure multipathd settings", err.Error())
 		err = fmt.Errorf("unable to reconfigure multipathd settings, Error: %s %s", err.Error(), out)
@@ -88,7 +138,7 @@ func multipathShowCmdOrphanPaths() (output []string, err error) {
 	multipathMutex.Lock()
 	defer multipathMutex.Unlock()
 
-	out, _, err := util.ExecCommandOutput(multipathd, showPathsFormat)
+	out, _, err := multipathdExecCommandOutput(multipathd, showPathsFormat, MultipathdCommandTimeout())
 	if err != nil {
 		log.Warnf("multipathdShowCmd: error %v with args %v", err, showPathsFormat)
 		return nil, err
@@ -108,7 +158,7 @@ func multipathdShowCmd(args []string, serialNumber string) (output []string, err
 	multipathMutex.Lock()
 	defer multipathMutex.Unlock()
 
-	out, _, err := util.ExecCommandOutput(multipathd, args)
+	out, _, err := multipathdExecCommandOutput(multipathd, args, MultipathdCommandTimeout())
 	if err != nil {
 		log.Warnf("multipathdShowCmd: error %v with args %v", err, args)
 		return nil, err

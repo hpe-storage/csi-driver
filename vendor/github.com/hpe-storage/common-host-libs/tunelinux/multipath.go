@@ -3,40 +3,35 @@ package tunelinux
 // Copyright 2019 Hewlett Packard Enterprise Development LP.
 import (
 	"bufio"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/hpe-storage/common-host-libs/linux"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/mpathconfig"
 	"github.com/hpe-storage/common-host-libs/util"
+	"golang.org/x/sys/unix"
 )
 
 const (
-	multipath                = "multipath"
-	multipathTimeoutMaxTries = 3
+	multipath = "multipath"
 
 	// uxsockTimeoutParam is the multipath.conf defaults-section key that controls
 	// the unix domain socket timeout (in milliseconds) used by multipathd.
 	uxsockTimeoutParam = "uxsock_timeout"
 
-	// uxsockTimeoutRecommended is the default recommended value for uxsock_timeout. Keep
-	// this in sync with the value shipped in the multipath.conf.generic/upstream templates.
-	uxsockTimeoutRecommended = "300000"
-
-	// uxsockTimeoutEnvVar, when set to a valid positive integer, overrides
-	// uxsockTimeoutRecommended so deployments can tune the value without a code change.
-	uxsockTimeoutEnvVar = "MULTIPATH_UXSOCK_TIMEOUT"
+	multipathAppliedConfigHashPath = "/host/run/hpe-storage/multipath-config.sha256"
 
 	// multipath params
 	multipathParamPattern = "\\s*(?P<name>.*?)\\s+(?P<value>.*)"
@@ -53,11 +48,8 @@ var (
 	readProcMountsMutex     sync.Mutex
 	ErrMultipathTimeout     = errors.New("multipathd timeout")
 
-	// multipathTimeoutRetrySleep is a var so tests can shorten retry delays.
-	multipathTimeoutRetrySleep = 2 * time.Second
-
-	// execCommandOutput lets tests exercise retry behavior without shelling out.
-	execCommandOutput = util.ExecCommandOutput
+	// execCommandOutput lets tests exercise command behavior without shelling out.
+	execCommandOutput = util.ExecCommandOutputWithTimeout
 )
 
 // GetMultipathConfigFile returns path of the template multipath.conf file according to OS distro
@@ -325,6 +317,69 @@ func setMultipathRecommendations(recommendations []*Recommendation, device strin
 	return nil
 }
 
+func reconfigureMultipathdIfConfigNotApplied(configPath string, appliedHashPath string, reconfigure func() (string, error)) error {
+	config, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+
+	stateDir := filepath.Dir(appliedHashPath)
+	if err = os.MkdirAll(stateDir, 0755); err != nil {
+		return err
+	}
+	lock, err := os.OpenFile(appliedHashPath+".lock", os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	if err = unix.Flock(int(lock.Fd()), unix.LOCK_EX); err != nil {
+		return err
+	}
+	defer unix.Flock(int(lock.Fd()), unix.LOCK_UN)
+
+	currentHash := fmt.Sprintf("%x", sha256.Sum256(config))
+	appliedHash, err := os.ReadFile(appliedHashPath)
+	if err == nil && strings.TrimSpace(string(appliedHash)) == currentHash {
+		log.Info("Skipped multipathd reconfigure because the current multipath.conf settings are already applied")
+		return nil
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	_, err = reconfigure()
+	if err != nil {
+		return err
+	}
+	if err = writeAppliedConfigHash(appliedHashPath, currentHash); err != nil {
+		return err
+	}
+	log.Info("Successfully configured multipath.conf settings")
+	return nil
+}
+
+func writeAppliedConfigHash(filePath string, hash string) error {
+	tempFile, err := os.CreateTemp(filepath.Dir(filePath), ".multipath-config-*.tmp")
+	if err != nil {
+		return err
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
+
+	if _, err = tempFile.WriteString(hash + "\n"); err != nil {
+		tempFile.Close()
+		return err
+	}
+	if err = tempFile.Sync(); err != nil {
+		tempFile.Close()
+		return err
+	}
+	if err = tempFile.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, filePath)
+}
+
 // SetMultipathRecommendations sets multipath.conf settings
 func SetMultipathRecommendations() (err error) {
 	log.Traceln(">>>>> SetMultipathRecommendations")
@@ -367,13 +422,7 @@ func SetMultipathRecommendations() (err error) {
 		return err
 	}
 
-	// Reconfigure settings in any case to make sure new settings are applied
-	_, err = linux.MultipathdReconfigure()
-	if err != nil {
-		return err
-	}
-	log.Info("Successfully configured multipath.conf settings")
-	return nil
+	return reconfigureMultipathdIfConfigNotApplied(linux.MultipathConf, multipathAppliedConfigHashPath, linux.MultipathdReconfigure)
 }
 
 // ConfigureMultipath ensures following
@@ -391,31 +440,27 @@ func ConfigureMultipath() (err error) {
 	return nil
 }
 
+// GetMultipathDevices queries multipathd for the current multipath devices and
+// returns the supported and residual (orphan) devices parsed from its JSON
+// output. A transient multipathd timeout is reported as ErrMultipathTimeout so
+// callers can skip the cycle instead of treating it as a hard failure.
 func GetMultipathDevices() (multipathDevices []model.MultipathDevice, err error) {
 	log.Tracef(">>>> getMultipathDevices ")
 	defer log.Trace("<<<<< getMultipathDevices")
 
-	for try := 1; try <= multipathTimeoutMaxTries; try++ {
-		out, _, cmdErr := execCommandOutput("multipathd", []string{"show", "multipaths", "json"})
+	out, _, cmdErr := execCommandOutput("multipathd", []string{"show", "multipaths", "json"}, linux.MultipathdCommandTimeout())
 
-		multipathDevices, err = parseMultipathDevices(out)
-		if errors.Is(err, ErrMultipathTimeout) || (cmdErr != nil && linux.IsMultipathTimeoutError(cmdErr.Error())) {
-			if try == multipathTimeoutMaxTries {
-				return nil, fmt.Errorf("failed to get the multipath devices after %d attempts: %w", multipathTimeoutMaxTries, ErrMultipathTimeout)
-			}
-			log.Warnf("Transient multipathd timeout while getting multipath devices; retrying attempt %d of %d", try+1, multipathTimeoutMaxTries)
-			time.Sleep(multipathTimeoutRetrySleep)
-			continue
-		}
-		if cmdErr != nil {
-			return nil, fmt.Errorf("failed to get the multipath devices due to the error: %s", cmdErr.Error())
-		}
-		if err != nil {
-			return nil, err
-		}
-		return multipathDevices, nil
+	multipathDevices, err = parseMultipathDevices(out)
+	if errors.Is(err, ErrMultipathTimeout) || (cmdErr != nil && linux.IsMultipathTimeoutError(cmdErr.Error())) {
+		return nil, ErrMultipathTimeout
 	}
-	return nil, ErrMultipathTimeout
+	if cmdErr != nil {
+		return nil, fmt.Errorf("failed to get the multipath devices due to the error: %s", cmdErr.Error())
+	}
+	if err != nil {
+		return nil, err
+	}
+	return multipathDevices, nil
 }
 
 func parseMultipathDevices(out string) (multipathDevices []model.MultipathDevice, err error) {
@@ -668,18 +713,8 @@ func forceDeleteMultipathDevice(multipathDevice string) error {
 	return nil
 }
 
-// getUxsockTimeoutValue returns the uxsock_timeout value to apply to /etc/multipath.conf.
-// If the MULTIPATH_UXSOCK_TIMEOUT environment variable is set to a valid positive integer,
-// that value takes precedence; otherwise uxsockTimeoutRecommended is used.
+// getUxsockTimeoutValue returns the cached uxsock_timeout value to apply to
+// /etc/multipath.conf.
 func getUxsockTimeoutValue() string {
-	envValue := os.Getenv(uxsockTimeoutEnvVar)
-	if envValue == "" {
-		return uxsockTimeoutRecommended
-	}
-	if parsed, err := strconv.Atoi(envValue); err != nil || parsed <= 0 {
-		log.Warnf("Invalid value %q for env var %s (must be a positive integer), falling back to default %s",
-			envValue, uxsockTimeoutEnvVar, uxsockTimeoutRecommended)
-		return uxsockTimeoutRecommended
-	}
-	return envValue
+	return strconv.Itoa(linux.MultipathdUxsockTimeout())
 }

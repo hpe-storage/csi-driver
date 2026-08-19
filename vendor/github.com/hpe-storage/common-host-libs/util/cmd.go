@@ -19,8 +19,10 @@ package util
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -29,8 +31,25 @@ import (
 )
 
 const (
-	defaultTimeout = 60
+	defaultTimeoutSeconds = 60
+	cmdTimeoutEnvVar      = "HPE_CMD_TIMEOUT_SECONDS"
 )
+
+var defaultTimeout = loadDefaultTimeout()
+
+// loadDefaultTimeout returns the command timeout configured by cmdTimeoutEnvVar.
+// It falls back to defaultTimeoutSeconds when the variable is unset or is not a
+// positive integer.
+func loadDefaultTimeout() int {
+	if val, ok := os.LookupEnv(cmdTimeoutEnvVar); ok {
+		if timeout, err := strconv.Atoi(val); err == nil && timeout > 0 {
+			log.Infof("Using command timeout of %d seconds from %s", timeout, cmdTimeoutEnvVar)
+			return timeout
+		}
+		log.Warnf("Invalid value %q for %s (must be a positive integer), using default timeout of %d seconds", val, cmdTimeoutEnvVar, defaultTimeoutSeconds)
+	}
+	return defaultTimeoutSeconds
+}
 
 func execCommandOutputWithTimeout(cmd string, args []string, stdinArgs []string, timeout int) (string, int, error) {
 	log.Trace("execCommandOutputWithTimeout called with ", cmd, log.Scrubber(args), timeout)
