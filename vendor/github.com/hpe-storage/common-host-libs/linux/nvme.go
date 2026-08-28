@@ -5,9 +5,11 @@ package linux
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,11 +19,11 @@ import (
 )
 
 const (
-	nvmecmd              = "nvme"
-	nvmeConnectCmd       = "nvme connect"
-	nvmeDisconnectCmd    = "nvme disconnect"
-	nvmeListCmd          = "nvme list"
-	nvmeListSubsysCmd    = "nvme list-subsys"
+	nvmecmd           = "nvme"
+	nvmeConnectCmd    = "nvme connect"
+	nvmeDisconnectCmd = "nvme disconnect"
+	nvmeListCmd       = "nvme list"
+	nvmeListSubsysCmd = "nvme list-subsys"
 	// defaultNvmePort      = "4420"
 	// nvmeDiscoveryPort    = "8009"
 	nvmeHostPathFormat   = "/sys/class/nvme/"
@@ -31,6 +33,18 @@ const (
 	// nvmeDiscoveryNQN is the well-known NVMe discovery subsystem NQN. Discovery
 	// controllers created by "nvme discover" register under this NQN.
 	nvmeDiscoveryNQN = "nqn.2014-08.org.nvmexpress.discovery"
+
+	// defaultNvmeCtrlLossTmo is the fallback "nvme connect --ctrl-loss-tmo" (-l)
+	// value (seconds) used when NVME_CTRL_LOSS_TMO is unset or invalid. 1800 (30 min)
+	// keeps a lost I/O controller retrying long enough to self-reattach across a
+	// typical array reboot instead of the kernel deleting it at the 600s default
+	// (CON-4387). Set NVME_CTRL_LOSS_TMO=-1 for the HPE implementation guide's
+	// "never give up" behavior, or another value to tune the window.
+	defaultNvmeCtrlLossTmo = "1800"
+
+	// envNvmeCtrlLossTmo overrides defaultNvmeCtrlLossTmo at runtime. Value is the
+	// ctrl-loss-tmo in seconds, or -1 to never give up.
+	envNvmeCtrlLossTmo = "NVME_CTRL_LOSS_TMO"
 )
 
 // GetNvmeInitiator gets the NVMe host NQN
@@ -131,6 +145,20 @@ func setSysctl(key, value string) error {
 	return nil
 }
 
+// getNvmeCtrlLossTmo returns the "nvme connect --ctrl-loss-tmo" value from
+// NVME_CTRL_LOSS_TMO when it is a valid integer >= -1, else defaultNvmeCtrlLossTmo.
+func getNvmeCtrlLossTmo() string {
+	val := strings.TrimSpace(os.Getenv(envNvmeCtrlLossTmo))
+	if val == "" {
+		return defaultNvmeCtrlLossTmo
+	}
+	if n, err := strconv.Atoi(val); err != nil || n < -1 {
+		log.Warnf("Invalid %s=%q (want integer >= -1); using default ctrl-loss-tmo %s", envNvmeCtrlLossTmo, val, defaultNvmeCtrlLossTmo)
+		return defaultNvmeCtrlLossTmo
+	}
+	return val
+}
+
 // ConnectNvmeTarget connects to an NVMe over TCP target. liveAddrs is the set
 // of portal IPs (as returned by getLiveNvmeControllersForNQN) already known to
 // have a live controller for target.NQN; pass the caller's already-computed
@@ -157,6 +185,8 @@ func ConnectNvmeTarget(target *model.NvmeTarget, liveAddrs map[string]bool) erro
 		return fmt.Errorf("no valid target IPs found in target address %q for NVMe target %s", target.Address, target.NQN)
 	}
 
+	ctrlLossTmo := getNvmeCtrlLossTmo()
+
 	var success bool
 	var failedIPs []string
 
@@ -172,6 +202,7 @@ func ConnectNvmeTarget(target *model.NvmeTarget, liveAddrs map[string]bool) erro
 			"-n", target.NQN,
 			"-a", ip,
 			"-s", target.Port,
+			"-l", ctrlLossTmo,
 		}
 		out, rc, err := nvmeExecCommandOutput(nvmecmd, args)
 		// Treat rc=114 as success
