@@ -35,12 +35,12 @@ const (
 	nvmeDiscoveryNQN = "nqn.2014-08.org.nvmexpress.discovery"
 
 	// defaultNvmeCtrlLossTmo is the fallback "nvme connect --ctrl-loss-tmo" (-l)
-	// value (seconds) used when NVME_CTRL_LOSS_TMO is unset or invalid. 1800 (30 min)
-	// keeps a lost I/O controller retrying long enough to self-reattach across a
-	// typical array reboot instead of the kernel deleting it at the 600s default
-	// (CON-4387). Set NVME_CTRL_LOSS_TMO=-1 for the HPE implementation guide's
-	// "never give up" behavior, or another value to tune the window.
-	defaultNvmeCtrlLossTmo = "1800"
+	// value (seconds) used when NVME_CTRL_LOSS_TMO is unset or invalid. -1 means
+	// "never give up": a lost I/O controller keeps retrying indefinitely so it can
+	// self-reattach across an array reboot instead of the kernel deleting it at the
+	// 600s default (CON-4387), matching the HPE implementation guide. Set
+	// NVME_CTRL_LOSS_TMO to a positive number of seconds to bound the retry window.
+	defaultNvmeCtrlLossTmo = "-1"
 
 	// envNvmeCtrlLossTmo overrides defaultNvmeCtrlLossTmo at runtime. Value is the
 	// ctrl-loss-tmo in seconds, or -1 to never give up.
