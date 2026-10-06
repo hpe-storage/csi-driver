@@ -4,6 +4,9 @@ FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.8-178824506
 # install prereqs
 RUN dnf install -y make golang
 
+# use proxy with direct fallback for Go module downloads
+ENV GOPROXY="https://proxy.golang.org|direct"
+
 # build driver
 WORKDIR /usr/src/hpe-csi-driver
 ADD cmd ./cmd
