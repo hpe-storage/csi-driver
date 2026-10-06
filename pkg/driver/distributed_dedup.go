@@ -16,7 +16,7 @@ import (
 	k8sclient "k8s.io/client-go/kubernetes"
 )
 
-// Cross-pod duplicate-request dedup via one Kubernetes Lease per request key (CON-4960-26),
+// Cross-pod duplicate-request dedup via one Kubernetes Lease per request key (CON-4982),
 // used when no dbservice.DBService is configured (the common case). Falls back further to the
 // in-process sync.Map when preconditions aren't met — duplicate-request detection is never
 // disabled outright, unlike podMonitor.
@@ -111,6 +111,7 @@ func (d *distributedDedup) TryAcquire(ctx context.Context, key string) error {
 
 	_, err := d.clientset.CoordinationV1().Leases(d.namespace).Create(ctx, lease, metav1.CreateOptions{})
 	if err == nil {
+		log.Infof("dedup: acquired lease %s for key '%s' (identity=%s, namespace=%s)", name, key, d.identity, d.namespace)
 		return nil
 	}
 	if !apierrors.IsAlreadyExists(err) {
@@ -123,9 +124,18 @@ func (d *distributedDedup) TryAcquire(ctx context.Context, key string) error {
 		return fmt.Errorf("failed to get existing dedup lease %s: %w", name, getErr)
 	}
 	if !isLeaseStale(existing, d.ttl) {
+		holder := ""
+		if existing.Spec.HolderIdentity != nil {
+			holder = *existing.Spec.HolderIdentity
+		}
+		log.Infof("dedup: duplicate request detected for key '%s', lease %s held by %s (namespace=%s)", key, name, holder, d.namespace)
 		return errDuplicateInFlight
 	}
 
+	previousHolder := ""
+	if existing.Spec.HolderIdentity != nil {
+		previousHolder = *existing.Spec.HolderIdentity
+	}
 	existing.Spec.HolderIdentity = &d.identity
 	existing.Spec.AcquireTime = &now
 	existing.Spec.RenewTime = &now
@@ -137,10 +147,12 @@ func (d *distributedDedup) TryAcquire(ctx context.Context, key string) error {
 	// Conflict here means a racing replica won the steal first.
 	if _, updateErr := d.clientset.CoordinationV1().Leases(d.namespace).Update(ctx, existing, metav1.UpdateOptions{}); updateErr != nil {
 		if apierrors.IsConflict(updateErr) {
+			log.Infof("dedup: lost race stealing stale lease %s for key '%s' to another replica (identity=%s, namespace=%s)", name, key, d.identity, d.namespace)
 			return errDuplicateInFlight
 		}
 		return fmt.Errorf("failed to steal stale dedup lease %s: %w", name, updateErr)
 	}
+	log.Infof("dedup: stole stale lease %s for key '%s' from previous holder %s (identity=%s, namespace=%s)", name, key, previousHolder, d.identity, d.namespace)
 	return nil
 }
 
@@ -152,6 +164,7 @@ func (d *distributedDedup) Release(ctx context.Context, key string) error {
 	if err != nil && !apierrors.IsNotFound(err) {
 		return err
 	}
+	log.Infof("dedup: released lease %s for key '%s' (identity=%s, namespace=%s)", name, key, d.identity, d.namespace)
 	return nil
 }
 

@@ -17,7 +17,7 @@ import (
 )
 
 // podMonitorLeaseName is the Lease that gates the (otherwise unconditionally run) podMonitor loop
-// to a single controller replica, per CON-4960-25.
+// to a single controller replica, per CON-4982.
 const podMonitorLeaseName = "hpe-csi-driver-podmonitor-leader"
 
 // Default Lease timings, overridable via PODMONITOR_LEADER_ELECTION_* env vars (see getLeaderElectionDuration).
@@ -42,7 +42,7 @@ func getLeaderElectionDuration(envVarName string, defaultVal time.Duration) time
 // podMonitorCallbacks builds the leader-election lifecycle callbacks for the podMonitor Lease.
 // OnStoppedLeading must never exit the process: hpe-csi-driver also serves the local CSI gRPC
 // socket for whichever co-located sidecar is leading, so losing this Lease must only stop the
-// monitor loop (R-02).
+// monitor loop.
 func podMonitorCallbacks(podMonitor *monitor.Monitor) leaderelection.LeaderCallbacks {
 	return leaderelection.LeaderCallbacks{
 		OnStartedLeading: func(_ context.Context) {
@@ -94,7 +94,7 @@ func newInClusterPodMonitorLeaderElector(namespace string, podMonitor *monitor.M
 
 // newInClusterKubeClientAndIdentity builds an in-cluster Kubernetes clientset plus a holder
 // identity (the pod's hostname), shared by the podMonitor Lease and the distributed dedup Lease
-// (CON-4960-25/-26) so the process only ever builds one in-cluster clientset.
+// (CON-4982) so the process only ever builds one in-cluster clientset.
 func newInClusterKubeClientAndIdentity() (k8sclient.Interface, string, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil {

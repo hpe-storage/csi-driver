@@ -90,7 +90,7 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 	}
 
 	if podMonitor {
-		// Gated behind the hpe-csi-driver-podmonitor-leader Lease (CON-4960-25): with 3 controller
+		// Gated behind the hpe-csi-driver-podmonitor-leader Lease (CON-4982): with 3 controller
 		// replicas only one may run this loop. Any precondition failure disables podMonitor entirely
 		// rather than falling back to unconditional/legacy behavior (duplicate-monitor risk).
 		if flavorName != flavor.Kubernetes {
@@ -166,9 +166,8 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 	}
 	if driver.DBService == nil {
 		log.Info("DB service disabled!!!")
-		// Cross-pod duplicate-request dedup via per-key Kubernetes Lease (CON-4960-26), used when
-		// no DBService is configured. Falls back further to the in-process sync.Map if preconditions
-		// aren't met; duplicate-request detection is never disabled outright.
+		// Cross-pod duplicate-request dedup via per-key Kubernetes Lease (CON-4982), used when
+		// no DBService is configured. Falls back further to the in-process sync.Map if preconditions aren't met;
 		if !nodeService && flavorName == flavor.Kubernetes {
 			if podNamespace := os.Getenv("POD_NAMESPACE"); podNamespace == "" {
 				log.Warnf("POD_NAMESPACE env var not set; distributed duplicate-request dedup falls back to in-process only")
@@ -178,6 +177,7 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 				if err != nil {
 					log.Errorf("Failed to set up distributed duplicate-request dedup, falling back to in-process only: %s", err.Error())
 				} else {
+					log.Infof("Successfully set up distributed duplicate-request dedup (backend=distributed-lease)")
 					driver.distributedDedup = dedup
 				}
 			}
@@ -215,7 +215,7 @@ func (driver *Driver) Start(nodeService bool) error {
 			}
 		} else {
 			driver.grpc.Start(driver.endpoint, driver, driver, nil)
-			// start pod monitor along with controller plugin, gated by leader election when configured (CON-4960-25)
+			// start pod monitor along with controller plugin, gated by leader election when configured (CON-4982)
 			if driver.podMonitorElector != nil {
 				ctx, cancel := context.WithCancel(context.Background())
 				driver.podMonitorCancel = cancel
@@ -223,7 +223,7 @@ func (driver *Driver) Start(nodeService bool) error {
 			} else if driver.podMonitor != nil {
 				driver.podMonitor.StartMonitor()
 			}
-			// start the dedup-lease reaper when distributed dedup is configured (CON-4960-26)
+			// start the dedup-lease reaper when distributed dedup is configured (CON-4982)
 			if driver.distributedDedup != nil {
 				reaperCtx, reaperCancel := context.WithCancel(context.Background())
 				driver.dedupReaperCancel = reaperCancel
@@ -242,7 +242,7 @@ func (driver *Driver) Stop(nodeService bool) error {
 	}
 	if driver.podMonitorCancel != nil {
 		// Cancelling triggers OnStoppedLeading -> StopMonitor() inside Run()'s shutdown path;
-		// never exits the process (R-02).
+		// never exits the process.
 		driver.podMonitorCancel()
 	} else if driver.podMonitor != nil {
 		driver.podMonitor.StopMonitor()
@@ -574,7 +574,7 @@ func (driver *Driver) DeleteVolumeByName(name string, secrets map[string]string,
 // HandleDuplicateRequest checks for the duplicate request. If yes, then returns ABORTED error,
 // else records the in-flight request and returns nil. Prefers (in order): the etcd-backed
 // DBService if an operator explicitly configured --dbserver; else the distributed per-key Lease
-// dedup (CON-4960-26) when available; else the in-process sync.Map.
+// dedup (CON-4982) when available; else the in-process sync.Map.
 func (driver *Driver) HandleDuplicateRequest(key string) error {
 	log.Trace(">>>>> HandleDuplicateRequest, key: ", key)
 	defer log.Trace("<<<<< HandleDuplicateRequest")
@@ -614,8 +614,8 @@ func (driver *Driver) HandleDuplicateRequest(key string) error {
 	}
 
 	if driver.distributedDedup != nil {
-		// Cross-pod dedup via per-key Kubernetes Lease (CON-4960-26) — used when no DBService is
-		// configured, the common case.
+		// Cross-pod dedup via per-key Kubernetes Lease (CON-4982) — used when no DBService is
+		// configured, the default case.
 		if err := driver.distributedDedup.TryAcquire(context.Background(), key); err != nil {
 			if errors.Is(err, errDuplicateInFlight) {
 				return status.Error(
@@ -680,22 +680,27 @@ func (driver *Driver) ClearRequest(key string) {
 				if err := driver.DBService.ReleaseLock(keyValue); err != nil {
 					log.Errorf("Error while releasing DB lock on the key '%s', err: %s", key, err.Error())
 					// Note: Don't return error here as the lock will be released automatically once the ttl expires.
+				} else {
+					log.Infof("ClearRequest: key '%s' released (backend=dbserver)", key)
 				}
 			} else {
 				log.Errorf("Key value is not of correct type '%v'", key)
 			}
 		}
 	} else if driver.distributedDedup != nil {
-		// Cross-pod dedup via per-key Kubernetes Lease (CON-4960-26). Not treated as fatal on
+		// Cross-pod dedup via per-key Kubernetes Lease (CON-4982). Not treated as fatal on
 		// error — the Lease self-expires via TTL (steal-on-next-acquire or the reaper) if Delete
 		// fails here.
 		if err := driver.distributedDedup.Release(context.Background(), key); err != nil {
 			log.Errorf("Error while releasing distributed dedup lease for key '%s', err: %s", key, err.Error())
+		} else {
+			log.Infof("ClearRequest: key '%s' released (backend=distributed-lease)", key)
 		}
 	} else {
 		// Remove the entry from the sync cache map
 		driver.requestCache.Delete(key)
 		log.Tracef("Successfully removed an entry with key %s from the sync cache map", key)
+		log.Infof("ClearRequest: key '%s' released (backend=in-process)", key)
 	}
 }
 
