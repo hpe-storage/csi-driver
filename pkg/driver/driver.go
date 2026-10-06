@@ -6,6 +6,7 @@ package driver
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,10 +15,13 @@ import (
 	"sync"
 	"time"
 
+	"context"
+
 	"github.com/Scalingo/go-etcd-lock/v5/lock"
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/client-go/tools/leaderelection"
 
 	"github.com/hpe-storage/common-host-libs/chapi"
 	"github.com/hpe-storage/common-host-libs/dbservice"
@@ -47,12 +51,16 @@ type Driver struct {
 	version  string
 	endpoint string
 
-	chapiDriver      chapi.Driver
-	storageProviders map[string]storageprovider.StorageProvider
-	flavor           flavor.Flavor
-	grpc             NonBlockingGRPCServer
-	podMonitor       *monitor.Monitor
-	nodeMonitor      *nodemonitor.NodeMonitor
+	chapiDriver       chapi.Driver
+	storageProviders  map[string]storageprovider.StorageProvider
+	flavor            flavor.Flavor
+	grpc              NonBlockingGRPCServer
+	podMonitor        *monitor.Monitor
+	podMonitorElector *leaderelection.LeaderElector
+	podMonitorCancel  context.CancelFunc
+	distributedDedup  *distributedDedup
+	dedupReaperCancel context.CancelFunc
+	nodeMonitor       *nodemonitor.NodeMonitor
 
 	controllerServiceCapabilities     []*csi.ControllerServiceCapability
 	nodeServiceCapabilities           []*csi.NodeServiceCapability
@@ -82,7 +90,23 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 	}
 
 	if podMonitor {
-		driver.podMonitor = monitor.NewMonitor(driver.flavor, podMonitorInterval)
+		// Gated behind the hpe-csi-driver-podmonitor-leader Lease (CON-4982): with 3 controller
+		// replicas only one may run this loop. Any precondition failure disables podMonitor entirely
+		// rather than falling back to unconditional/legacy behavior (duplicate-monitor risk).
+		if flavorName != flavor.Kubernetes {
+			log.Warnf("pod monitor requires --flavor=kubernetes; ignoring --pod-monitor")
+		} else if podNamespace := os.Getenv("POD_NAMESPACE"); podNamespace == "" {
+			log.Errorf("POD_NAMESPACE env var not set; disabling pod monitor (requires leader election)")
+		} else {
+			m := monitor.NewMonitor(driver.flavor, podMonitorInterval)
+			elector, err := newInClusterPodMonitorLeaderElector(podNamespace, m)
+			if err != nil {
+				log.Errorf("Failed to set up pod monitor leader election, disabling pod monitor: %s", err.Error())
+			} else {
+				driver.podMonitor = m
+				driver.podMonitorElector = elector
+			}
+		}
 	}
 
 	if nodeMonitor {
@@ -142,6 +166,22 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 	}
 	if driver.DBService == nil {
 		log.Info("DB service disabled!!!")
+		// Cross-pod duplicate-request dedup via per-key Kubernetes Lease (CON-4982), used when
+		// no DBService is configured. Falls back further to the in-process sync.Map if preconditions aren't met;
+		if !nodeService && flavorName == flavor.Kubernetes {
+			if podNamespace := os.Getenv("POD_NAMESPACE"); podNamespace == "" {
+				log.Warnf("POD_NAMESPACE env var not set; distributed duplicate-request dedup falls back to in-process only")
+			} else {
+				ttl := getLeaderElectionDuration("DEDUP_LOCK_TTL", defaultDedupLockTTL)
+				dedup, err := newInClusterDistributedDedup(podNamespace, ttl)
+				if err != nil {
+					log.Errorf("Failed to set up distributed duplicate-request dedup, falling back to in-process only: %s", err.Error())
+				} else {
+					log.Infof("Successfully set up distributed duplicate-request dedup (backend=distributed-lease)")
+					driver.distributedDedup = dedup
+				}
+			}
+		}
 	} else {
 		log.Info("DB service enabled!!!")
 	}
@@ -175,9 +215,19 @@ func (driver *Driver) Start(nodeService bool) error {
 			}
 		} else {
 			driver.grpc.Start(driver.endpoint, driver, driver, nil)
-			// start pod monitor along with controller plugin
-			if driver.podMonitor != nil {
+			// start pod monitor along with controller plugin, gated by leader election when configured (CON-4982)
+			if driver.podMonitorElector != nil {
+				ctx, cancel := context.WithCancel(context.Background())
+				driver.podMonitorCancel = cancel
+				go driver.podMonitorElector.Run(ctx)
+			} else if driver.podMonitor != nil {
 				driver.podMonitor.StartMonitor()
+			}
+			// start the dedup-lease reaper when distributed dedup is configured (CON-4982)
+			if driver.distributedDedup != nil {
+				reaperCtx, reaperCancel := context.WithCancel(context.Background())
+				driver.dedupReaperCancel = reaperCancel
+				go driver.distributedDedup.runReaper(reaperCtx, getLeaderElectionDuration("DEDUP_REAPER_INTERVAL", defaultDedupReaperInterval))
 			}
 		}
 	}()
@@ -190,8 +240,15 @@ func (driver *Driver) Stop(nodeService bool) error {
 	if nodeService {
 		driver.flavor.UnloadNodeInfo()
 	}
-	if driver.podMonitor != nil {
+	if driver.podMonitorCancel != nil {
+		// Cancelling triggers OnStoppedLeading -> StopMonitor() inside Run()'s shutdown path;
+		// never exits the process.
+		driver.podMonitorCancel()
+	} else if driver.podMonitor != nil {
 		driver.podMonitor.StopMonitor()
+	}
+	if driver.dedupReaperCancel != nil {
+		driver.dedupReaperCancel()
 	}
 	if driver.nodeMonitor != nil {
 		driver.nodeMonitor.StopNodeMonitor()
@@ -514,58 +571,77 @@ func (driver *Driver) DeleteVolumeByName(name string, secrets map[string]string,
 	return nil
 }
 
-// HandleDuplicateRequest checks for the duplicate request in the sync cache map.
-// If yes, then returns ABORTED error, else inserts the entry into sync cache map and returns nil
+// HandleDuplicateRequest checks for the duplicate request. If yes, then returns ABORTED error,
+// else records the in-flight request and returns nil. Prefers (in order): the etcd-backed
+// DBService if an operator explicitly configured --dbserver; else the distributed per-key Lease
+// dedup (CON-4982) when available; else the in-process sync.Map.
 func (driver *Driver) HandleDuplicateRequest(key string) error {
 	log.Trace(">>>>> HandleDuplicateRequest, key: ", key)
 	defer log.Trace("<<<<< HandleDuplicateRequest")
 
-	// When no DB support, use local in-memory map
-	//	- The driver's in-memory sync.Map is used to cache the requests
-	if driver.DBService == nil {
-
-		// Look for the key entry in the sync cache map, we dont care about the previous value
-		// return ABORTED, if the key is found
-		_, exists := driver.requestCache.LoadOrStore(key, true)
-		if exists {
+	if driver.DBService != nil {
+		// With DB support
+		//	- Check for the lock status of the key.
+		//	- Acquire the lock on the key in the Database.
+		//	- Persist the lock entry in the map cache (in-memory).
+		//  - The caller's responsibility (defer action) is to remove the above entries once operation is completed.
+		locked, err := driver.DBService.IsLocked(key)
+		if err != nil {
+			return status.Error(
+				codes.Internal,
+				fmt.Sprintf("Error while looking for the key '%s' in the DB, err: %s", key, err.Error()),
+			)
+		}
+		// If already in locked state, then return Aborted error
+		if locked {
 			return status.Error(
 				codes.Aborted,
 				fmt.Sprintf("There is already an operation pending for the specified id %s", key),
 			)
 		}
+		log.Tracef("About to acquire DB lock on the key '%s'", key)
+		// Get the exclusive lock on the key
+		lck, err := driver.DBService.WaitAcquireLock(key, defaultTTL)
+		if err != nil {
+			return status.Error(
+				codes.Internal,
+				fmt.Sprintf("Error while acquiring DB lock on the key '%s', err: %s", key, err.Error()),
+			)
+		}
+		// Insert the DB lock entry to the sync cache map
+		driver.AddRequest(key, lck)
 		return nil
 	}
 
-	// With DB support
-	//	- Check for the lock status of the key.
-	//	- Acquire the lock on the key in the Database.
-	//	- Persist the lock entry in the map cache (in-memory).
-	//  - The caller's responsibility (defer action) is to remove the above entries once operation is completed.
-	locked, err := driver.DBService.IsLocked(key)
-	if err != nil {
-		return status.Error(
-			codes.Internal,
-			fmt.Sprintf("Error while looking for the key '%s' in the DB, err: %s", key, err.Error()),
-		)
+	if driver.distributedDedup != nil {
+		// Cross-pod dedup via per-key Kubernetes Lease (CON-4982) — used when no DBService is
+		// configured, the default case.
+		if err := driver.distributedDedup.TryAcquire(context.Background(), key); err != nil {
+			if errors.Is(err, errDuplicateInFlight) {
+				return status.Error(
+					codes.Aborted,
+					fmt.Sprintf("There is already an operation pending for the specified id %s", key),
+				)
+			}
+			return status.Error(
+				codes.Internal,
+				fmt.Sprintf("Error while acquiring distributed dedup lock for key '%s', err: %s", key, err.Error()),
+			)
+		}
+		return nil
 	}
-	// If already in locked state, then return Aborted error
-	if locked {
+
+	// When no DB support and no distributed dedup, use local in-memory map
+	//	- The driver's in-memory sync.Map is used to cache the requests
+	// Look for the key entry in the sync cache map, we dont care about the previous value
+	// return ABORTED, if the key is found
+	_, exists := driver.requestCache.LoadOrStore(key, true)
+	if exists {
 		return status.Error(
 			codes.Aborted,
 			fmt.Sprintf("There is already an operation pending for the specified id %s", key),
 		)
 	}
-	log.Tracef("About to acquire DB lock on the key '%s'", key)
-	// Get the exclusive lock on the key
-	lck, err := driver.DBService.WaitAcquireLock(key, defaultTTL)
-	if err != nil {
-		return status.Error(
-			codes.Internal,
-			fmt.Sprintf("Error while acquiring DB lock on the key '%s', err: %s", key, err.Error()),
-		)
-	}
-	// Insert the DB lock entry to the sync cache map
-	driver.AddRequest(key, lck)
 	return nil
 }
 
@@ -604,15 +680,27 @@ func (driver *Driver) ClearRequest(key string) {
 				if err := driver.DBService.ReleaseLock(keyValue); err != nil {
 					log.Errorf("Error while releasing DB lock on the key '%s', err: %s", key, err.Error())
 					// Note: Don't return error here as the lock will be released automatically once the ttl expires.
+				} else {
+					log.Infof("ClearRequest: key '%s' released (backend=dbserver)", key)
 				}
 			} else {
 				log.Errorf("Key value is not of correct type '%v'", key)
 			}
 		}
+	} else if driver.distributedDedup != nil {
+		// Cross-pod dedup via per-key Kubernetes Lease (CON-4982). Not treated as fatal on
+		// error — the Lease self-expires via TTL (steal-on-next-acquire or the reaper) if Delete
+		// fails here.
+		if err := driver.distributedDedup.Release(context.Background(), key); err != nil {
+			log.Errorf("Error while releasing distributed dedup lease for key '%s', err: %s", key, err.Error())
+		} else {
+			log.Infof("ClearRequest: key '%s' released (backend=distributed-lease)", key)
+		}
 	} else {
 		// Remove the entry from the sync cache map
 		driver.requestCache.Delete(key)
 		log.Tracef("Successfully removed an entry with key %s from the sync cache map", key)
+		log.Infof("ClearRequest: key '%s' released (backend=in-process)", key)
 	}
 }
 
