@@ -545,14 +545,14 @@ func (driver *Driver) createVolume(
 							existingSnap.VolumeName, existingSnap.VolumeID))
 
 			}
-			// Get existing parent volume fsType attribute
+			// Get existing parent volume fsType attribute for a best-effort filesystem check.
+			// The parent PV may not exist in this cluster (for example, a cross-cluster restore
+			// from a snapshot on a shared array), so a lookup failure must not block the restore.
 			parentVolFsType, err := driver.flavor.GetVolumePropertyOfPV("fsType", existingParentVolume.Name)
 			if err != nil {
-				log.Error("err: ", err.Error())
-				return nil,
-					status.Error(codes.Internal,
-						fmt.Sprintf("Failed to check if filesystem exists on the %s parent volume, err: %s",
-							existingSnap.VolumeName, err.Error()))
+				log.Warnf("Could not determine parent volume filesystem for %s, skipping filesystem validation, err: %s",
+					existingSnap.VolumeName, err.Error())
+				parentVolFsType = ""
 			}
 
 			// Check if requested filesystem for a clone volume is same as existing snapshot.
