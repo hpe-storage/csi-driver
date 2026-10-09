@@ -101,14 +101,16 @@ github.com/gorilla/mux
 # github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
 ## explicit; go 1.23.0
 github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options
-# github.com/hpe-storage/common-host-libs v0.0.0-20260908045328-de6d01c32495
+# github.com/hpe-storage/common-host-libs v0.0.0-20260908045328-de6d01c32495 => /home/vmauser/go/src/github.com/hpe-storage/common-host-libs
 ## explicit; go 1.25.0
 github.com/hpe-storage/common-host-libs/chapi
 github.com/hpe-storage/common-host-libs/concurrent
 github.com/hpe-storage/common-host-libs/connectivity
 github.com/hpe-storage/common-host-libs/dbservice
 github.com/hpe-storage/common-host-libs/dbservice/etcd
+github.com/hpe-storage/common-host-libs/distributedlock
 github.com/hpe-storage/common-host-libs/jsonutil
+github.com/hpe-storage/common-host-libs/leaderlease
 github.com/hpe-storage/common-host-libs/linux
 github.com/hpe-storage/common-host-libs/logger
 github.com/hpe-storage/common-host-libs/model
@@ -327,7 +329,7 @@ golang.org/x/crypto/ssh/terminal
 # golang.org/x/mod v0.38.0
 ## explicit; go 1.25.0
 golang.org/x/mod/semver
-# golang.org/x/net v0.57.0
+# golang.org/x/net v0.58.0
 ## explicit; go 1.25.0
 golang.org/x/net/bpf
 golang.org/x/net/context
@@ -391,7 +393,7 @@ google.golang.org/genproto/googleapis/api/annotations
 # google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa
 ## explicit; go 1.25.0
 google.golang.org/genproto/googleapis/rpc/status
-# google.golang.org/grpc v1.83.1
+# google.golang.org/grpc v1.83.2
 ## explicit; go 1.25.0
 google.golang.org/grpc
 google.golang.org/grpc/attributes
@@ -1057,3 +1059,4 @@ sigs.k8s.io/structured-merge-diff/v6/value
 # sigs.k8s.io/yaml v1.6.0
 ## explicit; go 1.22
 sigs.k8s.io/yaml
+# github.com/hpe-storage/common-host-libs => /home/vmauser/go/src/github.com/hpe-storage/common-host-libs
