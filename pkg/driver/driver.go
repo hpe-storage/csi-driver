@@ -21,11 +21,12 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/client-go/tools/leaderelection"
 
 	"github.com/hpe-storage/common-host-libs/chapi"
 	"github.com/hpe-storage/common-host-libs/dbservice"
 	"github.com/hpe-storage/common-host-libs/dbservice/etcd"
+	"github.com/hpe-storage/common-host-libs/distributedlock"
+	"github.com/hpe-storage/common-host-libs/leaderlease"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/storageprovider"
@@ -56,9 +57,8 @@ type Driver struct {
 	flavor            flavor.Flavor
 	grpc              NonBlockingGRPCServer
 	podMonitor        *monitor.Monitor
-	podMonitorElector *leaderelection.LeaderElector
-	podMonitorCancel  context.CancelFunc
-	distributedDedup  *distributedDedup
+	podMonitorElector *leaderlease.Elector
+	distributedDedup  *distributedlock.DistributedDedup
 	dedupReaperCancel context.CancelFunc
 	nodeMonitor       *nodemonitor.NodeMonitor
 
@@ -172,8 +172,9 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 			if podNamespace := os.Getenv("POD_NAMESPACE"); podNamespace == "" {
 				log.Warnf("POD_NAMESPACE env var not set; distributed duplicate-request dedup falls back to in-process only")
 			} else {
-				ttl := getLeaderElectionDuration("DEDUP_LOCK_TTL", defaultDedupLockTTL)
-				dedup, err := newInClusterDistributedDedup(podNamespace, ttl)
+				ttl := distributedlock.GetEnvDuration("DEDUP_LOCK_TTL", distributedlock.DefaultLockTTL)
+				maxHoldDuration := distributedlock.GetEnvDuration("DEDUP_MAX_HOLD_DURATION", distributedlock.DefaultMaxHoldDuration)
+				dedup, err := distributedlock.NewInCluster(podNamespace, ttl, maxHoldDuration)
 				if err != nil {
 					log.Errorf("Failed to set up distributed duplicate-request dedup, falling back to in-process only: %s", err.Error())
 				} else {
@@ -217,9 +218,9 @@ func (driver *Driver) Start(nodeService bool) error {
 			driver.grpc.Start(driver.endpoint, driver, driver, nil)
 			// start pod monitor along with controller plugin, gated by leader election when configured (CON-4982)
 			if driver.podMonitorElector != nil {
-				ctx, cancel := context.WithCancel(context.Background())
-				driver.podMonitorCancel = cancel
-				go driver.podMonitorElector.Run(ctx)
+				if err := driver.podMonitorElector.Start(context.Background()); err != nil {
+					log.Errorf("Failed to start pod monitor leader election: %s", err.Error())
+				}
 			} else if driver.podMonitor != nil {
 				driver.podMonitor.StartMonitor()
 			}
@@ -227,7 +228,7 @@ func (driver *Driver) Start(nodeService bool) error {
 			if driver.distributedDedup != nil {
 				reaperCtx, reaperCancel := context.WithCancel(context.Background())
 				driver.dedupReaperCancel = reaperCancel
-				go driver.distributedDedup.runReaper(reaperCtx, getLeaderElectionDuration("DEDUP_REAPER_INTERVAL", defaultDedupReaperInterval))
+				go driver.distributedDedup.RunReaper(reaperCtx, distributedlock.GetEnvDuration("DEDUP_REAPER_INTERVAL", distributedlock.DefaultReaperInterval))
 			}
 		}
 	}()
@@ -240,10 +241,10 @@ func (driver *Driver) Stop(nodeService bool) error {
 	if nodeService {
 		driver.flavor.UnloadNodeInfo()
 	}
-	if driver.podMonitorCancel != nil {
-		// Cancelling triggers OnStoppedLeading -> StopMonitor() inside Run()'s shutdown path;
-		// never exits the process.
-		driver.podMonitorCancel()
+	if driver.podMonitorElector != nil {
+		// Shutdown releases the lease, triggering OnStoppedLeading -> StopMonitor(); never exits
+		// the process.
+		driver.podMonitorElector.Shutdown(func() {})
 	} else if driver.podMonitor != nil {
 		driver.podMonitor.StopMonitor()
 	}
@@ -617,7 +618,7 @@ func (driver *Driver) HandleDuplicateRequest(key string) error {
 		// Cross-pod dedup via per-key Kubernetes Lease (CON-4982) — used when no DBService is
 		// configured, the default case.
 		if err := driver.distributedDedup.TryAcquire(context.Background(), key); err != nil {
-			if errors.Is(err, errDuplicateInFlight) {
+			if errors.Is(err, distributedlock.ErrDuplicateInFlight) {
 				return status.Error(
 					codes.Aborted,
 					fmt.Sprintf("There is already an operation pending for the specified id %s", key),

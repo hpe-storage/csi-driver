@@ -10,6 +10,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/hpe-storage/common-host-libs/chapi"
+	"github.com/hpe-storage/common-host-libs/distributedlock"
 	"github.com/hpe-storage/common-host-libs/model"
 	"github.com/hpe-storage/common-host-libs/storageprovider"
 	"github.com/hpe-storage/common-host-libs/storageprovider/fake"
@@ -21,7 +22,10 @@ import (
 	"github.com/hpe-storage/csi-driver/pkg/flavor/vanilla"
 )
 
-// testSecrets mirrors the fake/fake/fake convention already used by controller_lunid_test.go.
+// testDedupNamespace/testSecrets mirror the fake/fake/fake convention already used by
+// controller_lunid_test.go.
+const testDedupNamespace = "hpe-storage"
+
 var testSecrets = map[string]string{
 	"backend":  "fake",
 	"username": "fake",
@@ -74,7 +78,7 @@ func newDedupTestDriver(identity string, clientset *k8sfake.Clientset, provider 
 		csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER,
 	})
 	if clientset != nil {
-		driver.distributedDedup = newDistributedDedup(testDedupNamespace, identity, clientset, time.Minute)
+		driver.distributedDedup = distributedlock.New(testDedupNamespace, identity, clientset, time.Minute, time.Hour)
 	}
 	return driver
 }
