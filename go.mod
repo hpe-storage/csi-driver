@@ -6,7 +6,7 @@ require (
 	github.com/Scalingo/go-etcd-lock/v5 v5.0.8
 	github.com/container-storage-interface/spec v1.9.0
 	github.com/golang/protobuf v1.5.4
-	github.com/hpe-storage/common-host-libs v0.0.0-20260923110114-f7b41f7c4a77
+	github.com/hpe-storage/common-host-libs v0.0.0-20261013104045-ac060f721f5b
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20260119040638-398cb5cb0d42
 	github.com/kubernetes-csi/csi-lib-utils v0.11.0
 	github.com/kubernetes-csi/csi-test v2.2.0+incompatible
@@ -107,5 +107,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
-
-replace github.com/hpe-storage/common-host-libs => /home/vmauser/go/src/github.com/hpe-storage/common-host-libs

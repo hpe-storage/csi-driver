@@ -101,7 +101,7 @@ github.com/gorilla/mux
 # github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
 ## explicit; go 1.23.0
 github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options
-# github.com/hpe-storage/common-host-libs v0.0.0-20260908045328-de6d01c32495 => /home/vmauser/go/src/github.com/hpe-storage/common-host-libs
+# github.com/hpe-storage/common-host-libs v0.0.0-20261013104045-ac060f721f5b
 ## explicit; go 1.25.0
 github.com/hpe-storage/common-host-libs/chapi
 github.com/hpe-storage/common-host-libs/concurrent
@@ -1059,4 +1059,3 @@ sigs.k8s.io/structured-merge-diff/v6/value
 # sigs.k8s.io/yaml v1.6.0
 ## explicit; go 1.22
 sigs.k8s.io/yaml
-# github.com/hpe-storage/common-host-libs => /home/vmauser/go/src/github.com/hpe-storage/common-host-libs
