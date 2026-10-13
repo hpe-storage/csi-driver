@@ -176,6 +176,15 @@ func (driver *Driver) AreVolumeCapabilitiesSupported(volCapabilities []*csi.Volu
 // accessibility_requirements, and is compatible with the specified capacity_range, volume_capabilities and parameters in the CreateVolumeRequest,
 // the Plugin MUST reply 0 OK with the corresponding CreateVolumeResponse.
 //
+// requestedFsTypeConflictsWithParent reports whether a snapshot-restore request whose
+// target filesystem is requestedFilesystem conflicts with the snapshot parent's fsType.
+// ESC-18117: a raw Block target has an empty requestedFilesystem and never conflicts, so
+// a Filesystem->Block volumeMode conversion (KEP-3141) is permitted; parity is enforced
+// only between two filesystem (Mount) volumes.
+func requestedFsTypeConflictsWithParent(parentVolFsType, requestedFilesystem string) bool {
+	return parentVolFsType != "" && requestedFilesystem != "" && requestedFilesystem != parentVolFsType
+}
+
 // Plugins MAY create 3 types of volumes:
 //
 // Empty volumes. When plugin supports CREATE_DELETE_VOLUME OPTIONAL capability.
@@ -546,8 +555,10 @@ func (driver *Driver) createVolume(
 							existingSnap.VolumeName, err.Error()))
 			}
 
-			// Check if requested filesystem for a clone volume is same as existing snapshot
-			if parentVolFsType != "" && filesystem != parentVolFsType {
+			// Check if requested filesystem for a clone volume is same as existing snapshot.
+			// ESC-18117: a raw Block target has no filesystem, so this parity check is
+			// skipped (KEP-3141 allows Filesystem->Block volumeMode conversion on restore).
+			if requestedFsTypeConflictsWithParent(parentVolFsType, filesystem) {
 				return nil,
 					status.Error(codes.InvalidArgument,
 						fmt.Sprintf("Requested volume filesystem %s cannot be different than snapshot's parent volume filesystem %s", filesystem, parentVolFsType))
@@ -736,7 +747,7 @@ func (driver *Driver) deleteVolume(volumeID string, secrets map[string]string, f
 	}
 
 	// Get volume snapshots. Pass the "exists" mode (CON-4709, common-host-libs) since DeleteVolume
-	// only needs to know whether any snapshot is present, not the full snapshot list 
+	// only needs to know whether any snapshot is present, not the full snapshot list
 	const snapshotModeExists = "exists"
 	snapshots, err := storageProvider.GetSnapshots(volumeID, snapshotModeExists)
 	if err != nil {
