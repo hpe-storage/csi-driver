@@ -20,8 +20,8 @@ const podMonitorLeaseName = "hpe-csi-driver-podmonitor-leader"
 // Default Lease timings, overridable via PODMONITOR_LEADER_ELECTION_* env vars (see
 // distributedlock.GetEnvDuration).
 const (
-	defaultPodMonitorLeaseDuration = 15 * time.Second
-	defaultPodMonitorRenewDeadline = 10 * time.Second
+	defaultPodMonitorLeaseDuration = 20 * time.Second
+	defaultPodMonitorRenewDeadline = 8 * time.Second
 	defaultPodMonitorRetryPeriod   = 2 * time.Second
 )
 
