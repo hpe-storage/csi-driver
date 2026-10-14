@@ -43,7 +43,7 @@ ifndef GOOS
 	GOOS = linux
 endif
 
-GOENV = PATH=$$PATH:$(GOPATH)/bin
+GOENV = PATH=$$PATH:$(GOPATH)/bin GOPROXY="https://proxy.golang.org|direct"
 
 build: clean compile unit-test image push
 
@@ -68,7 +68,7 @@ vendor:
 .PHONY: lint
 lint:
 	@echo "Running lint"
-	@go version
+	@export $(GOENV) && go version
 	export $(GOENV) && golangci-lint run $(LINTER_FLAGS) --exclude vendor
 
 .PHONY: clean
@@ -96,7 +96,7 @@ push:
 
 .PHONY: unit-test
 unit-test: vendor # mocks
-	$(GO) test $(TEST_MODULES) \
+	export $(GOENV) && $(GO) test $(TEST_MODULES) \
 		-timeout 30m \
 		-v \
 		-cover \
