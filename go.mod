@@ -1,21 +1,21 @@
 module github.com/hpe-storage/csi-driver
 
-go 1.25.12
+go 1.26.0
 
 require (
 	github.com/Scalingo/go-etcd-lock/v5 v5.0.8
 	github.com/container-storage-interface/spec v1.9.0
 	github.com/golang/protobuf v1.5.4
-	github.com/hpe-storage/common-host-libs v0.0.0-20261013104045-ac060f721f5b
+	github.com/hpe-storage/common-host-libs v0.0.0-20261014084101-8f420c11e48b
 	github.com/hpe-storage/k8s-custom-resources v0.0.0-20260119040638-398cb5cb0d42
 	github.com/kubernetes-csi/csi-lib-utils v0.11.0
 	github.com/kubernetes-csi/csi-test v2.2.0+incompatible
 	github.com/kubernetes-csi/external-snapshotter/client/v6 v6.1.0
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/mod v0.38.0
-	golang.org/x/net v0.58.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/mod v0.41.0
+	golang.org/x/net v0.60.0
+	golang.org/x/sys v0.49.0
 	google.golang.org/grpc v1.83.2
 	k8s.io/api v0.34.3
 	k8s.io/apimachinery v0.34.3
@@ -80,10 +80,10 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/term v0.47.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
