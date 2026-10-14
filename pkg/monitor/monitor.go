@@ -3,6 +3,7 @@
 package monitor
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
@@ -39,6 +40,8 @@ type Monitor struct {
 	started       bool
 	stopChannel   chan int
 	done          chan int
+	ctx           context.Context
+	cancel        context.CancelFunc
 	podLabelKey   string
 	podLabelValue string
 }
@@ -64,6 +67,7 @@ func (m *Monitor) StartMonitor() error {
 
 	m.stopChannel = make(chan int)
 	m.done = make(chan int)
+	m.ctx, m.cancel = context.WithCancel(context.Background())
 
 	if err := m.monitorPod(); err != nil {
 		return err
@@ -85,6 +89,8 @@ func (m *Monitor) StopMonitor() error {
 		return fmt.Errorf("Pod monitor has not been started")
 	}
 
+	// cancel first so an in-flight MonitorPod sweep stops promptly instead of running to completion
+	m.cancel()
 	close(m.stopChannel)
 	<-m.done
 
@@ -95,15 +101,18 @@ func (m *Monitor) StopMonitor() error {
 func (m *Monitor) monitorPod() error {
 	log.Trace(">>>>> monitorPod")
 	defer log.Trace("<<<<< monitorPod")
-	defer close(m.done)
 
 	tick := time.NewTicker(time.Duration(m.intervalSec) * time.Second)
 
 	go func() {
+		// close(m.done) here, not in the spawning function above, so StopMonitor's <-m.done
+		// actually blocks until this loop goroutine has exited.
+		defer close(m.done)
+		defer tick.Stop()
 		for {
 			select {
 			case <-tick.C:
-				err := m.flavor.MonitorPod(m.podLabelKey, m.podLabelValue)
+				err := m.flavor.MonitorPod(m.ctx, m.podLabelKey, m.podLabelValue)
 				if err != nil {
 					log.Errorf("pod monitoring failed with error %s", err.Error())
 				}
