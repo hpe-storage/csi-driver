@@ -3,6 +3,8 @@
 package flavor
 
 import (
+	"context"
+
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/hpe-storage/common-host-libs/model"
 	v1 "k8s.io/api/core/v1"
@@ -41,7 +43,7 @@ type Flavor interface {
 	GetNFSVolumeID(volumeID string) (string, error)
 	ExpandNFSBackendVolume(nfsVolumeID string, newCapacity int64) error
 	GetOrchestratorVersion() (*version.Info, error)
-	MonitorPod(podLabelkey, podLabelvalue string) error
+	MonitorPod(ctx context.Context, podLabelkey, podLabelvalue string) error
 	GetGroupSnapshotNameFromSnapshotName(snapshotName string) (string, error)
 	ListVolumeAttachments() (*storage_v1.VolumeAttachmentList, error)
 	GetChapCredentials(volumeContext map[string]string) (*model.ChapInfo, error)

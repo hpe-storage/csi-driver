@@ -3,6 +3,7 @@
 package vanilla
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -146,7 +147,7 @@ func (flavor *Flavor) GetOrchestratorVersion() (*version.Info, error) {
 }
 
 //nolint:revive
-func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
+func (flavor *Flavor) MonitorPod(ctx context.Context, podLabelkey, podLabelvalue string) error {
 	return nil
 }
 

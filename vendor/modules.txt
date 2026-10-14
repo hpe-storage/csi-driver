@@ -101,14 +101,16 @@ github.com/gorilla/mux
 # github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.3
 ## explicit; go 1.23.0
 github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2/options
-# github.com/hpe-storage/common-host-libs v0.0.0-20260923110114-f7b41f7c4a77
+# github.com/hpe-storage/common-host-libs v0.0.0-20261013104045-ac060f721f5b
 ## explicit; go 1.25.0
 github.com/hpe-storage/common-host-libs/chapi
 github.com/hpe-storage/common-host-libs/concurrent
 github.com/hpe-storage/common-host-libs/connectivity
 github.com/hpe-storage/common-host-libs/dbservice
 github.com/hpe-storage/common-host-libs/dbservice/etcd
+github.com/hpe-storage/common-host-libs/distributedlock
 github.com/hpe-storage/common-host-libs/jsonutil
+github.com/hpe-storage/common-host-libs/leaderlease
 github.com/hpe-storage/common-host-libs/linux
 github.com/hpe-storage/common-host-libs/logger
 github.com/hpe-storage/common-host-libs/model
@@ -960,6 +962,8 @@ k8s.io/client-go/tools/cache
 k8s.io/client-go/tools/cache/synctrack
 k8s.io/client-go/tools/clientcmd/api
 k8s.io/client-go/tools/internal/events
+k8s.io/client-go/tools/leaderelection
+k8s.io/client-go/tools/leaderelection/resourcelock
 k8s.io/client-go/tools/metrics
 k8s.io/client-go/tools/pager
 k8s.io/client-go/tools/record

@@ -327,74 +327,73 @@ func (flavor *Flavor) LoadNodeInfo(node *model.Node) (string, error) {
 	return node.UUID, nil
 }
 
-// validateUniqueInitiators checks if IQNs/WWPNs/NQNs from the current node 
+// validateUniqueInitiators checks if IQNs/WWPNs/NQNs from the current node
 // already exist in other nodes' HPENodeInfo CRs
 func (flavor *Flavor) validateUniqueInitiators(nodeName string, iqns, wwpns, nqns []string) error {
-    log.Tracef(">>>>> validateUniqueInitiators for node %s", nodeName)
-    defer log.Trace("<<<<< validateUniqueInitiators")
-    
-    // Get all existing HPENodeInfo objects
-    nodeInfoList, err := flavor.crdClient.StorageV1().HPENodeInfos().List(meta_v1.ListOptions{})
-    if err != nil {
-        return fmt.Errorf("failed to list HPENodeInfos: %v", err)
-    }
-    
-    // Check each existing node (except the current one)
-    for _, existingNodeInfo := range nodeInfoList.Items {
-        if existingNodeInfo.Name == nodeName {
-            continue // Skip self
-        }
-        
-        // Check for duplicate IQNs
-        for _, currentIQN := range iqns {
-            if currentIQN == "" {
-                continue // Skip empty
-            }
-            for _, existingIQN := range existingNodeInfo.Spec.IQNs {
-                if strings.EqualFold(currentIQN, existingIQN) {
-                    return fmt.Errorf(
-                        "CRITICAL: Duplicate IQN '%s' detected on node '%s' (attempting to register on node '%s'). "+
-                        "This will cause data corruption. Each node must have unique iSCSI initiator names. "+
-                        "Please regenerate IQNs or fix node templates before proceeding",
-                        currentIQN, existingNodeInfo.Name, nodeName)
-                }
-            }
-        }
-        
-        // Check for duplicate WWPNs
-        for _, currentWWPN := range wwpns {
-            if currentWWPN == "" {
-                continue
-            }
-            for _, existingWWPN := range existingNodeInfo.Spec.WWPNs {
-                if strings.EqualFold(currentWWPN, existingWWPN) {
-                    return fmt.Errorf(
-                        "CRITICAL: Duplicate WWPN '%s' detected on node '%s' (attempting to register on node '%s'). "+
-                        "This will cause data corruption. Each node must have unique Fibre Channel WWPNs",
-                        currentWWPN, existingNodeInfo.Name, nodeName)
-                }
-            }
-        }
-        
-        // Check for duplicate NQNs
-        for _, currentNQN := range nqns {
-            if currentNQN == "" {
-                continue
-            }
-            for _, existingNQN := range existingNodeInfo.Spec.NQNs {
-                if strings.EqualFold(currentNQN, existingNQN) {
-                    return fmt.Errorf(
-                        "CRITICAL: Duplicate NQN '%s' detected on node '%s' (attempting to register on node '%s'). "+
-                        "This will cause data corruption. Each node must have unique NVMe Qualified Names",
-                        currentNQN, existingNodeInfo.Name, nodeName)
-                }
-            }
-        }
-    }
-    
-    return nil
-}
+	log.Tracef(">>>>> validateUniqueInitiators for node %s", nodeName)
+	defer log.Trace("<<<<< validateUniqueInitiators")
 
+	// Get all existing HPENodeInfo objects
+	nodeInfoList, err := flavor.crdClient.StorageV1().HPENodeInfos().List(meta_v1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to list HPENodeInfos: %v", err)
+	}
+
+	// Check each existing node (except the current one)
+	for _, existingNodeInfo := range nodeInfoList.Items {
+		if existingNodeInfo.Name == nodeName {
+			continue // Skip self
+		}
+
+		// Check for duplicate IQNs
+		for _, currentIQN := range iqns {
+			if currentIQN == "" {
+				continue // Skip empty
+			}
+			for _, existingIQN := range existingNodeInfo.Spec.IQNs {
+				if strings.EqualFold(currentIQN, existingIQN) {
+					return fmt.Errorf(
+						"CRITICAL: Duplicate IQN '%s' detected on node '%s' (attempting to register on node '%s'). "+
+							"This will cause data corruption. Each node must have unique iSCSI initiator names. "+
+							"Please regenerate IQNs or fix node templates before proceeding",
+						currentIQN, existingNodeInfo.Name, nodeName)
+				}
+			}
+		}
+
+		// Check for duplicate WWPNs
+		for _, currentWWPN := range wwpns {
+			if currentWWPN == "" {
+				continue
+			}
+			for _, existingWWPN := range existingNodeInfo.Spec.WWPNs {
+				if strings.EqualFold(currentWWPN, existingWWPN) {
+					return fmt.Errorf(
+						"CRITICAL: Duplicate WWPN '%s' detected on node '%s' (attempting to register on node '%s'). "+
+							"This will cause data corruption. Each node must have unique Fibre Channel WWPNs",
+						currentWWPN, existingNodeInfo.Name, nodeName)
+				}
+			}
+		}
+
+		// Check for duplicate NQNs
+		for _, currentNQN := range nqns {
+			if currentNQN == "" {
+				continue
+			}
+			for _, existingNQN := range existingNodeInfo.Spec.NQNs {
+				if strings.EqualFold(currentNQN, existingNQN) {
+					return fmt.Errorf(
+						"CRITICAL: Duplicate NQN '%s' detected on node '%s' (attempting to register on node '%s'). "+
+							"This will cause data corruption. Each node must have unique NVMe Qualified Names",
+						currentNQN, existingNodeInfo.Name, nodeName)
+				}
+			}
+		}
+	}
+
+	return nil
+}
 
 func getIqnsFromNode(node *model.Node) []string {
 	var iqns []string
@@ -421,11 +420,11 @@ func getNetworksFromNode(node *model.Node) []string {
 }
 
 func getNqnsFromNode(node *model.Node) []string {
-    var nqns []string
-    for i := 0; i < len(node.Nqns); i++ {
-        nqns = append(nqns, *node.Nqns[i])
-    }
-    return nqns
+	var nqns []string
+	for i := 0; i < len(node.Nqns); i++ {
+		nqns = append(nqns, *node.Nqns[i])
+	}
+	return nqns
 }
 
 // UnloadNodeInfo remove the HPENodeInfo from the list of CRDs
@@ -1011,7 +1010,7 @@ func checkConnection(clientset kubernetes.Interface) bool {
 }
 
 // MonitorPod monitors pods with given labels for being in unknown state(node unreachable/lost) and assist them to move to different node
-func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
+func (flavor *Flavor) MonitorPod(ctx context.Context, podLabelkey, podLabelvalue string) error {
 	log.Tracef(">>>>> MonitorPod with label %s=%s", podLabelkey, podLabelvalue)
 	defer log.Tracef("<<<<< MonitorPod")
 
@@ -1020,7 +1019,7 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 		LabelSelector: labels.Set(labelSelector.MatchLabels).String(),
 	}
 
-	podList, err := flavor.kubeClient.CoreV1().Pods(meta_v1.NamespaceAll).List(context.Background(), listOptions)
+	podList, err := flavor.kubeClient.CoreV1().Pods(meta_v1.NamespaceAll).List(ctx, listOptions)
 	if err != nil {
 		log.Errorf("Unable to enumerate Pods for monitoring: %s", err.Error())
 		return err
@@ -1031,6 +1030,10 @@ func (flavor *Flavor) MonitorPod(podLabelkey, podLabelvalue string) error {
 	}
 
 	for _, pod := range podList.Items {
+		// stop promptly on StopMonitor/leadership handoff instead of sweeping all remaining pods
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		podUnknownState := false
 		if pod.Status.Reason == nodeLostCondition {
 			podUnknownState = true
