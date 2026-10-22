@@ -10,11 +10,13 @@ ADD cmd ./cmd
 ADD vendor ./vendor
 ADD pkg ./pkg
 ADD Makefile .
+ADD Dockerfile .
 ADD go.mod .
 ADD go.sum .
 ARG TARGETARCH
 ARG TARGETPLATFORM
-RUN make ARCH=$TARGETARCH compile # $TARGETPLATFORM
+ARG VERSION
+RUN make ARCH=$TARGETARCH VERSION=$VERSION compile # $TARGETPLATFORM
 
 # image build
 FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8-1791898448

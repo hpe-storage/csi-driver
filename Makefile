@@ -10,8 +10,14 @@ ifndef REPO_NAME
 	REPO_NAME ?= hpestorage/csi-driver
 endif
 
+DOCKERFILE_VERSION := $(shell grep 'version=' Dockerfile 2>/dev/null | cut -d '"' -f 2)
+
 ifndef TAG
-	TAG ?= edge
+	ifneq ($(DOCKERFILE_VERSION),)
+		TAG ?= $(DOCKERFILE_VERSION)
+	else
+		TAG ?= edge
+	endif
 endif
 
 ARCH ?= amd64
@@ -76,23 +82,25 @@ clean:
 	@echo "Removing build artifacts"
 	@rm -rf build $(COVER_PROFILE) unit-test-result.json c.out coverage.html unit_test_coverage.html
 
+LDFLAGS ?= -X main.driverVersion=$(VERSION)
+
 .PHONY: compile
 compile:
 	@echo "Compiling the source for ${GOOS}"
 	@go version
-	@env CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${ARCH} go build -o build/${NAME} ./cmd/csi-driver/
+	@env CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${ARCH} go build -ldflags "$(LDFLAGS)" -o build/${NAME} ./cmd/csi-driver/
 
 .PHONY: image
 image:
 	@echo "Building multiarch docker images and manifest"
 	docker-buildx build --platform=linux/amd64,linux/arm64 --progress=plain \
-		--provenance=false -t $(IMAGE) .
+		--provenance=false --build-arg VERSION=$(VERSION) -t $(IMAGE) .
 
 .PHONY: push
 push:
 	@echo "Publishing $(IMAGE)"
 	docker-buildx build --platform=linux/amd64,linux/arm64 --progress=plain \
-		--provenance=false --push -t $(IMAGE) .
+		--provenance=false --push --build-arg VERSION=$(VERSION) -t $(IMAGE) .
 
 .PHONY: unit-test
 unit-test: vendor # mocks
