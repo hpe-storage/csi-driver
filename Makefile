@@ -76,7 +76,7 @@ clean:
 	@echo "Removing build artifacts"
 	@rm -rf build $(COVER_PROFILE) unit-test-result.json c.out coverage.html unit_test_coverage.html
 
-DRIVER_VERSION ?= $(shell grep 'version=' Dockerfile 2>/dev/null | cut -d '"' -f 2)
+DRIVER_VERSION ?= $(shell grep -E '^[[:space:]]*version=' Dockerfile 2>/dev/null | head -n 1 | cut -d '"' -f 2)
 ifeq ($(strip $(DRIVER_VERSION)),)
 	override DRIVER_VERSION = 3.4.0-alpha1
 endif

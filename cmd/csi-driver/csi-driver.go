@@ -76,23 +76,14 @@ func getDriverVersion() string {
 	return driverVersion
 }
 
-func getStartupBanner(version string) []string {
-	return []string{
-		"**********************************************",
-		fmt.Sprintf("******** HPE CSI DRIVER Version: %s ********", version),
-		"**********************************************",
-	}
-}
-
 func logStartupBanner() {
-	for _, line := range getStartupBanner(getDriverVersion()) {
-		log.Info(line)
-	}
+	log.Info("**********************************************")
+	log.Infof("******** HPE CSI DRIVER Version: %s ********", getDriverVersion())
+	log.Info("**********************************************")
 }
 
 // Initialize cmd-line flags/commands
 func init() {
-	RootCmd.Version = getDriverVersion()
 	RootCmd.PersistentFlags().StringVarP(&name, "name", "n", csiDriverName, "CSI driver name")
 	RootCmd.PersistentFlags().StringVarP(&endpoint, "endpoint", "e", csiEndpoint, "CSI endpoint")
 	RootCmd.PersistentFlags().StringVarP(&dbServer, "dbserver", "s", "", "Database server for the CSI driver")

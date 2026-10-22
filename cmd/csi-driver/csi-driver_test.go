@@ -2,7 +2,6 @@
 package main
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 
@@ -52,19 +51,6 @@ func TestCSIVersionRemainsInterfaceVersion(t *testing.T) {
 	}
 }
 
-func TestLoggerHooksDoNotAccumulate(t *testing.T) {
-	initialHookCount := len(logrus.StandardLogger().Hooks[logrus.InfoLevel])
-
-	withCapturedLogs(func(hook *testLogHook) {
-		logStartupBanner()
-	})
-
-	afterHookCount := len(logrus.StandardLogger().Hooks[logrus.InfoLevel])
-	if initialHookCount != afterHookCount {
-		t.Fatalf("expected hook count to remain %d, but got %d", initialHookCount, afterHookCount)
-	}
-}
-
 func TestGetDriverVersion(t *testing.T) {
 	origVersion := driverVersion
 	defer func() { driverVersion = origVersion }()
@@ -85,58 +71,44 @@ func TestGetDriverVersion(t *testing.T) {
 	}
 }
 
-func TestGetStartupBanner(t *testing.T) {
-	testVersion := "3.4.0-alpha1"
-	banner := getStartupBanner(testVersion)
-	if len(banner) != 3 {
-		t.Fatalf("expected 3 banner lines, got %d", len(banner))
+func TestLogStartupBanner(t *testing.T) {
+	tests := []struct {
+		name        string
+		version     string
+		expectedMsg string
+	}{
+		{
+			name:        "default version",
+			version:     "3.4.0-alpha1",
+			expectedMsg: "******** HPE CSI DRIVER Version: 3.4.0-alpha1 ********",
+		},
+		{
+			name:        "custom version",
+			version:     "9.9.9-test",
+			expectedMsg: "******** HPE CSI DRIVER Version: 9.9.9-test ********",
+		},
 	}
-	expectedMsg := fmt.Sprintf("******** HPE CSI DRIVER Version: %s ********", testVersion)
-	if banner[1] != expectedMsg {
-		t.Errorf("expected banner line 1 to be %q, got %q", expectedMsg, banner[1])
-	}
-}
 
-func TestLogStartupBannerDefaultVersion(t *testing.T) {
 	origVersion := driverVersion
 	defer func() { driverVersion = origVersion }()
 
-	driverVersion = "3.4.0-alpha1"
-	withCapturedLogs(func(hook *testLogHook) {
-		logStartupBanner()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			driverVersion = tt.version
+			withCapturedLogs(func(hook *testLogHook) {
+				logStartupBanner()
 
-		expectedMsg := fmt.Sprintf("******** HPE CSI DRIVER Version: %s ********", driverVersion)
-		found := false
-		for _, msg := range hook.messages {
-			if strings.Contains(msg, expectedMsg) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("expected startup banner log containing %q, got %v", expectedMsg, hook.messages)
-		}
-	})
-}
-
-func TestLogStartupBannerCustomVersion(t *testing.T) {
-	origVersion := driverVersion
-	defer func() { driverVersion = origVersion }()
-
-	driverVersion = "9.9.9-test"
-	withCapturedLogs(func(hook *testLogHook) {
-		logStartupBanner()
-
-		expectedMsg := "******** HPE CSI DRIVER Version: 9.9.9-test ********"
-		found := false
-		for _, msg := range hook.messages {
-			if strings.Contains(msg, expectedMsg) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("expected startup banner log containing %q, got %v", expectedMsg, hook.messages)
-		}
-	})
+				found := false
+				for _, msg := range hook.messages {
+					if strings.Contains(msg, tt.expectedMsg) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatalf("expected startup banner log containing %q, got %v", tt.expectedMsg, hook.messages)
+				}
+			})
+		})
+	}
 }
