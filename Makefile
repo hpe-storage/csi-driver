@@ -10,14 +10,8 @@ ifndef REPO_NAME
 	REPO_NAME ?= hpestorage/csi-driver
 endif
 
-DOCKERFILE_VERSION := $(shell grep 'version=' Dockerfile 2>/dev/null | cut -d '"' -f 2)
-
 ifndef TAG
-	ifneq ($(DOCKERFILE_VERSION),)
-		TAG ?= $(DOCKERFILE_VERSION)
-	else
-		TAG ?= edge
-	endif
+	TAG ?= edge
 endif
 
 ARCH ?= amd64
@@ -82,7 +76,12 @@ clean:
 	@echo "Removing build artifacts"
 	@rm -rf build $(COVER_PROFILE) unit-test-result.json c.out coverage.html unit_test_coverage.html
 
-LDFLAGS ?= -X main.driverVersion=$(VERSION)
+DRIVER_VERSION ?= $(shell grep 'version=' Dockerfile 2>/dev/null | cut -d '"' -f 2)
+ifeq ($(strip $(DRIVER_VERSION)),)
+	override DRIVER_VERSION = 3.4.0-alpha1
+endif
+
+LDFLAGS ?= -X main.driverVersion=$(DRIVER_VERSION)
 
 .PHONY: compile
 compile:
@@ -94,13 +93,13 @@ compile:
 image:
 	@echo "Building multiarch docker images and manifest"
 	docker-buildx build --platform=linux/amd64,linux/arm64 --progress=plain \
-		--provenance=false --build-arg VERSION=$(VERSION) -t $(IMAGE) .
+		--provenance=false -t $(IMAGE) .
 
 .PHONY: push
 push:
 	@echo "Publishing $(IMAGE)"
 	docker-buildx build --platform=linux/amd64,linux/arm64 --progress=plain \
-		--provenance=false --push --build-arg VERSION=$(VERSION) -t $(IMAGE) .
+		--provenance=false --push -t $(IMAGE) .
 
 .PHONY: unit-test
 unit-test: vendor # mocks

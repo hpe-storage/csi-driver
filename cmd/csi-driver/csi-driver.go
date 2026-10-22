@@ -71,7 +71,7 @@ var (
 
 func getDriverVersion() string {
 	if driverVersion == "" {
-		return "unknown"
+		return "3.4.0-alpha1"
 	}
 	return driverVersion
 }
