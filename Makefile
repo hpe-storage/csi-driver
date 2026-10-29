@@ -76,11 +76,18 @@ clean:
 	@echo "Removing build artifacts"
 	@rm -rf build $(COVER_PROFILE) unit-test-result.json c.out coverage.html unit_test_coverage.html
 
+DRIVER_VERSION ?= $(shell grep -E '^[[:space:]]*version=' Dockerfile 2>/dev/null | head -n 1 | cut -d '"' -f 2)
+ifeq ($(strip $(DRIVER_VERSION)),)
+	override DRIVER_VERSION = 3.4.0-alpha1
+endif
+
+LDFLAGS ?= -X main.driverVersion=$(DRIVER_VERSION)
+
 .PHONY: compile
 compile:
 	@echo "Compiling the source for ${GOOS}"
 	@go version
-	@env CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${ARCH} go build -o build/${NAME} ./cmd/csi-driver/
+	@env CGO_ENABLED=0 GOOS=${GOOS} GOARCH=${ARCH} go build -ldflags "$(LDFLAGS)" -o build/${NAME} ./cmd/csi-driver/
 
 .PHONY: image
 image:

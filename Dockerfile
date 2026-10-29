@@ -10,6 +10,7 @@ ADD cmd ./cmd
 ADD vendor ./vendor
 ADD pkg ./pkg
 ADD Makefile .
+ADD Dockerfile .
 ADD go.mod .
 ADD go.sum .
 ARG TARGETARCH
