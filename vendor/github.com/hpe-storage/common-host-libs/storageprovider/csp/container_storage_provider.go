@@ -51,6 +51,9 @@ type ErrorObject struct {
 const (
 	// CspClientTimeout : Timeout for a connection to the CSP
 	CspClientTimeout = time.Duration(300) * time.Second
+
+	// Second attempt covers a CSP leader change between re-login and retry.
+	maxReloginAttempts = 2
 )
 
 // ContainerStorageProvider is an implementor of the StorageProvider interface
@@ -132,6 +135,11 @@ func (provider *ContainerStorageProvider) login() (int, error) {
 // invoke is used to invoke all methods against the CSP. Error handling should be added here.
 // Currently, it will login again if the server responds with a status code of unauthorized.
 func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) (status int, err error) {
+	return provider.invokeWithRelogin(request, maxReloginAttempts)
+}
+
+// invokeWithRelogin sends the request, re-logging in and retrying on 401 at most reloginsLeft times.
+func (provider *ContainerStorageProvider) invokeWithRelogin(request *connectivity.Request, reloginsLeft int) (status int, err error) {
 	request.Header = make(map[string]string)
 	// Perform login attempt when AuthToken is empty
 	if provider.AuthToken == "" {
@@ -161,7 +169,7 @@ func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) 
 	if status == http.StatusOK {
 		return status, nil
 	}
-	if status == http.StatusUnauthorized {
+	if status == http.StatusUnauthorized && reloginsLeft > 0 {
 		log.Info("Received unauthorization error. Attempting login...")
 		status, err = provider.login()
 		if status != http.StatusOK {
@@ -172,10 +180,13 @@ func (provider *ContainerStorageProvider) invoke(request *connectivity.Request) 
 			log.Errorf("Error while login to CSP during re-attempt. Error: %s", err.Error())
 			return http.StatusInternalServerError, err
 		}
-		request.Path = reqPath      // Set the original path value
-		request.ResponseError = nil // Reset the previous error response
+		request.Path = reqPath // Set the original path value
+		// Clear the caller's decoded 401 payload but keep the pointer so the retry's error is still decoded.
+		if p, ok := request.ResponseError.(**ErrorsPayload); ok && p != nil {
+			*p = nil
+		}
 		log.Tracef("Re-attempting the request: Action=%s Path=%s", request.Action, request.Path)
-		return provider.invoke(request) // Recursive invoke call with new token
+		return provider.invokeWithRelogin(request, reloginsLeft-1) // Recursive invoke call with new token
 	}
 	log.Tracef("Replying with status code: %v", status)
 	return status, err

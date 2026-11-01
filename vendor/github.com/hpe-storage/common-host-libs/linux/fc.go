@@ -226,6 +226,95 @@ func GetFcHostNumbersForTargetWwpns(targetWwpns []string) ([]string, error) {
 	return hostNumbers, nil
 }
 
+// fcHostChannelTargetKey builds the composite key used to scope a remap/rescan
+// check to a single FC target's rport, rather than the whole HBA (host). This
+// avoids a false match when a different array shares the same host over
+// another rport (e.g. a different target id) and happens to use the same host
+// LUN number (ESC-18223 defect #1).
+func fcHostChannelTargetKey(host, channel, target string) string {
+	return host + ":" + channel + ":" + target
+}
+
+// GetFcHostChannelTargetsForTargetWwpns returns the set of host:channel:target
+// combinations (keyed via fcHostChannelTargetKey) whose FC remote port (rport)
+// corresponds to one of the given target WWPNs. Unlike GetFcHostNumbersForTargetWwpns,
+// which only resolves down to the host (HBA) number, this also captures the
+// channel/target component of the rport so that callers can distinguish between
+// two different arrays that happen to share the same FC host but present through
+// different rports.
+//
+// Returns (nil, nil) when no target WWPNs are supplied or none are found; callers
+// should fall back to host-only scoping in that case.
+func GetFcHostChannelTargetsForTargetWwpns(targetWwpns []string) (map[string]bool, error) {
+	log.Tracef(">>> GetFcHostChannelTargetsForTargetWwpns called with targets %v", targetWwpns)
+	defer log.Trace("<<< GetFcHostChannelTargetsForTargetWwpns")
+
+	if len(targetWwpns) == 0 {
+		return nil, nil
+	}
+
+	targetSet := make(map[string]bool)
+	for _, t := range targetWwpns {
+		targetSet[normalizeWwpn(t)] = true
+	}
+
+	entries, err := os.ReadDir(fcRemotePortBasePath)
+	if err != nil {
+		return nil, fmt.Errorf("unable to read %s: %s", fcRemotePortBasePath, err.Error())
+	}
+
+	hostChannelTargetSet := make(map[string]bool)
+	for _, entry := range entries {
+		name := entry.Name()
+		// rport directories are named rport-H:B-T (e.g., rport-5:0-0)
+		if !strings.HasPrefix(name, "rport-") {
+			continue
+		}
+
+		portNamePath := filepath.Join(fcRemotePortBasePath, name, "port_name")
+		portName, err := util.FileReadFirstLine(portNamePath)
+		if err != nil {
+			log.Debugf("unable to read port_name for %s: %s", name, err.Error())
+			continue
+		}
+		if !targetSet[normalizeWwpn(portName)] {
+			continue
+		}
+
+		// Parse rport-H:B-T into host (H), channel/bus (B) and target (T).
+		parts := strings.TrimPrefix(name, "rport-")
+		colonIdx := strings.Index(parts, ":")
+		if colonIdx < 0 {
+			continue
+		}
+		hostNum := parts[:colonIdx]
+		rest := parts[colonIdx+1:]
+		dashIdx := strings.Index(rest, "-")
+		if dashIdx < 0 {
+			continue
+		}
+		channel := rest[:dashIdx]
+		// The T above is the rport's enumeration index, not necessarily the real
+		// SCSI target id that /proc/scsi/scsi uses (they are not guaranteed to be
+		// equal). Prefer the kernel-authoritative scsi_target_id attribute when
+		// it is present; fall back to the directory-name T otherwise.
+		target := rest[dashIdx+1:]
+		if scsiTargetID, terr := util.FileReadFirstLine(filepath.Join(fcRemotePortBasePath, name, "scsi_target_id")); terr == nil {
+			if scsiTargetID = strings.TrimSpace(scsiTargetID); scsiTargetID != "" {
+				target = scsiTargetID
+			}
+		}
+		key := fcHostChannelTargetKey(hostNum, channel, target)
+		hostChannelTargetSet[key] = true
+		log.Infof("FC remote port %s (wwpn %s) maps to host:channel:target %s", name, normalizeWwpn(portName), key)
+	}
+
+	if len(hostChannelTargetSet) == 0 {
+		return nil, nil
+	}
+	return hostChannelTargetSet, nil
+}
+
 // RescanFcHostsForLun rescans only the specified FC host adapters for the given LUN ID.
 // This avoids disturbing unrelated volumes on other arrays sharing the same LUN ID.
 func RescanFcHostsForLun(hostNumbers []string, lunID string) error {
