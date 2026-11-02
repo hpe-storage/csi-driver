@@ -25,6 +25,10 @@ var (
 	multipathMutex       sync.Mutex
 	DeviceVendorPatterns = []string{"Nimble", "3PARdata", "TrueNAS", "FreeNAS"}
 	multipathDeviceBusy  = "Device or resource busy"
+	// multipathMapInUse is the multipath-tools wording for an in-use map; the
+	// underlying libdevmapper error is multipathDeviceBusy, but the CLI may print
+	// only this, so match both.
+	multipathMapInUse = "map in use"
 )
 
 const (
@@ -32,6 +36,8 @@ const (
 	MultipathConf = "/etc/multipath.conf"
 	// MultipathBindings bindings file for multipathd
 	MultipathBindings = "/etc/multipath/bindings"
+	// multipathcommand is the multipath-tools CLI used to flush maps safely.
+	multipathcommand = "multipath"
 	// orphanPathsPattern captures WWID (first field from multipathd show paths output)
 	// along with H:C:T:L so that orphan paths can be scoped to a specific volume.
 	// multipathd show paths format: %w %d %t %i %o %T %z %s %m
@@ -219,6 +225,28 @@ func checkIfDeviceCanBeDeleted(dev *model.Device) (err error) {
 		log.Errorf("%s is currently mounted", dev.Pathname)
 		return fmt.Errorf("%s is currently mounted", dev.Pathname)
 	}
+
+	// Block-mode/direct-attached volumes (e.g. a raw-block disk opened directly by
+	// QEMU) have no mount and no dm holder, so they slip past the checks above and
+	// below. Guard against tearing down a map that a consumer still has open.
+	if dev.MpathName == "" {
+		if serr := setAltFullPathName(dev); serr != nil {
+			log.Warnf("unable to resolve mpath name for %s to check open count: %s", dev.Pathname, serr.Error())
+		}
+	}
+	if dev.MpathName != "" {
+		open, operr := getDmOpenCountFunc(dev.MpathName)
+		if operr != nil {
+			// fail safe: if we can't tell whether it's open, don't tear it down
+			log.Errorf("unable to determine open count for %s: %s", dev.MpathName, operr.Error())
+			return fmt.Errorf("%s: unable to determine open count for %s: %s", multipathDeviceBusy, dev.MpathName, operr.Error())
+		}
+		if open > 0 {
+			log.Errorf("%s is still open (open count=%d), refusing teardown", dev.MpathName, open)
+			return fmt.Errorf("%s: %s is in use (open count=%d)", multipathDeviceBusy, dev.MpathName, open)
+		}
+	}
+
 	// check if the device is part of LVM or other device mapper devices
 	holder, err := getDeviceHolders(dev)
 	if err != nil {
@@ -239,6 +267,40 @@ func checkIfDeviceCanBeDeleted(dev *model.Device) (err error) {
 	return nil
 }
 
+// getDmOpenCount returns the device-mapper open count of a multipath map
+// (0 if the map is not currently opened by anything, e.g. no mount and no
+// direct block-device consumer).
+func getDmOpenCount(mpathName string) (int, error) {
+	if mpathName == "" {
+		return 0, fmt.Errorf("empty multipath name")
+	}
+	args := []string{"info", "-c", "--noheadings", "-o", "open", mpathName}
+	out, _, err := util.ExecCommandOutput(dmsetupcommand, args)
+	if err != nil {
+		if strings.Contains(out, deviceDoesNotExist) {
+			// map is already gone, nothing left to protect
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to query open count for %s: %s", mpathName, err.Error())
+	}
+	open, err := strconv.Atoi(strings.TrimSpace(out))
+	if err != nil {
+		return 0, fmt.Errorf("unexpected dmsetup info output for %s: %q", mpathName, out)
+	}
+	return open, nil
+}
+
+// getDmOpenCountFunc is an indirection point so unit tests can stub the dmsetup call.
+var getDmOpenCountFunc = getDmOpenCount
+
+// execMultipathFlush runs `multipath -f <mpathName>` and returns its combined
+// output and error. It is a var so unit tests can exercise multipathRemoveDmDevice's
+// already-removed / in-use / error branches without a real multipath binary.
+var execMultipathFlush = func(mpathName string) (string, error) {
+	out, _, err := util.ExecCommandOutput(multipathcommand, []string{"-f", mpathName})
+	return out, err
+}
+
 // retry for maxtries for device Cleanup
 func retryCleanupDeviceAndSlaves(dev *model.Device) error {
 	log.Trace(">>>>> retryCleanupDeviceAndSlaves")
@@ -257,6 +319,12 @@ func retryCleanupDeviceAndSlaves(dev *model.Device) error {
 	for {
 		err := cleanupDeviceAndSlaves(dev)
 		if err != nil {
+			if strings.Contains(err.Error(), multipathDeviceBusy) {
+				// in use: don't hold this loop (and the caller's stageLock) for up
+				// to 50s against a device that is still open; let the normal
+				// NodeUnstageVolume retry path pick this back up later.
+				return err
+			}
 			if try < maxTries {
 				try++
 				log.Debugf("retryCleanupDeviceAndSlaves try=%d", try)
@@ -285,6 +353,17 @@ func cleanupDeviceAndSlaves(dev *model.Device) (err error) {
 
 	isFC := isFibreChannelDevice(dev.Slaves)
 
+	// Defense in depth: every teardown path (remap cleanup, zombie unstage,
+	// retries) funnels through here, not just checkIfDeviceCanBeDeleted, so
+	// re-check the open count here too, closing the TOCTOU window between
+	// that check and this call.
+	if dev.MpathName != "" {
+		if open, operr := getDmOpenCountFunc(dev.MpathName); operr != nil || open > 0 {
+			log.Errorf("refusing teardown of %s: open=%d err=%v", dev.MpathName, open, operr)
+			return fmt.Errorf("%s: %s is in use (open=%d)", multipathDeviceBusy, dev.MpathName, open)
+		}
+	}
+
 	// disable queuing on multipath
 	err = multipathDisableQueuing(dev)
 	if err != nil {
@@ -293,7 +372,7 @@ func cleanupDeviceAndSlaves(dev *model.Device) (err error) {
 	// remove dm device
 	removeErr := multipathRemoveDmDevice(dev)
 	if removeErr != nil {
-		// if the device is busy, the retry should trigger here.
+		// if the device is busy, surface it as terminal (see retryCleanupDeviceAndSlaves).
 		if strings.Contains(removeErr.Error(), multipathDeviceBusy) {
 			return fmt.Errorf("multipath device busy: %s", removeErr.Error())
 		} else {
@@ -406,13 +485,23 @@ func multipathRemoveDmDevice(dev *model.Device) (err error) {
 			return err
 		}
 	}
-	args := []string{"remove", "--force", dev.MpathName}
-	out, _, err := util.ExecCommandOutput(dmsetupcommand, args)
+	// Use `multipath -f`, not `dmsetup remove --force`: per dmsetup(8), --force
+	// installs an error table on an open map BEFORE reporting busy, which is
+	// what froze VMs in ESC-18223/CON-4959. `multipath -f` refuses an in-use
+	// map atomically (mpath_in_use -> DM_FLUSH_BUSY) and cleans up kpartx
+	// children correctly; mirrors tunelinux.RemoveMultipathDevice (CON-4887).
+	out, err := execMultipathFlush(dev.MpathName)
 	if err != nil {
+		if strings.Contains(out, deviceDoesNotExist) {
+			// map is already gone, nothing left to remove
+			log.Debugf("multipath map %s already removed", dev.MpathName)
+			return nil
+		}
+		if strings.Contains(out, multipathDeviceBusy) || strings.Contains(out, multipathMapInUse) ||
+			strings.Contains(err.Error(), multipathDeviceBusy) || strings.Contains(err.Error(), multipathMapInUse) {
+			return fmt.Errorf("%s: failed to flush multipath map %s: %s", multipathDeviceBusy, dev.MpathName, err.Error())
+		}
 		return fmt.Errorf("failed to remove multipath map for %s. Error: %s", dev.MpathName, err.Error())
-	}
-	if out != "" && !strings.Contains(out, "ok") && !strings.Contains(out, deviceDoesNotExist) {
-		return fmt.Errorf("failed to remove device map for %s. Error: %s", dev.MpathName, out)
 	}
 
 	log.Debugf("successfully removed the dm device %s", dev.MpathName)

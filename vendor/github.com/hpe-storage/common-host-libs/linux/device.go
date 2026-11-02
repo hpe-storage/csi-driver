@@ -41,8 +41,6 @@ const (
 	holderPattern      = "^.*dm-"
 	countdownTicker    = 5
 	sectorstoMiBFactor = 2 * 1024
-	procScsiPath       = "/proc/scsi/scsi"
-	procScsiPathLocal  = "/proc_local/scsi/scsi"
 	// HCTL format in /proc/scsi/scsi
 	// eg Host: scsi7 Channel: 00 Id: 00 Lun: 00
 	procScsiHctlPattern = "Host:\\s+scsi(?P<h>\\d+)\\s+Channel:\\s+(?P<c>\\d+)\\s+Id:\\s+(?P<t>\\d+)\\s+Lun:\\s+(?P<l>\\d+)"
@@ -56,6 +54,12 @@ var (
 	deletingDevices   DeletingDevices
 	procScsiHctlRegex = regexp.MustCompile(procScsiHctlPattern)
 	errorMapRegex     = regexp.MustCompile(errorMapPattern)
+
+	// Overridable sysfs/procfs roots (vars, not consts) so unit tests can point
+	// the remap-detection and HCTL lookups at a fake tree instead of real /proc and /sys.
+	procScsiPath       = "/proc/scsi/scsi"
+	procScsiPathLocal  = "/proc_local/scsi/scsi"
+	scsiDeviceBasePath = "/sys/class/scsi_device"
 )
 
 // DeletingDevices represents serial numbers of devices being deleted
@@ -419,7 +423,6 @@ func rescanLoginVolume(volume *model.Volume) error {
 	primaryVolObj.TargetPort = volume.TargetPort
 
 	err = rescanLoginVolumeForBackend(primaryVolObj)
-
 	if err != nil {
 		return err
 	}
@@ -463,7 +466,6 @@ func rescanLoginVolume(volume *model.Volume) error {
 }
 
 func rescanLoginVolumeForBackend(volObj *model.Volume) error {
-
 	log.Traceln("Called rescanLoginVolumeForBackend", volObj, "and accessProtocol", volObj.AccessProtocol)
 	var err error
 	if strings.EqualFold(volObj.AccessProtocol, "fc") {
@@ -910,18 +912,71 @@ func handleRemappedLun(volume *model.Volume) (err error) {
 	if err != nil {
 		return err
 	}
-	lunIdArray := util.GetSecondaryArrayLUNIds(volume.SecondaryArrayDetails)
-	if len(lunIdArray) > 0 {
-		for _, secLunID := range lunIdArray {
-			err = handleRemapForSpecificLunID(volume.SerialNumber, "0"+strconv.Itoa(int(secLunID)), volume.AccessProtocol, volume.TargetNames(), getFcTargetWwpns(volume))
-			if err != nil {
-				return err
-			}
+	// Scope each secondary (replicated / Active Peer Persistence) LUN's remap check to
+	// that backend's OWN target names (FC WWPNs or iSCSI IQNs), not the primary array's,
+	// so a secondary path on a shared HBA is matched by its real rport instead of skipped
+	// (CON-5021 publishes these per-backend; CON-5018 FIX-1b).
+	for _, s := range secondaryRemapScopes(volume.AccessProtocol, volume.SecondaryArrayDetails) {
+		if err = handleRemapForSpecificLunID(volume.SerialNumber, s.lunID, volume.AccessProtocol, s.targetIqns, s.fcWwpns); err != nil {
+			return err
 		}
 	}
 	return nil
-
 }
+
+// secondaryRemapScope is the per-backend scoping input for a secondary LUN's remap check.
+type secondaryRemapScope struct {
+	lunID      string
+	targetIqns []string
+	fcWwpns    []string
+}
+
+// secondaryRemapScopes maps each secondary backend to the protocol-appropriate scope
+// (its own target names) so the remap check for a secondary LUN is scoped to that
+// backend's real rport rather than the primary array's (CON-5018 FIX-1b).
+func secondaryRemapScopes(accessProtocol, secondaryArrayDetails string) []secondaryRemapScope {
+	var scopes []secondaryRemapScope
+	for _, backend := range util.GetSecondaryBackends(secondaryArrayDetails) {
+		if backend == nil {
+			continue
+		}
+		// Match the primary path's /proc/scsi/scsi LUN formatting: zero-pad only a
+		// single digit (e.g. 5 -> "05"), leave multi-digit LUNs as-is (858 -> "858").
+		// An unconditional "0" prefix would produce "0858", which never matches
+		// "Lun: 858" and would silently disable secondary remap scoping on APP.
+		lunStr := strconv.Itoa(int(backend.LunID))
+		if len(lunStr) == 1 {
+			lunStr = "0" + lunStr
+		}
+		s := secondaryRemapScope{lunID: lunStr}
+		if strings.EqualFold(accessProtocol, "fc") {
+			s.fcWwpns = backend.TargetNames
+		} else {
+			s.targetIqns = backend.TargetNames
+		}
+		scopes = append(scopes, s)
+	}
+	return scopes
+}
+
+// isPathInRemapScope reports whether a candidate h:c:t SCSI path belongs to the
+// current volume's own targets, used to avoid evaluating (and potentially
+// tearing down) a path that belongs to a different array sharing the same
+// host LUN ID (ESC-18223 defect #1). scopedHostChannelTargetSet, when
+// non-nil, further narrows FC matches to the exact rport (a single FC host
+// can carry rports to multiple arrays, so the host number alone is not
+// precise enough); it is nil for iSCSI, where host-level scoping is already
+// precise since each iSCSI session owns a dedicated SCSI host.
+func isPathInRemapScope(h, c, t string, scopedHostSet, scopedHostChannelTargetSet map[string]bool) bool {
+	if scopedHostSet != nil && !scopedHostSet[h] {
+		return false
+	}
+	if scopedHostChannelTargetSet != nil && !scopedHostChannelTargetSet[fcHostChannelTargetKey(h, c, t)] {
+		return false
+	}
+	return true
+}
+
 func handleRemapForSpecificLunID(serialNumber, lunID, accessProtocol string, targetIqns []string, fcTargetWwpns []string) (err error) {
 	// example output from /proc/scsi/scsi
 	// Host: scsi7 Channel: 00 Id: 00 Lun: 00
@@ -936,6 +991,11 @@ func handleRemapForSpecificLunID(serialNumber, lunID, accessProtocol string, tar
 	// Determine which hosts belong to this volume's targets to avoid false
 	// remap detection when another array has a volume at the same LUN ID.
 	var scopedHostSet map[string]bool
+	// scopedHostChannelTargetSet narrows scopedHostSet further to the exact
+	// rport(s) (host:channel:target) of this volume's own FC targets, since a
+	// single FC host (HBA) can carry rports to multiple arrays at once; host
+	// number alone is not enough to tell them apart (ESC-18223).
+	var scopedHostChannelTargetSet map[string]bool
 	if strings.EqualFold(accessProtocol, "fc") && len(fcTargetWwpns) > 0 {
 		scopedHosts, err := GetFcHostNumbersForTargetWwpns(fcTargetWwpns)
 		if err == nil && len(scopedHosts) > 0 {
@@ -944,6 +1004,11 @@ func handleRemapForSpecificLunID(serialNumber, lunID, accessProtocol string, tar
 				scopedHostSet[h] = true
 			}
 			log.Infof("remap check scoped to FC hosts %v for lun %s", scopedHosts, lunID)
+		}
+		hctSet, hctErr := GetFcHostChannelTargetsForTargetWwpns(fcTargetWwpns)
+		if hctErr == nil && len(hctSet) > 0 {
+			scopedHostChannelTargetSet = hctSet
+			log.Infof("remap check further scoped to %d FC host:channel:target rport(s) for lun %s", len(hctSet), lunID)
 		}
 	} else if !strings.EqualFold(accessProtocol, "fc") && len(targetIqns) > 0 {
 		scopedHosts, err := GetIscsiHostNumbersForTargetIqns(targetIqns)
@@ -964,9 +1029,10 @@ func handleRemapForSpecificLunID(serialNumber, lunID, accessProtocol string, tar
 			// continue with other paths as best effort
 			continue
 		}
-		// Skip paths on hosts that don't belong to this volume's targets
-		if scopedHostSet != nil && !scopedHostSet[h] {
-			log.Tracef("skipping remap check for host %s (not in scoped hosts)", h)
+		// Skip paths that don't belong to this volume's own targets, either at
+		// the host level or (for FC) the exact host:channel:target rport level.
+		if !isPathInRemapScope(h, c, t, scopedHostSet, scopedHostChannelTargetSet) {
+			log.Tracef("skipping remap check for %s:%s:%s (not in scoped targets)", h, c, t)
 			continue
 		}
 		// refresh path serial and update paths if its remapped lun
@@ -1011,7 +1077,6 @@ func handleRemapForSpecificLunID(serialNumber, lunID, accessProtocol string, tar
 		break
 	}
 	return nil
-
 }
 
 func getProcScsiPath() string {
@@ -1158,10 +1223,39 @@ func checkRemappedLunPath(h string, c string, t string, l string, serial string,
 		return true, oldSerial, nil
 	}
 	if strings.Contains(vendorName, "3PARdata") {
+		// The wwid attribute is populated once when the kernel first probes this
+		// address and does not refresh itself, so re-reading it here would just
+		// repeat oldSerial and could never confirm a genuine remap. Instead,
+		// corroborate the mismatch with a live VPD page 0x80 INQUIRY sent
+		// directly to the device right now (bypassing the kernel's cached view,
+		// the same mechanism the non-3PAR branch below relies on) and compare it
+		// to the cached VPD80 reading. Equality means nothing has changed at
+		// this address since the kernel last probed it, so a bare wwid mismatch
+		// here most likely means this h:c:t:l belongs to a different, healthy
+		// array sharing the same host LUN ID (ESC-18223), not a genuine remap,
+		// and is not acted on.
+		cachedVpd80, cachedErr := getVpd80FromSysfs(h, c, t, l)
+		liveVpd80, liveErr := getDeviceSerialByHctlFunc(h, c, t, l)
+		if liveErr != nil {
+			// continue with other paths
+			return false, "", liveErr
+		}
+		if cachedErr != nil {
+			// Fail safe: with no cached VPD80 to corroborate the bare wwid
+			// mismatch against, don't treat it as a remap - that was the
+			// pre-fix behavior and is exactly the ESC-18223 false teardown.
+			// A genuinely remapped 3PAR LUN with no readable vpd_pg80 is
+			// simply left for normal discovery to pick up.
+			log.Warnf("3PAR remap check: cached vpd_pg80 unreadable at %s:%s:%s:%s (%s); not treating as remap", h, c, t, l, cachedErr.Error())
+			return false, "", nil
+		}
+		if liveVpd80 == cachedVpd80 {
+			return false, "", nil
+		}
 		log.Debugf("found remapped lun with oldserial %s and Serial %s", oldSerial, serial)
 	} else {
 		// check for serial number mismatch
-		updatedSerial, err := getDeviceSerialByHctl(h, c, t, l)
+		updatedSerial, err := getDeviceSerialByHctlFunc(h, c, t, l)
 		if err != nil {
 			// continue with other paths
 			return false, "", err
@@ -1193,6 +1287,11 @@ func deletePathByHctl(h string, c string, t string, l string) (err error) {
 	}
 	return nil
 }
+
+// getDeviceSerialByHctlFunc is an indirection point so unit tests can stub out
+// the live HCTL-to-serial lookup (which otherwise shells out to "ls" and issues
+// a real SG_IO ioctl) when exercising checkRemappedLunPath's confirmation logic.
+var getDeviceSerialByHctlFunc = getDeviceSerialByHctl
 
 func getDeviceSerialByHctl(h string, c string, t string, l string) (serial string, err error) {
 	// get the scsi device based on hctl
@@ -1228,7 +1327,7 @@ func getDeviceSerialByHctl(h string, c string, t string, l string) (serial strin
 }
 
 func getDeviceState(h string, c string, t string, l string) (state string, err error) {
-	statePath := fmt.Sprintf("/sys/class/scsi_device/%s:%s:%s:%s/device/state", h, c, t, l)
+	statePath := fmt.Sprintf(scsiDeviceBasePath+"/%s:%s:%s:%s/device/state", h, c, t, l)
 	state, err = util.FileReadFirstLine(statePath)
 	if err != nil {
 		return "", err
@@ -1238,7 +1337,7 @@ func getDeviceState(h string, c string, t string, l string) (state string, err e
 
 func getVendorFromSysfs(h string, c string, t string, l string) (vendorName string, err error) {
 	log.Tracef(">>>>> getVendorFromSysfs")
-	vendorPath := fmt.Sprintf("/sys/class/scsi_device/%s:%s:%s:%s/device/vendor", h, c, t, l)
+	vendorPath := fmt.Sprintf(scsiDeviceBasePath+"/%s:%s:%s:%s/device/vendor", h, c, t, l)
 	out, err := util.FileReadFirstLine(vendorPath)
 	log.Info("vendor: ", out)
 	if err != nil {
@@ -1251,7 +1350,7 @@ func getWwidFromSysfs(h string, c string, t string, l string) (serial string, er
 
 	log.Tracef(">>>>> getWwidFromSysfs")
 
-	wwidPath := fmt.Sprintf("/sys/class/scsi_device/%s:%s:%s:%s/device/wwid", h, c, t, l)
+	wwidPath := fmt.Sprintf(scsiDeviceBasePath+"/%s:%s:%s:%s/device/wwid", h, c, t, l)
 	wwidOut, wwidErr := util.FileReadFirstLine(wwidPath)
 	if wwidErr != nil {
 		return "", wwidErr
@@ -1267,7 +1366,7 @@ func getWwidFromSysfs(h string, c string, t string, l string) (serial string, er
 }
 
 func getVpd80FromSysfs(h string, c string, t string, l string) (serial string, err error) {
-	vpdPath := fmt.Sprintf("/sys/class/scsi_device/%s:%s:%s:%s/device/vpd_pg80", h, c, t, l)
+	vpdPath := fmt.Sprintf(scsiDeviceBasePath+"/%s:%s:%s:%s/device/vpd_pg80", h, c, t, l)
 	out, err := util.FileReadFirstLine(vpdPath)
 	if err != nil {
 		return "", err
@@ -1348,7 +1447,7 @@ func CreateLinuxDevices(vols []*model.Volume) (devs []*model.Device, err error) 
 			log.Errorf("unable to create device for volume %v with IQN %v", vol.Name, vol.Iqn)
 			// If we encounter an error, there may be some devices created and some not.
 			// If we fail the operation , then we need to rollback all the created device
-			//TODO : cleanup all the devices created
+			// TODO : cleanup all the devices created
 			return nil, err
 		}
 		devices = append(devices, device)
@@ -1388,7 +1487,7 @@ func offlineScsiDevices(paths []*model.PathInfo) error {
 
 func offlineScsiDevice(path string) (err error) {
 	log.Tracef("offlineScsiDevice called with %s", path)
-	//offline the path
+	// offline the path
 	offlinePath := fmt.Sprintf(offlinePathString, path)
 	is, _, _ := util.FileExists(offlinePath)
 	if !is {
@@ -1413,7 +1512,7 @@ func DeleteDevice(dev *model.Device) (err error) {
 		return fmt.Errorf("no serialNumber of device %v present, failing delete", dev)
 	}
 
-	//check if device is mounted or has holders
+	// check if device is mounted or has holders
 	err = checkIfDeviceCanBeDeleted(dev)
 	if err != nil {
 		return err
@@ -1466,7 +1565,7 @@ func retryTearDownMultipathDevice(dev *model.Device) error {
 // deleteSdDevice : delete the scsi device
 func deleteSdDevice(path string) (err error) {
 	log.Tracef("deleteSdDevice called with %s", path)
-	//deletePath for deleting the device
+	// deletePath for deleting the device
 	deletePath := fmt.Sprintf(deletePathString, path)
 	is, _, _ := util.FileExists(deletePath)
 	if !is {
@@ -1498,7 +1597,7 @@ func getDeviceHolders(dev *model.Device) (h string, err error) {
 	// walk all files in directory
 	err = filepath.Walk(directoryPath, func(path string, info os.FileInfo, err error) error {
 		if info != nil && !info.IsDir() {
-			//check for valid symlink
+			// check for valid symlink
 			var link string
 			link, err = os.Readlink(filepath.Join(directoryPath, info.Name()))
 			if err != nil {
@@ -1510,7 +1609,6 @@ func getDeviceHolders(dev *model.Device) (h string, err error) {
 		}
 		return err
 	})
-
 	if err != nil {
 		return "", err
 	}
