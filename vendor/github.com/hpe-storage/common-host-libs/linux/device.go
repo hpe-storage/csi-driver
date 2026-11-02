@@ -1077,6 +1077,7 @@ func handleRemapForSpecificLunID(serialNumber, lunID, accessProtocol string, tar
 		break
 	}
 	return nil
+
 }
 
 func getProcScsiPath() string {
@@ -1487,7 +1488,7 @@ func offlineScsiDevices(paths []*model.PathInfo) error {
 
 func offlineScsiDevice(path string) (err error) {
 	log.Tracef("offlineScsiDevice called with %s", path)
-	// offline the path
+	//offline the path
 	offlinePath := fmt.Sprintf(offlinePathString, path)
 	is, _, _ := util.FileExists(offlinePath)
 	if !is {
@@ -1512,7 +1513,7 @@ func DeleteDevice(dev *model.Device) (err error) {
 		return fmt.Errorf("no serialNumber of device %v present, failing delete", dev)
 	}
 
-	// check if device is mounted or has holders
+	//check if device is mounted or has holders
 	err = checkIfDeviceCanBeDeleted(dev)
 	if err != nil {
 		return err
@@ -1565,7 +1566,7 @@ func retryTearDownMultipathDevice(dev *model.Device) error {
 // deleteSdDevice : delete the scsi device
 func deleteSdDevice(path string) (err error) {
 	log.Tracef("deleteSdDevice called with %s", path)
-	// deletePath for deleting the device
+	//deletePath for deleting the device
 	deletePath := fmt.Sprintf(deletePathString, path)
 	is, _, _ := util.FileExists(deletePath)
 	if !is {
@@ -1597,7 +1598,7 @@ func getDeviceHolders(dev *model.Device) (h string, err error) {
 	// walk all files in directory
 	err = filepath.Walk(directoryPath, func(path string, info os.FileInfo, err error) error {
 		if info != nil && !info.IsDir() {
-			// check for valid symlink
+			//check for valid symlink
 			var link string
 			link, err = os.Readlink(filepath.Join(directoryPath, info.Name()))
 			if err != nil {
