@@ -241,13 +241,27 @@ echo -e "--remove-remote            Delete each node tarball after it is copied 
 exit 0
 
 }
-namespace="kube-system"
+namespace="hpe-storage"
 node_name=""
 dest_dir=""
 local_copy=true
 remove_remote=false
 overall_rc=0
 #Main Function
+
+# CON-4350: the option parsing below relies on GNU getopt long options (-l ...).
+# macOS ships BSD getopt, which does not support them and fails with a cryptic
+# error. Detect util-linux (GNU) getopt and, on macOS without it, tell the user
+# exactly how to fix it instead.
+if ! getopt --version 2>/dev/null | grep -q util-linux; then
+    if [ "$(uname)" = "Darwin" ]; then
+        echo "This utility requires getopt from gnu-getopt (util-linux)." >&2
+        echo "Install it with 'brew install gnu-getopt' and prepend it to your PATH, e.g.:" >&2
+        echo "  export PATH=\"\$(brew --prefix gnu-getopt)/bin:\$PATH\"" >&2
+        exit 1
+    fi
+fi
+
 if ! options=$(getopt -o han:d: -l help,all,namespace:,node-name:,dest-dir:,no-local-copy,remove-remote -- "$@")
 then
     exit 1
