@@ -140,14 +140,26 @@ then
 		then
 			for container_name in $container_list
 			do
-				# The hpe-csi-driver log is collected in the hpe-csi-node dump
-				if [[ "$container_name" != "hpe-csi-driver" ]]
-				then
-					timeout 30 kubectl logs "$pod_name" -n "$namespace" -c "$container_name" &> "$tmp_log_dir/$pod_name.$container_name.log"
+				# CON-5006: collect every controller container, including the controller's
+				# own hpe-csi-driver. It serves controller RPCs and runs leader election,
+				# and is a different process from the hpe-csi-node DaemonSet's hpe-csi-driver,
+				# so it is NOT captured by the node dump.
+				timeout 30 kubectl logs "$pod_name" -n "$namespace" -c "$container_name" &> "$tmp_log_dir/$pod_name.$container_name.log"
+				# Previous instance exists only after a restart/failover; drop the file if none.
+				if timeout 30 kubectl logs --previous "$pod_name" -n "$namespace" -c "$container_name" > "$tmp_log_dir/$pod_name.$container_name.previous.log" 2>/dev/null; then
+					[[ -s "$tmp_log_dir/$pod_name.$container_name.previous.log" ]] || rm -f "$tmp_log_dir/$pod_name.$container_name.previous.log"
+				else
+					rm -f "$tmp_log_dir/$pod_name.$container_name.previous.log"
 				fi
 			done
 		fi
 	done
+
+	# CON-5006: capture leader-election leases so the active (leader) replica is
+	# identifiable; holderIdentity names the current leader. Covers both the
+	# hpe-csi-controller and CSP replica leaders in this namespace.
+	timeout 30 kubectl get leases -n "$namespace" -o wide &> "$tmp_log_dir/leader-election-leases.txt"
+	timeout 30 kubectl get leases -n "$namespace" -o yaml &> "$tmp_log_dir/leader-election-leases.yaml"
 
 	if [[ -n "$(find "$tmp_log_dir" -mindepth 1 -print -quit)" ]]
 	then
