@@ -1,5 +1,5 @@
 # throw away builder image
-FROM --platform=linux/amd64 registry.access.redhat.com/ubi9/ubi:9.8-1791888712 AS build
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.8-1791888712 AS build
 
 # install prereqs
 RUN dnf install -y make golang
