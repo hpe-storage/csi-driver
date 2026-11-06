@@ -2,6 +2,7 @@
 package nodeinit
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/hpe-storage/common-host-libs/model"
@@ -13,6 +14,28 @@ func TestNewNodeInitContainerReturnsInstance(t *testing.T) {
 	nic := NewNodeInitContainer("vanilla")
 	if nic == nil {
 		t.Fatalf("expected non-nil NodeInitContainer")
+	}
+}
+
+// ESC-18251 fix verification F9: a missing flavor must be a typed error, not a
+// nil dereference inside NodeInit().
+func TestNodeInitWithoutFlavorReturnsError(t *testing.T) {
+	var nilContainer *NodeInitContainer
+	if err := nilContainer.NodeInit(); !errors.Is(err, ErrNoFlavor) {
+		t.Fatalf("nil container: expected ErrNoFlavor, got %v", err)
+	}
+	nic := &NodeInitContainer{}
+	if err := nic.NodeInit(); !errors.Is(err, ErrNoFlavor) {
+		t.Fatalf("nil flavor: expected ErrNoFlavor, got %v", err)
+	}
+}
+
+// ESC-18251 parent D5 / A8: the node name comes from NODE_NAME.
+func TestNewNodeInitContainerReadsNodeName(t *testing.T) {
+	t.Setenv("NODE_NAME", "ocp-422-worker3")
+	nic := NewNodeInitContainer("vanilla")
+	if nic.nodeName != "ocp-422-worker3" {
+		t.Fatalf("expected node name from NODE_NAME, got %q", nic.nodeName)
 	}
 }
 
