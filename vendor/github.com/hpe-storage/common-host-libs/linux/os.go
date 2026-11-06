@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -381,14 +382,28 @@ func InstallPackage(packageType string) error {
 
 func applySuseWorkaround() (err error) {
 	// apply workaround for SuSE for multipathd.service, NLT-1226
-	if _, err = os.Stat("/usr/lib/systemd/system/multipathd.service"); err == nil {
-		args := []string{"-i", "s/^ConditionKernelCommandLine=!multipath=off/#ConditionKernelCommandLine=!multipath=off/", "/usr/lib/systemd/system/multipathd.service"}
+	const unitFile = "/usr/lib/systemd/system/multipathd.service"
+	if _, err = os.Stat(unitFile); err == nil {
+		// ESC-18251: only edit the unit and ask PID 1 for a daemon-reload when the
+		// workaround has not been applied yet. On an already-patched host this
+		// function used to issue a full reload on every node-plugin start.
+		content, readErr := os.ReadFile(unitFile)
+		if readErr != nil {
+			log.Errorf("unable to read %s: %v", unitFile, readErr.Error())
+			return readErr
+		}
+		if !suseWorkaroundNeeded(string(content)) {
+			log.Tracef("suse multipathd.service workaround already applied, skipping daemon-reload")
+			return nil
+		}
+
+		args := []string{"-i", "s/^ConditionKernelCommandLine=!multipath=off/#ConditionKernelCommandLine=!multipath=off/", unitFile}
 		_, _, err = util.ExecCommandOutput("sed", args)
 		if err != nil {
 			log.Errorf("unable to apply suse workaround for multipathd.service package %v", err.Error())
 			return err
 		}
-		args = []string{"-i", "s/^ConditionKernelCommandLine=!nompath/#ConditionKernelCommandLine=!nompath/", "/usr/lib/systemd/system/multipathd.service"}
+		args = []string{"-i", "s/^ConditionKernelCommandLine=!nompath/#ConditionKernelCommandLine=!nompath/", unitFile}
 		_, _, err = util.ExecCommandOutput("sed", args)
 		if err != nil {
 			log.Errorf("unable to apply suse workaround for multipathd.service package %v", err.Error())
@@ -400,7 +415,7 @@ func applySuseWorkaround() (err error) {
 			log.Errorf("unable to apply suse workaround for multipathd.service package %v", err.Error())
 			return err
 		}
-		// reload service with changes
+		// reload service with changes (the unit file was actually modified)
 		args = []string{"daemon-reload"}
 		_, _, err = util.ExecCommandOutput("systemctl", args)
 		if err != nil {
@@ -409,6 +424,19 @@ func applySuseWorkaround() (err error) {
 		}
 	}
 	return nil
+}
+
+// suseWorkaroundNeeded reports whether multipathd.service still carries an
+// active (uncommented) ConditionKernelCommandLine directive that the SUSE
+// workaround (NLT-1226) comments out.
+func suseWorkaroundNeeded(unitContent string) bool {
+	for _, line := range strings.Split(unitContent, "\n") {
+		if strings.HasPrefix(line, "ConditionKernelCommandLine=!multipath=off") ||
+			strings.HasPrefix(line, "ConditionKernelCommandLine=!nompath") {
+			return true
+		}
+	}
+	return false
 }
 
 func getPackageCommandArgs(osInfo *OsInfo, packageType string, operation string) (cmd string, args []string) {
@@ -522,6 +550,98 @@ func EnableService(serviceType string) (err error) {
 	return err
 }
 
+// SystemctlErrorKind classifies a failed systemctl invocation so that callers can
+// report what actually happened instead of guessing. ESC-18251 fix verification
+// (finding F4/N3): the first fix blamed "PID 1 busy" for a 5 ms connection
+// refusal, which sent support in the wrong direction.
+type SystemctlErrorKind string
+
+const (
+	// SystemctlErrConnect: the client could not open the host's systemd bus at
+	// all. With systemd >= 252 this is what happens from a pod's own PID
+	// namespace ("Failed to connect to bus: No data available", -ENODATA from
+	// the peer-credential check). It is fixed by hostPID, not by waiting.
+	SystemctlErrConnect SystemctlErrorKind = "cannot connect to the host's systemd (pod PID namespace; the node DaemonSet needs hostPID=true)"
+	// SystemctlErrTimeout: connected, but PID 1 did not answer within the
+	// client's limit (a long daemon-reload on a densely loaded node).
+	SystemctlErrTimeout SystemctlErrorKind = "timed out waiting for the host's systemd (PID 1 busy)"
+	// SystemctlErrChroot: systemctl decided it runs in a chroot (/proc/1/root
+	// differs from /, which is the case with hostPID=true), printed "Running in
+	// chroot, ignoring command" and exited 0 WITHOUT doing anything. Needs
+	// SYSTEMD_IGNORE_CHROOT=1 in the container environment.
+	SystemctlErrChroot SystemctlErrorKind = "systemctl ignored the command (chroot heuristic; set SYSTEMD_IGNORE_CHROOT=1)"
+	// SystemctlErrUnit: systemd answered and refused or failed the operation.
+	SystemctlErrUnit SystemctlErrorKind = "systemd rejected the operation"
+
+	// systemctlChrootMarker is the exact text systemd's verbs.c prints before
+	// returning success without acting (src/shared/verbs.c, VERB_ONLINE_ONLY).
+	systemctlChrootMarker = "Running in chroot, ignoring"
+)
+
+// ClassifySystemctlError maps the text of an error returned by a systemctl call
+// (as wrapped by util.ExecCommandOutput) onto a SystemctlErrorKind. A nil error
+// yields the empty kind.
+func ClassifySystemctlError(err error) SystemctlErrorKind {
+	if err == nil {
+		return ""
+	}
+	msg := err.Error()
+	switch {
+	case strings.Contains(msg, "Failed to connect to bus"),
+		strings.Contains(msg, "No data available"):
+		return SystemctlErrConnect
+	case strings.Contains(msg, "killed as timeout"),
+		strings.Contains(msg, "timed out"),
+		strings.Contains(msg, "Connection timed out"):
+		return SystemctlErrTimeout
+	case strings.Contains(msg, systemctlChrootMarker):
+		return SystemctlErrChroot
+	default:
+		return SystemctlErrUnit
+	}
+}
+
+// systemctlExec is the exec seam used by runSystemctl; tests swap it for a fake.
+var systemctlExec = util.ExecCommandOutput
+
+// runSystemctl wraps every systemctl call made on behalf of node-init.
+//
+// It exists because of ESC-18251 fix verification probe D3: with hostPID=true
+// and no SYSTEMD_IGNORE_CHROOT, systemd 252's systemctl prints "Running in
+// chroot, ignoring command '...'" at info level and exits 0 without talking to
+// PID 1. The plain exec wrapper therefore reported success while the host was
+// never touched, and iscsid/multipathd silently stayed unmanaged. Here that
+// output is turned into an error so callers log it (or abort, in fatal mode).
+// The returned error text is suitable for ClassifySystemctlError.
+func runSystemctl(args ...string) (string, int, error) {
+	out, rc, err := systemctlExec(systemCtl, args)
+	op := "systemctl " + strings.Join(args, " ")
+	if err != nil {
+		return out, rc, fmt.Errorf("%s: %w", op, err)
+	}
+	if strings.Contains(out, systemctlChrootMarker) {
+		return out, rc, fmt.Errorf("%s: %s", op, strings.TrimSpace(out))
+	}
+	return out, rc, nil
+}
+
+// systemdUnitDirs are the directories searched for [Install] symlinks when
+// checking whether a unit is enabled: administrator (/etc), runtime (/run) and
+// vendor/preset (/usr/lib) unit directories. The /host prefix covers the CSI
+// node containers, which bind-mount the host root at /host.
+var systemdUnitDirs = []string{
+	"/etc/systemd/system", "/run/systemd/system", "/usr/lib/systemd/system",
+	"/host/etc/systemd/system", "/host/run/systemd/system", "/host/usr/lib/systemd/system",
+}
+
+// systemdEnabledUnits lists, per service type, the units whose enablement is
+// sufficient for the service to come up at boot. iscsid is socket-activated on
+// SLES and RHEL, so an enabled iscsid.socket is as good as an enabled service.
+var systemdEnabledUnits = map[string][]string{
+	iscsi:     {"iscsid.service", "iscsid.socket"},
+	multipath: {"multipathd.service", "multipathd.socket"},
+}
+
 func enableSystemdService(osInfo *OsInfo, serviceType string) (err error) {
 	var serviceName string
 	if serviceType == iscsi {
@@ -532,20 +652,47 @@ func enableSystemdService(osInfo *OsInfo, serviceType string) (err error) {
 		return errors.New("unknown service type " + serviceType + " provided to enable")
 	}
 
-	args := []string{"daemon-reload"}
-	_, _, err = util.ExecCommandOutput("systemctl", args)
-	if err != nil {
-		log.Errorf("unable to enable %s service %v\n", serviceName, err.Error())
-		return err
+	// ESC-18251: do not ask PID 1 for anything when the service is already set up
+	// to start at boot. Every `systemctl daemon-reload` is a full reload of the
+	// host's unit graph, which on a densely loaded node can exceed the systemctl
+	// client's D-Bus timeout and previously left the CSI node-init container in
+	// CrashLoopBackOff. The check is done from the filesystem (the [Install]
+	// symlinks), not over D-Bus, so a busy PID 1 cannot stall it.
+	for _, unit := range systemdEnabledUnits[serviceType] {
+		if isSystemdUnitEnabled(unit, systemdUnitDirs) {
+			log.Infof("%s is already enabled, skipping systemctl enable %s", unit, serviceName)
+			return nil
+		}
 	}
 
-	args = []string{"enable", serviceName}
-	_, _, err = util.ExecCommandOutput("systemctl", args)
+	// No explicit daemon-reload: `systemctl enable` reloads the manager itself when
+	// it changes unit files, and --no-reload avoids a second full reload. The unit
+	// is picked up by the next regular reload or at boot, which is all that
+	// "enable" needs to guarantee.
+	args := []string{"enable", "--no-reload", serviceName}
+	_, _, err = runSystemctl(args...)
 	if err != nil {
-		log.Errorf("unable to enable %s service %v\n", serviceName, err.Error())
+		log.Errorf("unable to enable %s service (%s): %v\n", serviceName, ClassifySystemctlError(err), err.Error())
 		return err
 	}
 	return nil
+}
+
+// isSystemdUnitEnabled reports whether the given unit has an [Install] symlink
+// (<target>.wants/<unit> or <target>.requires/<unit>) under any of the given unit
+// directories, i.e. `systemctl is-enabled` would report "enabled". It deliberately
+// avoids D-Bus so that a busy PID 1 cannot stall or time out the check.
+func isSystemdUnitEnabled(unit string, unitDirs []string) bool {
+	for _, dir := range unitDirs {
+		for _, suffix := range []string{"*.wants", "*.requires"} {
+			matches, err := filepath.Glob(filepath.Join(dir, suffix, unit))
+			if err == nil && len(matches) > 0 {
+				log.Tracef("%s is enabled via %s", unit, matches[0])
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func enableInitVService(osInfo *OsInfo, serviceType string) (err error) {
@@ -636,10 +783,20 @@ func ServiceCommand(serviceType string, operationType string) (err error) {
 	// get suitable command args based on os type, package type and install operation
 	cmd, args := getServiceCommandArgs(osInfo, serviceType, operationType)
 	log.Traceln("running command ", cmd, " args: ", args)
-	_, rc, err := util.ExecCommandOutput(cmd, args)
+	var rc int
+	if cmd == systemCtl {
+		// ESC-18251: detect the chroot no-op and keep the error text classifiable.
+		_, rc, err = runSystemctl(args...)
+	} else {
+		_, rc, err = util.ExecCommandOutput(cmd, args)
+	}
 	// ignore rc == 6 no records found error on some OS distributions as iscsiadm will attempt to to login on fresh node
 	if err != nil && rc != 6 {
-		log.Errorf("unable to %s %s service %v\n", operationType, serviceType, err.Error())
+		if cmd == systemCtl {
+			log.Errorf("unable to %s %s service (%s): %v\n", operationType, serviceType, ClassifySystemctlError(err), err.Error())
+		} else {
+			log.Errorf("unable to %s %s service %v\n", operationType, serviceType, err.Error())
+		}
 		return err
 	}
 	return nil
