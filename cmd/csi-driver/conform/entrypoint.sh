@@ -45,6 +45,63 @@ if [ "$nodeService" = true ] || [ "$nodeInit" = true ]; then
 fi
 
 if [ "$nodeInit" = true ]; then
+    # ESC-18251 (fix verification F2/F3): systemd >= 252's systemctl refuses the
+    # host's /run/systemd/private from the pod's own PID namespace ("Failed to
+    # connect to bus: No data available") and, once the DaemonSet runs with
+    # hostPID=true, treats /proc/1/root != / as a chroot and returns 0 WITHOUT
+    # acting ("Running in chroot, ignoring command"). The node DaemonSet sets
+    # hostPID=true; this variable makes the client actually act. Both are needed.
+    export SYSTEMD_IGNORE_CHROOT="${SYSTEMD_IGNORE_CHROOT:-1}"
+
+    # files_same A B -> 0 when A and B are byte-identical. Fails CLOSED: if no
+    # comparison tool is available we say so and report "changed" explicitly
+    # instead of letting a "command not found" silently force a daemon-reload on
+    # every start (fix verification F1: cmp was not in the image).
+    files_same() {
+        if command -v cmp >/dev/null 2>&1; then
+            cmp -s "$1" "$2"
+        elif command -v sha256sum >/dev/null 2>&1; then
+            [ -f "$2" ] && [ "$(sha256sum < "$1")" = "$(sha256sum < "$2")" ]
+        else
+            echo "WARNING: neither cmp nor sha256sum is available; treating $2 as changed"
+            return 1
+        fi
+    }
+
+    # note_skipped MESSAGE: leave a record in the node log so that "host services
+    # unmanaged by the driver" is visible without the init container's log.
+    note_skipped() {
+        echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) node-init: $*" >> /var/log/hpe-csi-node.log 2>/dev/null || true
+    }
+
+    # run_systemctl VERB... : best effort, never ends the init, and names the real
+    # failure (fix verification F4/N3): a connection refusal is not "PID 1 busy".
+    run_systemctl() {
+        rc=0
+        out=$(systemctl "$@" 2>&1) || rc=$?
+        if [ "$rc" -ne 0 ]; then
+            case "$out" in
+                *"Failed to connect to bus"*|*"No data available"*)
+                    msg="systemctl $* SKIPPED: cannot connect to the host's systemd (the node DaemonSet needs hostPID=true)" ;;
+                *"timed out"*|*"Connection timed out"*)
+                    msg="systemctl $* SKIPPED: timed out waiting for the host's systemd (PID 1 busy; it will still complete the request)" ;;
+                *)
+                    msg="systemctl $* FAILED; continuing" ;;
+            esac
+            echo "WARNING: $msg. rc=$rc: $out"
+            note_skipped "$msg (rc=$rc: $out)"
+            return 0
+        fi
+        case "$out" in
+            *"Running in chroot, ignoring"*)
+                echo "WARNING: systemctl $* was IGNORED by systemctl (chroot heuristic); set SYSTEMD_IGNORE_CHROOT=1 in the init container. $out"
+                note_skipped "systemctl $* ignored by systemctl (chroot heuristic)" ;;
+            "") ;;
+            *) echo "$out" ;;
+        esac
+        return 0
+    }
+
     # Disable the conformance checks
     if [ "$disableNodeConformance" = "true" ]; then
         echo "Node conformance checks are disabled"
@@ -58,17 +115,34 @@ if [ "$nodeInit" = true ]; then
     fi
 
     if [ "$disableConformanceCheck" != true ]; then
-        # Copy HPE Storage Node Conformance checks and conf in place
-        cp -f "/opt/hpe-storage/lib/hpe-storage-node.service" \
-            /etc/systemd/system/hpe-storage-node.service
-        cp -f "/opt/hpe-storage/lib/hpe-storage-node.sh" \
-            /etc/hpe-storage/hpe-storage-node.sh
+        # Copy HPE Storage Node Conformance checks and conf in place.
+        # ESC-18251: only ask PID 1 for a daemon-reload when the unit file
+        # actually changed. On a densely loaded node a reload can take a
+        # minute or more, and an unconditional reload on every restart of the
+        # node plugin kept the init container in CrashLoopBackOff.
+        unitChanged=false
+        if ! files_same "/opt/hpe-storage/lib/hpe-storage-node.service" \
+            /etc/systemd/system/hpe-storage-node.service; then
+            cp -f "/opt/hpe-storage/lib/hpe-storage-node.service" \
+                /etc/systemd/system/hpe-storage-node.service
+            unitChanged=true
+        fi
+        # A script change needs no reload; the unit execs the script afresh.
+        if ! files_same "/opt/hpe-storage/lib/hpe-storage-node.sh" \
+            /etc/hpe-storage/hpe-storage-node.sh; then
+            cp -f "/opt/hpe-storage/lib/hpe-storage-node.sh" \
+                /etc/hpe-storage/hpe-storage-node.sh
+        fi
         chmod +x /etc/hpe-storage/hpe-storage-node.sh
 
         echo "running node conformance checks..."
-        # Reload and run!
-        systemctl daemon-reload
-        systemctl restart hpe-storage-node
+        # Reload (only if needed) and run. A systemd that is slow to answer must
+        # not be fatal: PID 1 completes the request even after the client gives up,
+        # and the node plugin can still serve volumes without the conformance unit.
+        if [ "$unitChanged" = true ]; then
+            run_systemctl daemon-reload
+        fi
+        run_systemctl restart hpe-storage-node
     fi
 
     # Copy /etc/multipath.conf template if missing on host

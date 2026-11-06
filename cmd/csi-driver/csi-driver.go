@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/hpe-storage/common-host-libs/dbservice/etcd"
+	"github.com/hpe-storage/common-host-libs/linux"
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/tunelinux"
 	"github.com/hpe-storage/common-host-libs/util"
@@ -126,27 +127,9 @@ func csiCliHandler(cmd *cobra.Command) error {
 	}
 
 	if nodeInit {
-		// Check if the node configuration is disabled
-		disableNodeConfiguraton := os.Getenv("DISABLE_NODE_CONFIGURATION")
+		// Configure host block storage services (iscsid/multipathd) unless disabled.
+		configureNodeServices()
 
-		if disableNodeConfiguraton == "true" {
-			log.Infof("Skipping node configuration, DISABLE_NODE_CONFIGURATION=%v. All block storage services needs to be installed and configured manually.", disableNodeConfiguraton)
-		} else {
-			// perform conformance checks and service management
-			// configure iscsi
-			err = tunelinux.ConfigureIscsi()
-			if err != nil {
-				log.Errorf("Unable to configure iscsid service, err %v", err.Error())
-				os.Exit(1)
-			}
-
-			// configure multipath
-			err = tunelinux.ConfigureMultipath()
-			if err != nil {
-				log.Errorf("Unable to configure multipathd service, err %v", err.Error())
-				os.Exit(1)
-			}
-		}
 		nodeInitContainer := nodeinit.NewNodeInitContainer(flavorName)
 		err := nodeInitContainer.NodeInit()
 		if err != nil {
@@ -208,6 +191,128 @@ func csiCliHandler(cmd *cobra.Command) error {
 	d.Stop(nodeService)
 	log.Infof("Stopped [%d]", pid)
 	return nil
+}
+
+// Environment variables and host paths used by configureNodeServices.
+const (
+	envDisableNodeConfiguration = "DISABLE_NODE_CONFIGURATION"
+	envDisableNodeISCSIConfig   = "DISABLE_NODE_ISCSI_CONFIGURATION"
+	envForceNodeISCSIConfig     = "FORCE_NODE_ISCSI_CONFIGURATION"
+	envNodeServiceConfigFatal   = "NODE_SERVICE_CONFIGURATION_FATAL"
+
+	// Host paths (the node containers bind-mount the host root at /host) that
+	// show whether iSCSI is configured or in use on this node.
+	hostISCSIInitiatorNameFile = "/host/etc/iscsi/initiatorname.iscsi"
+	hostISCSISessionSysfsDir   = "/sys/class/iscsi_session"
+	hostISCSIHostSysfsDir      = "/sys/class/iscsi_host"
+	hostISCSINodesDBDir        = "/host/var/lib/iscsi/nodes"
+
+	// envTrue is the value that turns the boolean environment switches on.
+	envTrue = "true"
+)
+
+// envEnabled reports whether the given boolean environment switch is set to "true".
+func envEnabled(name string) bool { return os.Getenv(name) == envTrue }
+
+// iscsiInUseProbePaths lists the host paths whose presence (non-empty directory
+// or existing file) means this node uses, or has been set up for, iSCSI.
+var iscsiInUseProbePaths = []string{
+	hostISCSISessionSysfsDir,
+	hostISCSIHostSysfsDir,
+	hostISCSINodesDBDir,
+	hostISCSIInitiatorNameFile,
+}
+
+// shouldConfigureISCSI implements parent fix D2 of ESC-18251 (fix verification
+// finding F7 / criterion A3): do not touch iscsid on nodes that do not use iSCSI.
+// Every `systemctl enable/start` is a D-Bus round trip to PID 1 that can wait a
+// long time on a dense node, and on the FC-only verification testbed the init
+// called `systemctl start iscsid.service` on every restart for nothing.
+//
+// Decision order:
+//   - DISABLE_NODE_ISCSI_CONFIGURATION=true -> never (operator opt-out)
+//   - FORCE_NODE_ISCSI_CONFIGURATION=true   -> always (operator override for
+//     first-boot nodes that have no sessions or initiator name yet)
+//   - otherwise only if the host shows iSCSI in use or configured: an iSCSI
+//     session or HBA in sysfs, a populated open-iscsi node database, or an
+//     initiator name file.
+func shouldConfigureISCSI(probePaths []string) (bool, string) {
+	if envEnabled(envDisableNodeISCSIConfig) {
+		return false, envDisableNodeISCSIConfig + "=true"
+	}
+	if envEnabled(envForceNodeISCSIConfig) {
+		return true, envForceNodeISCSIConfig + "=true"
+	}
+	for _, p := range probePaths {
+		fi, err := os.Stat(p)
+		if err != nil {
+			continue
+		}
+		if !fi.IsDir() {
+			return true, p + " exists"
+		}
+		if entries, err := os.ReadDir(p); err == nil && len(entries) > 0 {
+			return true, p + " is not empty"
+		}
+	}
+	return false, "no iSCSI session, HBA, node database or initiator name found on the host"
+}
+
+// configureNodeServices configures the host's iscsid and multipathd services
+// from the node-init container.
+//
+// ESC-18251: these steps talk to the host's PID 1 over D-Bus (`systemctl
+// enable`, `systemctl start`). On a densely loaded node a daemon-reload can
+// take a minute or more and the systemctl client may time out even though
+// PID 1 eventually completes the request. The services are typically already
+// enabled and running, so a failure here is reported as a warning and the
+// init container continues. Exiting would leave the node plugin in
+// Init:CrashLoopBackOff and, with every retry requesting another full reload,
+// keep PID 1 busy for the whole node.
+//
+// The warning names the real cause (fix verification N3): a refused bus
+// connection means the DaemonSet runs without hostPID, a "Running in chroot"
+// no-op means SYSTEMD_IGNORE_CHROOT is missing, and only a timeout means PID 1
+// is busy. The same line also appears in /var/log/hpe-csi-node.log, so "host
+// services unmanaged" is visible without the init container's log.
+//
+// Controls:
+//   - DISABLE_NODE_CONFIGURATION=true skips everything (documented workaround).
+//   - DISABLE_NODE_ISCSI_CONFIGURATION / FORCE_NODE_ISCSI_CONFIGURATION
+//     override the iSCSI auto-detection (see shouldConfigureISCSI).
+//   - NODE_SERVICE_CONFIGURATION_FATAL=true restores the previous fail-fast
+//     behaviour for environments that want the init container to abort. It
+//     covers only this Go step; the entrypoint's conformance unit install stays
+//     best-effort.
+func configureNodeServices() {
+	if envEnabled(envDisableNodeConfiguration) {
+		log.Infof("Skipping node configuration, %s=true. All block storage services needs to be installed and configured manually.", envDisableNodeConfiguration)
+		return
+	}
+
+	fatal := envEnabled(envNodeServiceConfigFatal)
+	handle := func(service string, err error) {
+		if err == nil {
+			return
+		}
+		kind := linux.ClassifySystemctlError(err)
+		if fatal {
+			log.Errorf("Unable to configure %s service: %s. err: %v", service, kind, err.Error())
+			os.Exit(1)
+		}
+		log.Warnf("Host systemd step SKIPPED for the %s service: %s. The node may come up with %s unmanaged by the driver; "+
+			"verify it on the host. Set %s=true to abort the init container instead. err: %v",
+			service, kind, service, envNodeServiceConfigFatal, err.Error())
+	}
+
+	if configure, reason := shouldConfigureISCSI(iscsiInUseProbePaths); configure {
+		log.Infof("Configuring iscsid (%s)", reason)
+		handle("iscsid", tunelinux.ConfigureIscsi())
+	} else {
+		log.Infof("Skipping iscsid configuration (%s). Set %s=true to override.", reason, envForceNodeISCSIConfig)
+	}
+
+	handle("multipathd", tunelinux.ConfigureMultipath())
 }
 
 // Main runs csi interpreting command-line flags and commands

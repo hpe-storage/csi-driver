@@ -1,5 +1,5 @@
 # throw away builder image
-FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.8-1791888712 AS build
+FROM --platform=linux/amd64 registry.access.redhat.com/ubi9/ubi:9.8-1791888712 AS build
 
 # install prereqs
 RUN dnf install -y make golang
@@ -22,12 +22,34 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8-1791898448
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD cmd/csi-driver/AlmaLinux-Base.repo /etc/yum.repos.d/
 
-RUN microdnf install -y cryptsetup tar procps
+# systemd provides the systemctl client used by node-init against the host's PID 1.
+# ESC-18251: the CentOS 7 systemd-219 systemctl previously copied over this file
+# gives up after a fixed 25 s D-Bus timeout, which a densely loaded node cannot meet
+# for `daemon-reload`. The UBI 9 systemd-252 client waits up to 180 s for a reload
+# and honours SYSTEMD_BUS_TIMEOUT for all other method calls.
+#
+# diffutils provides `cmp`, which the entrypoint uses to decide whether the
+# conformance unit changed; without it every start requested a daemon-reload
+# (ESC-18251 fix verification F1). The build asserts both are present.
+#
+# systemd and diffutils are installed with the third-party AlmaLinux repo disabled
+# so that they come from the Red Hat UBI BaseOS repo (fix verification F6: the
+# first fix image shipped systemd-252-67.el9_8.6.alma.1 in a RHEL 9.8 base, which
+# is a certification/provenance concern). The Alma repo stays available for the
+# packages that need it.
+RUN microdnf install -y --disablerepo=BaseOS cryptsetup tar procps systemd diffutils \
+    && rm -rf /var/cache/yum \
+    && command -v cmp \
+    && rpm -q --qf 'systemd %{VERSION}-%{RELEASE} vendor=%{VENDOR}\n' systemd \
+    && test -z "$(rpm -q --qf '%{RELEASE}' systemd | grep -i alma)"
 
-COPY --from=centos:centos7.9.2009 /usr/bin/systemctl /usr/bin/systemctl
-COPY --from=centos:7.9.2009 /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11.8.2
-
-RUN ln -s /usr/lib64/libgcrypt.so.11.8.2 /usr/lib64/libgcrypt.so.11
+# Allow slow (busy PID 1) systemd method calls to complete instead of timing out.
+ENV SYSTEMD_BUS_TIMEOUT=180
+# ESC-18251 fix verification F3: with hostPID=true, systemctl sees /proc/1/root != /
+# and would print "Running in chroot, ignoring command" and exit 0 without acting.
+# The entrypoint also sets this; it is here so that ad-hoc `systemctl` runs in the
+# image (probes, log collectors) behave the same way.
+ENV SYSTEMD_IGNORE_CHROOT=1
 
 LABEL name="HPE CSI Driver for Kubernetes" \
     maintainer="HPE Storage" \
