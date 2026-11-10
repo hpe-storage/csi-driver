@@ -522,14 +522,51 @@ func EnableService(serviceType string) (err error) {
 	return err
 }
 
+// systemdServiceUnit maps the service type to its systemd unit name.
+func systemdServiceUnit(serviceType string) (string, error) {
+	switch serviceType {
+	case iscsi:
+		return "iscsid.service", nil
+	case multipath:
+		return "multipathd.service", nil
+	default:
+		return "", errors.New("unknown service type " + serviceType + " provided")
+	}
+}
+
+// systemctlExec is the exec seam for systemctl queries; tests swap it for a fake.
+var systemctlExec = util.ExecCommandOutput
+
+// IsSystemdUnitActive reports whether `systemctl is-active <unit>` answers
+// "active". It is a cheap read-only query that does not make PID 1 do any
+// work, unlike daemon-reload/enable/start/restart.
+//
+// ESC-18251: on a densely loaded node a `systemctl daemon-reload` can take
+// longer than the systemctl client's D-Bus timeout (25 s), the init container
+// exits non-zero and the node plugin goes into Init:CrashLoopBackOff, with
+// every retry asking PID 1 for yet another full reload. The services node-init
+// manages (iscsid, multipathd) are almost always already active on a node that
+// has been running workloads, so this assertion is used before any
+// daemon-reload/enable/start/restart to skip the systemd interaction entirely
+// when nothing needs to be done.
+func IsSystemdUnitActive(unit string) bool {
+	out, _, err := systemctlExec(systemCtl, []string{"is-active", unit})
+	active := err == nil && strings.TrimSpace(out) == "active"
+	log.Tracef("systemctl is-active %s -> active=%v (%s)", unit, active, strings.TrimSpace(out))
+	return active
+}
+
 func enableSystemdService(osInfo *OsInfo, serviceType string) (err error) {
-	var serviceName string
-	if serviceType == iscsi {
-		serviceName = "iscsid.service"
-	} else if serviceType == multipath {
-		serviceName = "multipathd.service"
-	} else {
-		return errors.New("unknown service type " + serviceType + " provided to enable")
+	serviceName, err := systemdServiceUnit(serviceType)
+	if err != nil {
+		return err
+	}
+
+	// ESC-18251: an active unit is loaded and running; there is nothing to
+	// reload or enable, so do not ask PID 1 for anything.
+	if IsSystemdUnitActive(serviceName) {
+		log.Infof("%s is already active, skipping systemctl daemon-reload and enable", serviceName)
+		return nil
 	}
 
 	args := []string{"daemon-reload"}
@@ -635,6 +672,19 @@ func ServiceCommand(serviceType string, operationType string) (err error) {
 
 	// get suitable command args based on os type, package type and install operation
 	cmd, args := getServiceCommandArgs(osInfo, serviceType, operationType)
+
+	// ESC-18251: `systemctl start` on an already-active unit is a no-op for
+	// systemd but still a D-Bus round trip to a possibly busy PID 1. Assert
+	// is-active first and skip the start when the service is already running.
+	// Only "start" is skipped: stop/restart/reload are explicit requests to
+	// change the state of a running service.
+	if cmd == systemCtl && operationType == "start" {
+		if unit, uerr := systemdServiceUnit(serviceType); uerr == nil && IsSystemdUnitActive(unit) {
+			log.Infof("%s is already active, skipping systemctl start", unit)
+			return nil
+		}
+	}
+
 	log.Traceln("running command ", cmd, " args: ", args)
 	_, rc, err := util.ExecCommandOutput(cmd, args)
 	// ignore rc == 6 no records found error on some OS distributions as iscsiadm will attempt to to login on fresh node
