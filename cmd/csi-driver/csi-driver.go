@@ -31,6 +31,8 @@ const (
 )
 
 var (
+	driverVersion = "3.4.0-alpha1"
+
 	// Flag variables for the command options
 	name                string
 	endpoint            string
@@ -45,6 +47,7 @@ var (
 		Use:              "csi",
 		Short:            "HPE CSI command-line utility",
 		Long:             `A command-line utility for managing the HPE Container Storage Interface (CSI) plugin`,
+		Version:          getDriverVersion(),
 		TraverseChildren: true,
 		Run: func(cmd *cobra.Command, args []string) {
 			isNode, _ := cmd.Flags().GetBool("node-service")
@@ -53,9 +56,7 @@ var (
 			} else {
 				log.InitLogging(csiControllerLogFile, nil, true)
 			}
-			log.Info("**********************************************")
-			log.Info("*************** HPE CSI DRIVER ***************")
-			log.Info("**********************************************")
+			logStartupBanner()
 
 			log.Infof(">>>>> CMDLINE Exec, args: %v", args)
 			defer log.Info("<<<<< CMDLINE Exec")
@@ -67,6 +68,19 @@ var (
 		},
 	}
 )
+
+func getDriverVersion() string {
+	if driverVersion == "" {
+		return "3.4.0-alpha1"
+	}
+	return driverVersion
+}
+
+func logStartupBanner() {
+	log.Info("**********************************************")
+	log.Infof("******** HPE CSI DRIVER Version: %s ********", getDriverVersion())
+	log.Info("**********************************************")
+}
 
 // Initialize cmd-line flags/commands
 func init() {
