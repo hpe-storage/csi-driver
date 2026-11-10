@@ -58,17 +58,35 @@ if [ "$nodeInit" = true ]; then
     fi
 
     if [ "$disableConformanceCheck" != true ]; then
-        # Copy HPE Storage Node Conformance checks and conf in place
-        cp -f "/opt/hpe-storage/lib/hpe-storage-node.service" \
-            /etc/systemd/system/hpe-storage-node.service
+        # Copy HPE Storage Node Conformance checks and conf in place.
+        # ESC-18251: `systemctl daemon-reload` is a full reload of the host's
+        # unit graph; on a densely loaded node it can exceed the systemctl
+        # client's D-Bus timeout, which ended the init container with a
+        # non-zero exit and left the node plugin in Init:CrashLoopBackOff.
+        # Assert the current state before asking PID 1 for anything:
+        #   - reload only when the unit file we install actually differs,
+        #   - restart only when the unit is not already active.
+        unitChanged=true
+        if cmp -s "/opt/hpe-storage/lib/hpe-storage-node.service" \
+            /etc/systemd/system/hpe-storage-node.service; then
+            unitChanged=false
+        else
+            cp -f "/opt/hpe-storage/lib/hpe-storage-node.service" \
+                /etc/systemd/system/hpe-storage-node.service
+        fi
         cp -f "/opt/hpe-storage/lib/hpe-storage-node.sh" \
             /etc/hpe-storage/hpe-storage-node.sh
         chmod +x /etc/hpe-storage/hpe-storage-node.sh
 
         echo "running node conformance checks..."
-        # Reload and run!
-        systemctl daemon-reload
-        systemctl restart hpe-storage-node
+        if [ "$unitChanged" = true ]; then
+            systemctl daemon-reload
+            systemctl restart hpe-storage-node
+        elif systemctl is-active --quiet hpe-storage-node; then
+            echo "hpe-storage-node is already active and unchanged; skipping daemon-reload and restart"
+        else
+            systemctl restart hpe-storage-node
+        fi
     fi
 
     # Copy /etc/multipath.conf template if missing on host
