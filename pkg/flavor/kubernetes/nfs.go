@@ -26,6 +26,7 @@ import (
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	k8s_types "k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/utils/ptr"
 )
 
@@ -39,6 +40,7 @@ const (
 	defaultRRequestCPU    = "500m"
 	defaultRLimitMemory   = "2Gi"
 	defaultRRequestMemory = "512Mi"
+	defaultNFSTopologyKey = core_v1.LabelHostname
 
 	creationInterval               = 60 // 300s with sleep interval of 5s
 	creationDelay                  = 5 * time.Second
@@ -73,6 +75,7 @@ const (
 	nfsForeignStorageClassKey      = "nfsForeignStorageClass"
 	nfsResourcesKey                = "nfsResources"
 	nfsTolerationSecScKey          = "nfsTolerationSeconds"
+	nfsTopologyKeyParamKey         = "nfsTopologyKey"
 	nfsEnableProbesKey             = "nfsEnableProbes"
 	defaultNfsTolerationSeconds    = 30
 	nfsProbeInitialDelaySeconds    = 0
@@ -98,6 +101,7 @@ type NFSSpec struct {
 	sourceNamespace      string
 	sourceVolumeClaim    string
 	tolerationSeconds    *int64
+	topologyKey          string
 	enableProbes         bool
 }
 
@@ -780,6 +784,14 @@ func (flavor *Flavor) getNFSSpec(scParams map[string]string) (*NFSSpec, error) {
 		}
 	}
 
+	nfsSpec.topologyKey = defaultNFSTopologyKey
+	if topologyKey, ok := scParams[nfsTopologyKeyParamKey]; ok {
+		if errs := validation.IsQualifiedName(topologyKey); len(errs) > 0 {
+			return nil, fmt.Errorf("getNFSSpec: Invalid nfsTopologyKey %q, error: %s", topologyKey, strings.Join(errs, "; "))
+		}
+		nfsSpec.topologyKey = topologyKey
+	}
+
 	if nfsEnableProbesStr, ok := scParams[nfsEnableProbesKey]; ok {
 		if nfsEnableProbesStr == "true" {
 			nfsSpec.enableProbes = true
@@ -1146,7 +1158,7 @@ func (flavor *Flavor) makeNFSDeployment(name string, nfsSpec *NFSSpec, nfsNamesp
 
 	podTopologySpreadConstraints := core_v1.TopologySpreadConstraint{
 		MaxSkew:           1,
-		TopologyKey:       "node",
+		TopologyKey:       nfsSpec.topologyKey,
 		WhenUnsatisfiable: "ScheduleAnyway",
 		LabelSelector:     &podLabelSelector,
 	}
