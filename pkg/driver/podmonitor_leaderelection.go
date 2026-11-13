@@ -17,6 +17,9 @@ import (
 // to a single controller replica, per CON-4982.
 const podMonitorLeaseName = "hpe-csi-driver-podmonitor-leader"
 
+// The chart sets this to false only for controller.replicas=1; unset keeps leader election on.
+const podMonitorLeaderElectionEnabledEnvKey = "PODMONITOR_LEADER_ELECTION_ENABLED"
+
 // Default Lease timings, overridable via PODMONITOR_LEADER_ELECTION_* env vars (see
 // distributedlock.GetEnvDuration).
 const (
