@@ -44,6 +44,8 @@ const (
 	primeraMaxClientTimeout = 360
 	alletra9000             = "alletra9000"
 	primera                 = "primera"
+	// The chart sets this to false only for controller.replicas=1; unset keeps distributed dedup on.
+	distributedDedupEnabledEnvKey = "DEDUP_DISTRIBUTED_ENABLED"
 )
 
 // Driver is the object that implements the CSI interfaces
@@ -89,7 +91,10 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 		driver.flavor = &vanilla.Flavor{}
 	}
 
-	if podMonitor {
+	if podMonitor && !distributedlock.GetEnvBool(podMonitorLeaderElectionEnabledEnvKey, true) {
+		log.Infof("Pod monitor leader election disabled; running pod monitor unconditionally")
+		driver.podMonitor = monitor.NewMonitor(driver.flavor, podMonitorInterval)
+	} else if podMonitor {
 		// Gated behind the hpe-csi-driver-podmonitor-leader Lease (CON-4982): with 3 controller
 		// replicas only one may run this loop. Any precondition failure disables podMonitor entirely
 		// rather than falling back to unconditional/legacy behavior (duplicate-monitor risk).
@@ -169,7 +174,9 @@ func NewDriver(name, version, endpoint, flavorName string, nodeService bool, dbS
 		// Cross-pod duplicate-request dedup via per-key Kubernetes Lease (CON-4982), used when
 		// no DBService is configured. Falls back further to the in-process sync.Map if preconditions aren't met;
 		if !nodeService && flavorName == flavor.Kubernetes {
-			if podNamespace := os.Getenv("POD_NAMESPACE"); podNamespace == "" {
+			if !distributedlock.GetEnvBool(distributedDedupEnabledEnvKey, true) {
+				log.Infof("Distributed duplicate-request dedup disabled; using in-process only")
+			} else if podNamespace := os.Getenv("POD_NAMESPACE"); podNamespace == "" {
 				log.Warnf("POD_NAMESPACE env var not set; distributed duplicate-request dedup falls back to in-process only")
 			} else {
 				ttl := distributedlock.GetEnvDuration("DEDUP_LOCK_TTL", distributedlock.DefaultLockTTL)

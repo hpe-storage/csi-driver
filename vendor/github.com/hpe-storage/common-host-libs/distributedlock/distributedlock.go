@@ -13,6 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -126,11 +128,23 @@ func NewInCluster(namespace string, ttl, maxHoldDuration time.Duration) (*Distri
 // callers, and reused by leader-election-style callers (e.g. a pod monitor Lease) for their own
 // env-configurable timings.
 func GetEnvDuration(envVarName string, defaultVal time.Duration) time.Duration {
-	if envVal := os.Getenv(envVarName); envVal != "" {
+	if envVal := strings.TrimSpace(os.Getenv(envVarName)); envVal != "" {
 		if parsed, err := time.ParseDuration(envVal); err == nil && parsed > 0 {
 			return parsed
 		}
 		log.Warnf("Invalid %s=%q, using default %s", envVarName, envVal, defaultVal)
+	}
+	return defaultVal
+}
+
+// GetEnvBool reads a boolean from envVarName (strconv.ParseBool syntax), falling back to
+// defaultVal if unset or invalid.
+func GetEnvBool(envVarName string, defaultVal bool) bool {
+	if envVal := strings.TrimSpace(os.Getenv(envVarName)); envVal != "" {
+		if parsed, err := strconv.ParseBool(envVal); err == nil {
+			return parsed
+		}
+		log.Warnf("Invalid %s=%q, using default %t", envVarName, envVal, defaultVal)
 	}
 	return defaultVal
 }
