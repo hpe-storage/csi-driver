@@ -467,52 +467,49 @@ func (flavor *Flavor) DeleteNFSVolume(volumeID string) error {
 	if err != nil {
 		return err
 	}
-	err = flavor.deleteNFSResources(volumeID, nfsResourceName, nfsNamespace)
+	// delete nfs pvc last, only if the rest succeeded: its pv label is how a retry finds this volume
+	err = flavor.deleteNFSResourcesExceptPVC(volumeID, nfsResourceName, nfsNamespace)
 	if err != nil {
 		return err
 	}
-
-	return err
+	return flavor.deleteNFSPVC(nfsResourceName, nfsNamespace)
 }
 
-func (flavor *Flavor) deleteNFSResources(volumeID, nfsResourceName, nfsNamespace string) (err error) {
+func (flavor *Flavor) deleteNFSResources(volumeID, nfsResourceName, nfsNamespace string) error {
 	// If volumeID is not provided (rollback path), derive it from the resource name.
 	// The resource name format is "hpe-nfs-<pvc-uid>" and volumeID should be "<pvc-uid>".
 	if volumeID == "" && nfsResourceName != "" {
 		volumeID = strings.TrimPrefix(nfsResourceName, nfsPrefix)
 	}
 
-	// delete deployment deployment/hpe-nfs-<originalclaim-uid>
-	err = flavor.deleteNFSDeployment(nfsResourceName, nfsNamespace)
-	if err != nil {
-		log.Errorf("unable to delete nfs deployment %s as part of cleanup, err %s", nfsResourceName, err.Error())
-	}
+	err := flavor.deleteNFSResourcesExceptPVC(volumeID, nfsResourceName, nfsNamespace)
 
 	// delete nfs pvc pvc/hpe-nfs-<originalclaim-uuid>
 	// if deployment is still around, then pvc cannot be deleted due to protection, try to cleanup as best effort
-	err = flavor.deleteNFSPVC(nfsResourceName, nfsNamespace)
-	if err != nil {
-		log.Errorf("unable to delete nfs pvc %s as part of cleanup, err %s", nfsResourceName, err.Error())
-	}
-
-	// delete service service/hpe-nfs-<originalclaim-uid>
-	err = flavor.deleteNFSService(nfsResourceName, nfsNamespace)
-	if err != nil {
-		log.Errorf("unable to delete nfs service %s as part of cleanup, err %s", nfsResourceName, err.Error())
-	}
-
-	roleName := nfsPrefix + volumeID + nfsRoleSuffix
-	err = flavor.deleteNFSRole(volumeID, roleName, nfsNamespace)
-	if err != nil {
-		log.Errorf("unable to delete role %s as part of cleanup, err %s", roleName, err.Error())
-	}
-
-	roleBindingName := nfsPrefix + volumeID + nfsRoleBindingSuffix
-	err = flavor.deleteNFSRoleBinding(volumeID, roleBindingName, nfsNamespace)
-	if err != nil {
-		log.Errorf("unable to delete role binding %s as part of cleanup, err %s", roleBindingName, err.Error())
+	pvcErr := flavor.deleteNFSPVC(nfsResourceName, nfsNamespace)
+	if err == nil {
+		err = pvcErr
 	}
 	return err
+}
+
+// deleteNFSResourcesExceptPVC deletes nfs deployment, service, role and role binding as best effort and returns the first error
+func (flavor *Flavor) deleteNFSResourcesExceptPVC(volumeID, nfsResourceName, nfsNamespace string) error {
+	roleName := nfsPrefix + volumeID + nfsRoleSuffix
+	roleBindingName := nfsPrefix + volumeID + nfsRoleBindingSuffix
+	// every deletion is attempted and logs its own failure
+	errs := []error{
+		flavor.deleteNFSDeployment(nfsResourceName, nfsNamespace),
+		flavor.deleteNFSService(nfsResourceName, nfsNamespace),
+		flavor.deleteNFSRole(volumeID, roleName, nfsNamespace),
+		flavor.deleteNFSRoleBinding(volumeID, roleBindingName, nfsNamespace),
+	}
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (flavor *Flavor) deleteNFSRole(volumeID, roleName, nfsNamespace string) error {
