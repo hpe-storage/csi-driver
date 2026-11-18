@@ -82,10 +82,22 @@ if [ "$nodeInit" = true ]; then
         if [ "$unitChanged" = true ]; then
             systemctl daemon-reload
             systemctl restart hpe-storage-node
-        elif systemctl is-active --quiet hpe-storage-node; then
-            echo "hpe-storage-node is already active and unchanged; skipping daemon-reload and restart"
         else
-            systemctl restart hpe-storage-node
+            # is-active exits 3 both for an inactive unit and when PID 1 does
+            # not answer within the client's 25 s limit, so the wait is what
+            # tells them apart. A query that timed out says nothing about the
+            # unit: restarting on it would restart a healthy unit and wait on
+            # the same busy PID 1 a second time (ESC-18251).
+            queryStart=$(date +%s)
+            unitState=$(systemctl is-active hpe-storage-node || true)
+            queryWait=$(($(date +%s) - queryStart))
+            if [ "$unitState" = "active" ]; then
+                echo "hpe-storage-node is already active and unchanged; skipping daemon-reload and restart"
+            elif [ "$queryWait" -ge 24 ]; then
+                echo "systemd did not answer is-active for hpe-storage-node after ${queryWait}s (state: ${unitState:-none}); leaving the unit untouched"
+            else
+                systemctl restart hpe-storage-node
+            fi
         fi
     fi
 
