@@ -20,6 +20,7 @@ func NewNodeInitContainer(flavorName string) *NodeInitContainer {
 	if flavorName == flavor.Kubernetes {
 		flavor, err := kubernetes.NewKubernetesFlavor(true, nil)
 		if err != nil {
+			log.Errorf("Unable to create the %s flavor for node init: %s", flavorName, err.Error())
 			return nil
 		}
 		nodeInitFlavour = flavor

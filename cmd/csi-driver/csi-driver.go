@@ -148,6 +148,11 @@ func csiCliHandler(cmd *cobra.Command) error {
 			}
 		}
 		nodeInitContainer := nodeinit.NewNodeInitContainer(flavorName)
+		if nodeInitContainer == nil {
+			// NewNodeInitContainer has logged why (e.g. no Kubernetes API access).
+			log.Errorf("Unable to set up node init for flavor %s", flavorName)
+			os.Exit(1)
+		}
 		err := nodeInitContainer.NodeInit()
 		if err != nil {
 			log.Errorf("Error while initiating the hpe csi driver container, refer the logs for more information: %s", err.Error())
