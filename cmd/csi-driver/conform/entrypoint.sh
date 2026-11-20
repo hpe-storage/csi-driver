@@ -58,17 +58,35 @@ if [ "$nodeInit" = true ]; then
     fi
 
     if [ "$disableConformanceCheck" != true ]; then
-        # Copy HPE Storage Node Conformance checks and conf in place
-        cp -f "/opt/hpe-storage/lib/hpe-storage-node.service" \
-            /etc/systemd/system/hpe-storage-node.service
+        # ESC-18251: reload and restart only when the unit file changed; otherwise restart only an inactive unit.
+        unitChanged=true
+        if cmp -s "/opt/hpe-storage/lib/hpe-storage-node.service" \
+            /etc/systemd/system/hpe-storage-node.service; then
+            unitChanged=false
+        else
+            cp -f "/opt/hpe-storage/lib/hpe-storage-node.service" \
+                /etc/systemd/system/hpe-storage-node.service
+        fi
         cp -f "/opt/hpe-storage/lib/hpe-storage-node.sh" \
             /etc/hpe-storage/hpe-storage-node.sh
         chmod +x /etc/hpe-storage/hpe-storage-node.sh
 
         echo "running node conformance checks..."
-        # Reload and run!
-        systemctl daemon-reload
-        systemctl restart hpe-storage-node
+        if [ "$unitChanged" = true ]; then
+            systemctl daemon-reload
+            systemctl restart hpe-storage-node
+        else
+            queryStart=$(date +%s)
+            unitState=$(systemctl is-active hpe-storage-node || true)
+            queryWait=$(($(date +%s) - queryStart))
+            if [ "$unitState" = "active" ]; then
+                echo "hpe-storage-node is already active and unchanged; skipping daemon-reload and restart"
+            elif [ "$queryWait" -ge 24 ]; then
+                echo "systemd did not answer is-active for hpe-storage-node after ${queryWait}s (state: ${unitState:-none}); leaving the unit untouched"
+            else
+                systemctl restart hpe-storage-node
+            fi
+        fi
     fi
 
     # Copy /etc/multipath.conf template if missing on host

@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	log "github.com/hpe-storage/common-host-libs/logger"
 	"github.com/hpe-storage/common-host-libs/util"
@@ -522,28 +523,147 @@ func EnableService(serviceType string) (err error) {
 	return err
 }
 
+// systemdServiceUnit maps the service type to its systemd unit name.
+func systemdServiceUnit(serviceType string) (string, error) {
+	switch serviceType {
+	case iscsi:
+		return "iscsid.service", nil
+	case multipath:
+		return "multipathd.service", nil
+	default:
+		return "", errors.New("unknown service type " + serviceType + " provided")
+	}
+}
+
+// systemctlExec is the exec seam for systemctl queries; tests swap it for a fake.
+var systemctlExec = util.ExecCommandOutput
+
+// IsSystemdUnitActive reports whether `systemctl is-active <unit>` answers "active" (ESC-18251).
+func IsSystemdUnitActive(unit string) bool {
+	return systemdUnitState(unit) == unitActive
+}
+
+// unitState is what a `systemctl is-active` query established.
+type unitState int
+
+const (
+	unitActive unitState = iota
+	unitNotActive
+	// unitNoAnswer means PID 1 did not answer the query; the state is not known.
+	unitNoAnswer
+)
+
+// systemctlNoAnswerAfter is the wait after which a non-"active" reply is read as "PID 1 did not answer".
+var systemctlNoAnswerAfter = 24 * time.Second
+
+// systemdUnitState asks `systemctl is-active <unit>` and separates "not active" from "no answer" (ESC-18251).
+func systemdUnitState(unit string) unitState {
+	started := time.Now()
+	out, _, err := systemctlExec(systemCtl, []string{"is-active", unit})
+	waited := time.Since(started)
+	answer := strings.TrimSpace(out)
+	log.Tracef("systemctl is-active %s -> %q after %s (err=%v)", unit, answer, waited.Round(time.Millisecond), err)
+	if err == nil && answer == "active" {
+		return unitActive
+	}
+	if waited >= systemctlNoAnswerAfter {
+		return unitNoAnswer
+	}
+	return unitNotActive
+}
+
+// isSystemctlTimeout reports whether a systemctl call failed because PID 1 did not answer in time.
+func isSystemctlTimeout(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "timed out") || strings.Contains(msg, "killed as timeout")
+}
+
+// procNetUnixPath lists the unix sockets of the current network namespace; a var so tests can use a fixture.
+var procNetUnixPath = "/proc/net/unix"
+
+// soAcceptCon is the kernel's __SO_ACCEPTCON flag, set in /proc/net/unix for a listening socket.
+const soAcceptCon = 0x10000
+
+// serviceListenSockets maps a systemd unit to the unix socket(s) its daemon listens on ('@' = abstract).
+var serviceListenSockets = map[string][]string{
+	"iscsid.service":     {"@ISCSIADM_ABSTRACT_NAMESPACE"},
+	"multipathd.service": {"@/org/kernel/linux/storage/multipathd"},
+}
+
+// IsServiceSocketListening reports whether the unit's daemon socket is listening, read from /proc/net/unix without systemd (ESC-18251).
+func IsServiceSocketListening(unit string) bool {
+	names, ok := serviceListenSockets[unit]
+	if !ok {
+		return false
+	}
+	content, err := os.ReadFile(procNetUnixPath)
+	if err != nil {
+		log.Tracef("unable to read %s: %s", procNetUnixPath, err.Error())
+		return false
+	}
+	// columns: Num RefCount Protocol Flags Type St Inode Path
+	for _, line := range strings.Split(string(content), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 8 {
+			continue
+		}
+		flags, err := strconv.ParseUint(fields[3], 16, 32)
+		if err != nil || flags&soAcceptCon == 0 {
+			continue
+		}
+		for _, name := range names {
+			if fields[7] == name {
+				log.Tracef("%s: listening socket %s found in %s", unit, name, procNetUnixPath)
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// skipSystemdCalls reports whether daemon-reload/enable/start can be skipped: the service is running or PID 1 did not answer.
+func skipSystemdCalls(unit string) bool {
+	if IsServiceSocketListening(unit) {
+		log.Infof("%s: the daemon's socket is listening, no systemd call is needed", unit)
+		return true
+	}
+	switch systemdUnitState(unit) {
+	case unitActive:
+		log.Infof("%s is already active", unit)
+		return true
+	case unitNoAnswer:
+		log.Warnf("systemd did not answer `systemctl is-active %s`; its state is unknown, leaving the unit untouched", unit)
+		return true
+	}
+	return false
+}
+
 func enableSystemdService(osInfo *OsInfo, serviceType string) (err error) {
-	var serviceName string
-	if serviceType == iscsi {
-		serviceName = "iscsid.service"
-	} else if serviceType == multipath {
-		serviceName = "multipathd.service"
-	} else {
-		return errors.New("unknown service type " + serviceType + " provided to enable")
-	}
-
-	args := []string{"daemon-reload"}
-	_, _, err = util.ExecCommandOutput("systemctl", args)
+	serviceName, err := systemdServiceUnit(serviceType)
 	if err != nil {
-		log.Errorf("unable to enable %s service %v\n", serviceName, err.Error())
 		return err
 	}
 
-	args = []string{"enable", serviceName}
-	_, _, err = util.ExecCommandOutput("systemctl", args)
-	if err != nil {
-		log.Errorf("unable to enable %s service %v\n", serviceName, err.Error())
-		return err
+	// ESC-18251: skip reload and enable when the service is running or PID 1 does not answer.
+	if skipSystemdCalls(serviceName) {
+		log.Infof("skipping systemctl daemon-reload and enable for %s", serviceName)
+		return nil
+	}
+
+	for _, args := range [][]string{{"daemon-reload"}, {"enable", serviceName}} {
+		_, _, err = systemctlExec(systemCtl, args)
+		if isSystemctlTimeout(err) {
+			// ESC-18251: a busy PID 1 must not keep the node plugin from starting.
+			log.Warnf("systemctl %s timed out while enabling %s, continuing without it: %s", args[0], serviceName, err.Error())
+			return nil
+		}
+		if err != nil {
+			log.Errorf("unable to enable %s service %v\n", serviceName, err.Error())
+			return err
+		}
 	}
 	return nil
 }
@@ -625,6 +745,19 @@ func ServiceCommand(serviceType string, operationType string) (err error) {
 		log.Errorln("unable to get host os information ", err.Error())
 	}
 
+	// get suitable command args based on os type, package type and install operation
+	cmd, args := getServiceCommandArgs(osInfo, serviceType, operationType)
+
+	// ESC-18251: skip only "start" when the service is running or PID 1 does not answer.
+	systemdStart := cmd == systemCtl && operationType == "start"
+	if systemdStart {
+		if unit, uerr := systemdServiceUnit(serviceType); uerr == nil && skipSystemdCalls(unit) {
+			log.Infof("skipping systemctl start %s", unit)
+			return nil
+		}
+	}
+
+	// The SUSE workaround ends in a daemon-reload, so it runs only after the check above.
 	if osInfo.GetOsDistro() == OsTypeSuse && serviceType == multipath {
 		// apply workaround for SuSE for multipathd.service, NLT-1226
 		err = applySuseWorkaround()
@@ -633,12 +766,17 @@ func ServiceCommand(serviceType string, operationType string) (err error) {
 		}
 	}
 
-	// get suitable command args based on os type, package type and install operation
-	cmd, args := getServiceCommandArgs(osInfo, serviceType, operationType)
-	log.Traceln("running command ", cmd, " args: ", args)
+	log.Infof("running %s %v", cmd, args)
+	started := time.Now()
 	_, rc, err := util.ExecCommandOutput(cmd, args)
+	log.Infof("%s %v returned after %s", cmd, args, time.Since(started).Round(time.Millisecond))
 	// ignore rc == 6 no records found error on some OS distributions as iscsiadm will attempt to to login on fresh node
 	if err != nil && rc != 6 {
+		if systemdStart && isSystemctlTimeout(err) {
+			// ESC-18251: a busy PID 1 must not keep the node plugin from starting.
+			log.Warnf("systemctl start of the %s service timed out, continuing without it: %s", serviceType, err.Error())
+			return nil
+		}
 		log.Errorf("unable to %s %s service %v\n", operationType, serviceType, err.Error())
 		return err
 	}
