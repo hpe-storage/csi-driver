@@ -58,14 +58,7 @@ if [ "$nodeInit" = true ]; then
     fi
 
     if [ "$disableConformanceCheck" != true ]; then
-        # Copy HPE Storage Node Conformance checks and conf in place.
-        # ESC-18251: `systemctl daemon-reload` is a full reload of the host's
-        # unit graph; on a densely loaded node it can exceed the systemctl
-        # client's D-Bus timeout, which ended the init container with a
-        # non-zero exit and left the node plugin in Init:CrashLoopBackOff.
-        # Assert the current state before asking PID 1 for anything:
-        #   - reload only when the unit file we install actually differs,
-        #   - restart only when the unit is not already active.
+        # ESC-18251: reload and restart only when the unit file changed; otherwise restart only an inactive unit.
         unitChanged=true
         if cmp -s "/opt/hpe-storage/lib/hpe-storage-node.service" \
             /etc/systemd/system/hpe-storage-node.service; then
@@ -83,11 +76,6 @@ if [ "$nodeInit" = true ]; then
             systemctl daemon-reload
             systemctl restart hpe-storage-node
         else
-            # is-active exits 3 both for an inactive unit and when PID 1 does
-            # not answer within the client's 25 s limit, so the wait is what
-            # tells them apart. A query that timed out says nothing about the
-            # unit: restarting on it would restart a healthy unit and wait on
-            # the same busy PID 1 a second time (ESC-18251).
             queryStart=$(date +%s)
             unitState=$(systemctl is-active hpe-storage-node || true)
             queryWait=$(($(date +%s) - queryStart))

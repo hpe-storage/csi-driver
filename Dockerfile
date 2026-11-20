@@ -22,8 +22,7 @@ FROM registry.access.redhat.com/ubi9/ubi-minimal:9.8-1791898448
 RUN microdnf update -y && rm -rf /var/cache/yum
 ADD cmd/csi-driver/AlmaLinux-Base.repo /etc/yum.repos.d/
 
-# diffutils provides `cmp`, used by the entrypoint to reload systemd only when the
-# conformance unit file actually changed (ESC-18251).
+# diffutils provides `cmp`, which the entrypoint uses to detect a changed conformance unit file (ESC-18251).
 RUN microdnf install -y cryptsetup tar procps diffutils && rm -rf /var/cache/yum && command -v cmp
 
 COPY --from=centos:centos7.9.2009 /usr/bin/systemctl /usr/bin/systemctl

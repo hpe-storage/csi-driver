@@ -538,21 +538,7 @@ func systemdServiceUnit(serviceType string) (string, error) {
 // systemctlExec is the exec seam for systemctl queries; tests swap it for a fake.
 var systemctlExec = util.ExecCommandOutput
 
-// IsSystemdUnitActive reports whether `systemctl is-active <unit>` answers
-// "active". It is read-only, but it is still a D-Bus round trip to PID 1: while
-// PID 1 is busy (e.g. in a long daemon-reload) it is not answered and the
-// systemctl client gives up after its 25 s timeout, for any unit type
-// (.service or .socket). Use skipSystemdCalls, which tries a check that does
-// not involve systemd first.
-//
-// ESC-18251: on a densely loaded node a `systemctl daemon-reload` can take
-// longer than the systemctl client's D-Bus timeout (25 s), the init container
-// exits non-zero and the node plugin goes into Init:CrashLoopBackOff, with
-// every retry asking PID 1 for yet another full reload. The services node-init
-// manages (iscsid, multipathd) are almost always already active on a node that
-// has been running workloads, so this assertion is used before any
-// daemon-reload/enable/start/restart to skip the systemd interaction entirely
-// when nothing needs to be done.
+// IsSystemdUnitActive reports whether `systemctl is-active <unit>` answers "active" (ESC-18251).
 func IsSystemdUnitActive(unit string) bool {
 	return systemdUnitState(unit) == unitActive
 }
@@ -567,16 +553,10 @@ const (
 	unitNoAnswer
 )
 
-// systemctlNoAnswerAfter is the wait from which a query that did not answer
-// "active" is taken as "PID 1 did not answer". The systemctl client gives up
-// after 25 s and exits 3, the same exit code as for an inactive unit, so only
-// the wait tells the two apart. It is a var so unit tests can shorten it.
+// systemctlNoAnswerAfter is the wait after which a non-"active" reply is read as "PID 1 did not answer".
 var systemctlNoAnswerAfter = 24 * time.Second
 
-// systemdUnitState asks `systemctl is-active <unit>` and separates "not active"
-// from "no answer". ESC-18251: a query that timed out must not be read as
-// "inactive", or a busy PID 1 is asked for a reload/enable/start it cannot
-// serve either.
+// systemdUnitState asks `systemctl is-active <unit>` and separates "not active" from "no answer" (ESC-18251).
 func systemdUnitState(unit string) unitState {
 	started := time.Now()
 	out, _, err := systemctlExec(systemCtl, []string{"is-active", unit})
@@ -592,9 +572,7 @@ func systemdUnitState(unit string) unitState {
 	return unitNotActive
 }
 
-// isSystemctlTimeout reports whether a systemctl call failed because PID 1 did
-// not answer in time: the client's own D-Bus timeout, or the command executor
-// killing the client.
+// isSystemctlTimeout reports whether a systemctl call failed because PID 1 did not answer in time.
 func isSystemctlTimeout(err error) bool {
 	if err == nil {
 		return false
@@ -603,35 +581,19 @@ func isSystemctlTimeout(err error) bool {
 	return strings.Contains(msg, "timed out") || strings.Contains(msg, "killed as timeout")
 }
 
-// procNetUnixPath lists the unix sockets of the current network namespace. It
-// is a var so unit tests can point it at a fixture.
+// procNetUnixPath lists the unix sockets of the current network namespace; a var so tests can use a fixture.
 var procNetUnixPath = "/proc/net/unix"
 
-// soAcceptCon is the kernel's __SO_ACCEPTCON socket flag: set in the Flags
-// column of /proc/net/unix for a socket that is listening.
+// soAcceptCon is the kernel's __SO_ACCEPTCON flag, set in /proc/net/unix for a listening socket.
 const soAcceptCon = 0x10000
 
-// serviceListenSockets maps a systemd unit to the unix socket(s) its daemon
-// listens on, as they appear in /proc/net/unix ('@' prefix = abstract socket).
+// serviceListenSockets maps a systemd unit to the unix socket(s) its daemon listens on ('@' = abstract).
 var serviceListenSockets = map[string][]string{
 	"iscsid.service":     {"@ISCSIADM_ABSTRACT_NAMESPACE"},
 	"multipathd.service": {"@/org/kernel/linux/storage/multipathd"},
 }
 
-// IsServiceSocketListening reports whether the management socket of the given
-// unit's daemon is in the listening state, by reading /proc/net/unix. This is
-// a plain procfs read: no D-Bus, no systemd, so it cannot be delayed by a busy
-// PID 1 (ESC-18251).
-//
-// Abstract unix sockets are scoped to the network namespace, so this sees the
-// host's daemons only because the node plugin runs with hostNetwork: true; it
-// needs neither hostPID nor an extra mount. A listening socket means the
-// daemon's interface is available to iscsiadm/multipathd clients: either the
-// daemon itself holds it, or systemd holds it for socket activation and starts
-// the daemon on the first connection.
-//
-// false means "not found", not "not running": callers must fall back to
-// another check.
+// IsServiceSocketListening reports whether the unit's daemon socket is listening, read from /proc/net/unix without systemd (ESC-18251).
 func IsServiceSocketListening(unit string) bool {
 	names, ok := serviceListenSockets[unit]
 	if !ok {
@@ -642,8 +604,7 @@ func IsServiceSocketListening(unit string) bool {
 		log.Tracef("unable to read %s: %s", procNetUnixPath, err.Error())
 		return false
 	}
-	// Num       RefCount Protocol Flags    Type St Inode Path
-	// 00000000: 00000002 00000000 00010000 0001 01 22495 @ISCSIADM_ABSTRACT_NAMESPACE
+	// columns: Num RefCount Protocol Flags Type St Inode Path
 	for _, line := range strings.Split(string(content), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 8 {
@@ -663,11 +624,7 @@ func IsServiceSocketListening(unit string) bool {
 	return false
 }
 
-// skipSystemdCalls is the gate used before daemon-reload/enable/start. It
-// first looks for the daemon's listening socket, which does not involve
-// systemd, and only asks `systemctl is-active` when that is inconclusive.
-// The calls are skipped when the service is running, and also when PID 1 did
-// not answer: the state is then unknown and the unit is left untouched.
+// skipSystemdCalls reports whether daemon-reload/enable/start can be skipped: the service is running or PID 1 did not answer.
 func skipSystemdCalls(unit string) bool {
 	if IsServiceSocketListening(unit) {
 		log.Infof("%s: the daemon's socket is listening, no systemd call is needed", unit)
@@ -690,8 +647,7 @@ func enableSystemdService(osInfo *OsInfo, serviceType string) (err error) {
 		return err
 	}
 
-	// ESC-18251: a running service needs no reload or enable, and a PID 1
-	// that does not answer cannot serve one; do not ask it for anything.
+	// ESC-18251: skip reload and enable when the service is running or PID 1 does not answer.
 	if skipSystemdCalls(serviceName) {
 		log.Infof("skipping systemctl daemon-reload and enable for %s", serviceName)
 		return nil
@@ -700,8 +656,7 @@ func enableSystemdService(osInfo *OsInfo, serviceType string) (err error) {
 	for _, args := range [][]string{{"daemon-reload"}, {"enable", serviceName}} {
 		_, _, err = systemctlExec(systemCtl, args)
 		if isSystemctlTimeout(err) {
-			// ESC-18251: PID 1 is busy. This is not a reason to keep the
-			// node plugin from starting; stop asking and carry on.
+			// ESC-18251: a busy PID 1 must not keep the node plugin from starting.
 			log.Warnf("systemctl %s timed out while enabling %s, continuing without it: %s", args[0], serviceName, err.Error())
 			return nil
 		}
@@ -793,12 +748,7 @@ func ServiceCommand(serviceType string, operationType string) (err error) {
 	// get suitable command args based on os type, package type and install operation
 	cmd, args := getServiceCommandArgs(osInfo, serviceType, operationType)
 
-	// ESC-18251: `systemctl start` on an already-active unit is a no-op for
-	// systemd but still a D-Bus round trip to a possibly busy PID 1. Check
-	// first (see skipSystemdCalls) and skip the start when the service is
-	// running or PID 1 does not answer.
-	// Only "start" is skipped: stop/restart/reload are explicit requests to
-	// change the state of a running service.
+	// ESC-18251: skip only "start" when the service is running or PID 1 does not answer.
 	systemdStart := cmd == systemCtl && operationType == "start"
 	if systemdStart {
 		if unit, uerr := systemdServiceUnit(serviceType); uerr == nil && skipSystemdCalls(unit) {
@@ -807,8 +757,7 @@ func ServiceCommand(serviceType string, operationType string) (err error) {
 		}
 	}
 
-	// The SUSE workaround ends in a daemon-reload, so it comes after the
-	// check above: a multipathd that is already running does not need it.
+	// The SUSE workaround ends in a daemon-reload, so it runs only after the check above.
 	if osInfo.GetOsDistro() == OsTypeSuse && serviceType == multipath {
 		// apply workaround for SuSE for multipathd.service, NLT-1226
 		err = applySuseWorkaround()
@@ -824,8 +773,7 @@ func ServiceCommand(serviceType string, operationType string) (err error) {
 	// ignore rc == 6 no records found error on some OS distributions as iscsiadm will attempt to to login on fresh node
 	if err != nil && rc != 6 {
 		if systemdStart && isSystemctlTimeout(err) {
-			// ESC-18251: PID 1 is busy. A start it has read is still carried
-			// out; this is not a reason to keep the node plugin from starting.
+			// ESC-18251: a busy PID 1 must not keep the node plugin from starting.
 			log.Warnf("systemctl start of the %s service timed out, continuing without it: %s", serviceType, err.Error())
 			return nil
 		}

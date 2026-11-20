@@ -48,8 +48,7 @@ var (
 	readProcMountsMutex     sync.Mutex
 	ErrMultipathTimeout     = errors.New("multipathd timeout")
 
-	// errMultipathdReconfigure marks a failed `multipathd reconfigure`, as
-	// opposed to a failure to read or record the configuration.
+	// errMultipathdReconfigure marks a failed `multipathd reconfigure`, not a failure to read or record the config.
 	errMultipathdReconfigure = errors.New("multipathd reconfigure failed")
 
 	// execCommandOutput lets tests exercise command behavior without shelling out.
@@ -428,10 +427,7 @@ func SetMultipathRecommendations() (err error) {
 
 	err = reconfigureMultipathdIfConfigNotApplied(linux.MultipathConf, multipathAppliedConfigHashPath, linux.MultipathdReconfigure)
 	if errors.Is(err, errMultipathdReconfigure) {
-		// ESC-18251: multipathd can refuse a reconfigure for minutes while it
-		// is busy (e.g. flushing maps after a mass teardown). Failing node
-		// init does not help it. The applied-config hash was not written, so
-		// the reconfigure is attempted again on the next node init.
+		// ESC-18251: a busy multipathd must not fail node init; the reconfigure is retried on the next node init.
 		log.Warnf("%s; continuing, %s is applied on the next node init", err.Error(), linux.MultipathConf)
 		return nil
 	}
