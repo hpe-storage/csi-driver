@@ -138,18 +138,21 @@ then
 		container_list=$(kubectl get pod "$pod_name" -n "$namespace" -o jsonpath='{.spec.containers[*].name}')
 		if [[ -n "$container_list" ]]
 		then
+			# One directory per replica so each pod's 8-9 containers stay grouped together.
+			pod_log_dir="$tmp_log_dir/$pod_name"
+			mkdir -p "$pod_log_dir"
 			for container_name in $container_list
 			do
 				# CON-5006: collect every controller container, including the controller's
 				# own hpe-csi-driver. It serves controller RPCs and runs leader election,
 				# and is a different process from the hpe-csi-node DaemonSet's hpe-csi-driver,
 				# so it is NOT captured by the node dump.
-				timeout 30 kubectl logs "$pod_name" -n "$namespace" -c "$container_name" &> "$tmp_log_dir/$pod_name.$container_name.log"
+				timeout 30 kubectl logs "$pod_name" -n "$namespace" -c "$container_name" &> "$pod_log_dir/$container_name.log"
 				# Previous instance exists only after a restart/failover; drop the file if none.
-				if timeout 30 kubectl logs --previous "$pod_name" -n "$namespace" -c "$container_name" > "$tmp_log_dir/$pod_name.$container_name.previous.log" 2>/dev/null; then
-					[[ -s "$tmp_log_dir/$pod_name.$container_name.previous.log" ]] || rm -f "$tmp_log_dir/$pod_name.$container_name.previous.log"
+				if timeout 30 kubectl logs --previous "$pod_name" -n "$namespace" -c "$container_name" > "$pod_log_dir/$container_name.previous.log" 2>/dev/null; then
+					[[ -s "$pod_log_dir/$container_name.previous.log" ]] || rm -f "$pod_log_dir/$container_name.previous.log"
 				else
-					rm -f "$tmp_log_dir/$pod_name.$container_name.previous.log"
+					rm -f "$pod_log_dir/$container_name.previous.log"
 				fi
 			done
 		fi
@@ -204,14 +207,18 @@ then
 	for pod_name in $pod_list
 	do
 		container_list=$(kubectl get pod "$pod_name" -n "$namespace" -o jsonpath='{.spec.containers[*].name}')
+		[[ -n "$container_list" ]] || continue
+		# One directory per replica so each pod's containers stay grouped together.
+		pod_log_dir="$tmp_log_dir/$pod_name"
+		mkdir -p "$pod_log_dir"
 		for container_name in $container_list
 		do
-			timeout 30 kubectl logs "$pod_name" -n "$namespace" -c "$container_name" &> "$tmp_log_dir/$pod_name.$container_name.log"
+			timeout 30 kubectl logs "$pod_name" -n "$namespace" -c "$container_name" &> "$pod_log_dir/$container_name.log"
 			# Previous instance exists only after a restart; drop the file if there is none.
-			if timeout 30 kubectl logs --previous "$pod_name" -n "$namespace" -c "$container_name" > "$tmp_log_dir/$pod_name.$container_name.previous.log" 2>/dev/null; then
-				[[ -s "$tmp_log_dir/$pod_name.$container_name.previous.log" ]] || rm -f "$tmp_log_dir/$pod_name.$container_name.previous.log"
+			if timeout 30 kubectl logs --previous "$pod_name" -n "$namespace" -c "$container_name" > "$pod_log_dir/$container_name.previous.log" 2>/dev/null; then
+				[[ -s "$pod_log_dir/$container_name.previous.log" ]] || rm -f "$pod_log_dir/$container_name.previous.log"
 			else
-				rm -f "$tmp_log_dir/$pod_name.$container_name.previous.log"
+				rm -f "$pod_log_dir/$container_name.previous.log"
 			fi
 		done
 	done
