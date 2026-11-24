@@ -58,6 +58,21 @@ if [ "$nodeInit" = true ]; then
     fi
 
     if [ "$disableConformanceCheck" != true ]; then
+        # ESC-18251: a systemctl call that times out on a busy PID 1 is not fatal; any other failure still is.
+        run_systemctl() {
+            if out=$(systemctl "$@" 2>&1); then
+                return 0
+            fi
+            echo "$out"
+            case "$out" in
+            *"timed out"*)
+                echo "systemctl $* timed out; continuing"
+                return 0
+                ;;
+            esac
+            return 1
+        }
+
         # ESC-18251: reload and restart only when the unit file changed; otherwise restart only an inactive unit.
         unitChanged=true
         if cmp -s "/opt/hpe-storage/lib/hpe-storage-node.service" \
@@ -73,8 +88,8 @@ if [ "$nodeInit" = true ]; then
 
         echo "running node conformance checks..."
         if [ "$unitChanged" = true ]; then
-            systemctl daemon-reload
-            systemctl restart hpe-storage-node
+            run_systemctl daemon-reload
+            run_systemctl restart hpe-storage-node
         else
             queryStart=$(date +%s)
             unitState=$(systemctl is-active hpe-storage-node || true)
@@ -84,7 +99,7 @@ if [ "$nodeInit" = true ]; then
             elif [ "$queryWait" -ge 24 ]; then
                 echo "systemd did not answer is-active for hpe-storage-node after ${queryWait}s (state: ${unitState:-none}); leaving the unit untouched"
             else
-                systemctl restart hpe-storage-node
+                run_systemctl restart hpe-storage-node
             fi
         fi
     fi
