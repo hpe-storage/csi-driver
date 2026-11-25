@@ -16,7 +16,9 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 )
 
@@ -851,4 +853,71 @@ func TestDeleteNFSResources_UsesProvidedVolumeID(t *testing.T) {
 
 	_, err = client.RbacV1().Roles(namespace).Get(context.Background(), roleName, metav1.GetOptions{})
 	assert.True(t, apierrors.IsNotFound(err), "expected role %s to be deleted", roleName)
+}
+
+// TestDeleteNFSResources_RollbackReturnsError verifies that the rollback path reports a failed
+// deletion and still deletes the nfs pvc.
+func TestDeleteNFSResources_RollbackReturnsError(t *testing.T) {
+	const namespace = "hpe-nfs"
+	nfsResourceName := nfsPrefix + "abc123"
+
+	client := fake.NewSimpleClientset()
+	f := &Flavor{kubeClient: client}
+
+	_, err := client.CoreV1().PersistentVolumeClaims(namespace).Create(context.Background(),
+		&v1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: nfsResourceName, Namespace: namespace}},
+		metav1.CreateOptions{})
+	assert.NoError(t, err)
+	client.PrependReactor("delete", "deployments", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewInternalError(fmt.Errorf("etcd timeout"))
+	})
+
+	err = f.deleteNFSResources("", nfsResourceName, namespace)
+	assert.ErrorContains(t, err, "etcd timeout")
+
+	_, err = client.CoreV1().PersistentVolumeClaims(namespace).Get(context.Background(), nfsResourceName, metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "expected pvc %s to be deleted", nfsResourceName)
+}
+
+// TestDeleteNFSVolume_KeepsPVCOnError verifies that the nfs pvc, whose pv label is how a
+// retried DeleteVolume finds the volume, is kept until all other resources are deleted.
+func TestDeleteNFSVolume_KeepsPVCOnError(t *testing.T) {
+	const (
+		volumeID  = "abc123"
+		namespace = "hpe-nfs"
+	)
+	nfsResourceName := nfsPrefix + volumeID
+	ctx := context.Background()
+
+	client := fake.NewSimpleClientset()
+	f := &Flavor{kubeClient: client}
+
+	_, err := client.CoreV1().PersistentVolumes().Create(ctx, &v1.PersistentVolume{
+		ObjectMeta: metav1.ObjectMeta{Name: "pvc-backend", Labels: map[string]string{nfsParentVolumeIDKey: volumeID}},
+		Spec:       v1.PersistentVolumeSpec{ClaimRef: &v1.ObjectReference{Name: nfsResourceName, Namespace: namespace}},
+	}, metav1.CreateOptions{})
+	assert.NoError(t, err)
+	_, err = client.CoreV1().PersistentVolumeClaims(namespace).Create(ctx,
+		&v1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{Name: nfsResourceName, Namespace: namespace}},
+		metav1.CreateOptions{})
+	assert.NoError(t, err)
+
+	failed := false
+	client.PrependReactor("delete", "services", func(k8stesting.Action) (bool, runtime.Object, error) {
+		if failed {
+			return false, nil, nil
+		}
+		failed = true
+		return true, nil, apierrors.NewInternalError(fmt.Errorf("etcd timeout"))
+	})
+
+	err = f.DeleteNFSVolume(volumeID)
+	assert.ErrorContains(t, err, "etcd timeout")
+	_, err = client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, nfsResourceName, metav1.GetOptions{})
+	assert.NoError(t, err, "expected pvc %s to be kept", nfsResourceName)
+
+	err = f.DeleteNFSVolume(volumeID)
+	assert.NoError(t, err)
+	_, err = client.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, nfsResourceName, metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "expected pvc %s to be deleted", nfsResourceName)
 }
