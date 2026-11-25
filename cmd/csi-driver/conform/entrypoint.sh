@@ -58,6 +58,11 @@ if [ "$nodeInit" = true ]; then
     fi
 
     if [ "$disableConformanceCheck" != true ]; then
+	systemd_reload_required=0
+        if [ ! -f /etc/systemd/system/hpe-storage-node.service ]; then
+		systemd_reload_required=1
+	fi
+
         # Copy HPE Storage Node Conformance checks and conf in place
         cp -f "/opt/hpe-storage/lib/hpe-storage-node.service" \
             /etc/systemd/system/hpe-storage-node.service
@@ -66,8 +71,12 @@ if [ "$nodeInit" = true ]; then
         chmod +x /etc/hpe-storage/hpe-storage-node.sh
 
         echo "running node conformance checks..."
+
         # Reload and run!
-        systemctl daemon-reload
+        if [ "${systemd_reload_required}" -eq 1 ]; then
+            systemctl daemon-reload
+        fi
+
         systemctl restart hpe-storage-node
     fi
 
