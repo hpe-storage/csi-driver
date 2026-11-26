@@ -156,6 +156,7 @@ func TestGetNFSSpec(t *testing.T) {
 	assert.Equal(t, spec.resourceRequirements.Limits[v1.ResourceMemory], expectedDefaultMemory)
 	//assert.Nil(t, spec.resourceRequirements)
 	assert.Equal(t, 1, len(spec.nodeSelector))
+	assert.Equal(t, "kubernetes.io/hostname", spec.topologyKey)
 
 	// test with overrides
 	createParams["nfsNamespace"] = "my-nfs-namespace"
@@ -416,6 +417,95 @@ func TestGetNFSSpecWithNegativeTolerationSeconds(t *testing.T) {
 	// Should handle negative values
 	assert.Nil(t, err)
 	assert.NotNil(t, spec)
+}
+
+func TestGetNFSSpecWithTopologyKey(t *testing.T) {
+	f := &Flavor{kubeClient: fake.NewSimpleClientset()}
+
+	tests := []struct {
+		name    string
+		key     string
+		wantErr bool
+	}{
+		{name: "well-known label", key: "topology.kubernetes.io/zone"},
+		{name: "unqualified label", key: "node"},
+		{name: "empty", key: "", wantErr: true},
+		{name: "contains a space", key: "foo bar", wantErr: true},
+		{name: "too many slashes", key: "a/b/c", wantErr: true},
+		{name: "empty prefix", key: "/x", wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec, err := f.getNFSSpec(map[string]string{"nfsTopologyKey": tt.key})
+			if tt.wantErr {
+				assert.Nil(t, spec)
+				assert.ErrorContains(t, err, nfsTopologyKeyParamKey)
+				return
+			}
+			assert.Nil(t, err)
+			assert.Equal(t, tt.key, spec.topologyKey)
+		})
+	}
+}
+
+func TestMakeNFSDeploymentWithTopologyKey(t *testing.T) {
+	f := &Flavor{kubeClient: fake.NewSimpleClientset()}
+
+	tests := []struct {
+		name        string
+		params      map[string]string
+		expectedKey string
+	}{
+		{
+			name:        "default key",
+			params:      map[string]string{},
+			expectedKey: "kubernetes.io/hostname",
+		},
+		{
+			name:        "custom key",
+			params:      map[string]string{nfsTopologyKeyParamKey: v1.LabelTopologyZone},
+			expectedKey: v1.LabelTopologyZone,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spec, err := f.getNFSSpec(tt.params)
+			assert.Nil(t, err)
+
+			dep := f.makeNFSDeployment("nfs-spread", spec, defaultNFSNamespace)
+
+			constraints := dep.Spec.Template.Spec.TopologySpreadConstraints
+			if !assert.Len(t, constraints, 1) {
+				return
+			}
+			assert.Equal(t, tt.expectedKey, constraints[0].TopologyKey)
+			assert.Equal(t, int32(1), constraints[0].MaxSkew)
+			assert.Equal(t, v1.ScheduleAnyway, constraints[0].WhenUnsatisfiable)
+			assert.Equal(t, map[string]string{"spread-by": "hpe-nfs"}, constraints[0].LabelSelector.MatchLabels)
+			assert.Equal(t, "hpe-nfs", dep.Spec.Template.Labels["spread-by"])
+		})
+	}
+}
+
+func TestCreateNFSVolumeRejectsInvalidTopologyKey(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	f := &Flavor{kubeClient: client}
+
+	volume, rollback, err := f.CreateNFSVolume("pvc-invalid-topology-key", 1024, map[string]string{
+		nfsTopologyKeyParamKey: "foo bar",
+	}, nil)
+
+	assert.Nil(t, volume)
+	assert.False(t, rollback)
+	assert.ErrorContains(t, err, nfsTopologyKeyParamKey)
+
+	for _, action := range client.Actions() {
+		if action.GetVerb() == "create" {
+			assert.Equal(t, "namespaces", action.GetResource().Resource)
+		}
+	}
 }
 
 func TestMakeNFSDeploymentWithCustomTolerations(t *testing.T) {
